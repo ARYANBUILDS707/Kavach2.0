@@ -1,0 +1,67 @@
+# Local secrets and credentials (examples are safe to version)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials*.json
+secrets/
+.aws/
+
+# Python environments, caches and build output
+.venv/
+venv/
+.python/
+.uv-cache/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+build/
+dist/
+
+# Frontend dependencies and generated output
+node_modules/
+.next/
+coverage/
+playwright-report/
+test-results/
+
+# Sensitive datasets, audio and model binaries; use approved synthetic fixtures only
+data/**
+!data/.gitkeep
+private_audio/
+raw_data/
+datasets/
+model_artifacts/
+artifacts/
+*.wav
+*.mp3
+*.m4a
+*.flac
+*.ogg
+*.aac
+*.pcm
+*.pt
+*.pth
+*.onnx
+*.pkl
+*.pickle
+*.joblib
+*.safetensors
+*.h5
+*.hdf5
+*.ckpt
+*.sqlite*
+*.db
+*.log
+
+# Local editor and operating-system state
+.DS_Store
+.idea/
+.vscode/
