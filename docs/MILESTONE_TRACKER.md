@@ -10,14 +10,14 @@ Status values: `not started`, `in progress`, `blocked`, `complete (verified)`, `
 | --- | --- | --- | --- | --- |
 | M0 | Repository, architecture alignment, workflow, reproducibility planning | `dev` | complete (documentation committed to `dev`; see the M0 task report for the hash) | C-07 deferred; PRD/API/ARCHITECTURE follow-ups noted under C-06 |
 | M1 | FastAPI foundation | `main` (history) | complete (verified historically: 88 passed, Ruff clean on 31 Oct 2026; HTTP startup last verified 28 Oct 2026) | Debt TD-01, TD-02, TD-03 carried forward; M1 routes preserved (C-07 deferred) |
-| M1.1 | Reproducible environment and minimal pytest + Ruff CI | `backend` → `dev` (owner instruction of 31 Oct 2026; the plan's `feature/m1-1-ci` was not used) | in progress: implemented and verified locally on 31 Oct 2026; uncommitted; **no GitHub Actions run yet** | Owner review, commit and push (user-run); PR into `dev` triggers the first CI run; exit requires that run to be green |
+| M1.1 | Reproducible environment and minimal pytest + Ruff CI | `backend` (stays there until full backend acceptance) | in progress: committed by the user as `c8c2ec7` and pushed; `backend` push trigger added afterward (uncommitted); **no GitHub Actions run yet** | Exit requires a green CI run on a `backend` push, which first happens when the trigger change is pushed |
 | M2 | PostgreSQL, migrations, identity, scoped auth, audit | `backend` | not started | M1.1; D02 packages, D03, D07 unapproved; shared login throttling decided (C-06), store/client pending D02 |
 | M3 | Authenticated ingestion, PG idempotency, Redis state, scenario catalog + submission script | `backend` | not started | M2; D08 |
 | M4 | SMS detection and evaluation | `backend` | not started | M3; D04 data/licensing |
 | M5 | Voice transcription, intent, synthesis indication | `backend` | not started | M3; D04 data/licensing/hardware |
 | M6 | Correlation and continuous fusion | `backend` | not started | M4, M5; D05, D06; paired labeled data |
-| M7 | Analyst dashboard (M7a backend incident/review API, M7b frontend UI) | `backend`, `frontend` | not started | M3 (M6 for pairs); D09; browser login depends on shared login throttling (C-06) |
-| M8 | End-to-end integration and workflows (includes simulator UI) | `dev` | not started | M6, M7; health-path compatibility plan (C-07) |
+| M7 | Analyst dashboard (M7a backend incident/review API, M7b frontend UI); M7a completion triggers the single `backend` → `dev` integration PR | `backend`, `frontend` | not started | M3 (M6 for pairs); D09; browser login depends on shared login throttling (C-06) |
+| M8 | End-to-end integration and workflows (includes simulator UI) | `dev` | not started | Backend integration PR merged; M7b integrated (decision open); health-path compatibility plan (C-07) |
 | M9 | Security, privacy, resilience | `dev` | not started | M8 |
 | M10 | Adversarial evaluation, ablation, calibration, benchmarks | `dev` | not started | M9; representative data |
 | M11 | CI/CD, Docker, release, demo readiness | `dev` → `main` | not started | M10; D10 for anything beyond local |
@@ -103,14 +103,14 @@ The owner's conflict and Git decisions do not approve any item below marked pend
 | --- | --- | --- | --- |
 | TD-01 | ~~`backend/uv.lock` absent~~ Addressed in M1.1 (uncommitted): lock generated with uv 0.11.16, 27 packages, `uv lock --check` passes, fresh isolated install verified. The earlier timeouts did not reproduce: the PyPI index answered in 0.13 s and resolution took 0.4 s, so the cause is attributed to the earlier execution environment's network sandbox, not the index or manifest (not proven). | — | Close when committed and CI is green |
 | TD-02 | Ruff pin: **kept at the documented 0.17.2** (manifest and lockfile); 0.17.2 verified clean in the fresh environment. The existing `backend/.venv` still has 0.17.3 until the user syncs it (see README Setup). | Local pip venv differs from lock until synced | Close when committed and CI is green |
-| TD-03 | CI workflow written (`.github/workflows/backend-ci.yml`) but **not yet run on GitHub** | Workflow correctness on GitHub unproven | Close after the first green run |
+| TD-03 | CI workflow committed (`c8c2ec7`) but **not yet run on GitHub**: `backend` was not a push trigger at that commit; trigger added afterward (uncommitted) | Workflow correctness on GitHub unproven | Close after the first green run on a `backend` push |
 | TD-04 | `starlette.testclient`/`httpx` deprecation warning; the warning suggests `httpx2` (still present in the M1.1 runs: 88 passed, 1 warning) | May become an error in a later Starlette | Evaluate when dependencies are next touched |
 | TD-12 | Lockfile resolved `opentelemetry-api` 1.45.2 (transitive via FastAPI 0.162.0; released 29 Oct 2026), while the pip venv has 1.45.1. Tests pass with both | Minor drift between local venv and lock | Disappears when the user syncs `backend/.venv` |
 | TD-05 | `docs/AGENTS.md` duplicates root `AGENTS.md` with relative paths | Rules can drift; root `AGENTS.md` is authoritative | Decide whether to keep or reduce to a pointer |
 | TD-06 | Stale Git/status statements: README and ARCHITECTURE.md line 7 corrected in M0; CONTRIBUTING.md branch rules added in M0. PRD document map now lists the six new documents | Reader confusion | Separate approved docs change |
 | TD-07 | Development/test PostgreSQL (approved under C-05) and, if used, Redis are not yet defined | Blocks M2 integration tests | M2 (D02 tooling approval) |
 | TD-08 | Public `/health` vs API.md's authenticated `/health` (C-07) | Contract mismatch once auth exists; deferred, M1 routes and tests preserved | Separate compatibility plan, owner approval |
-| TD-09 | GitHub default branch (`dev` intended) and protection for `main`/`dev` not configured | Nothing prevents force-push or direct pushes | After M1.1, on explicit owner instruction |
+| TD-09 | GitHub default branch (`dev` intended) and protection for `main`/`dev` not configured; protection for `backend` undecided | Nothing prevents force-push or direct pushes | After the first green CI run, on explicit owner instruction (user applies) |
 | TD-11 | API.md and ARCHITECTURE.md permit in-process throttling fallbacks, contradicting the C-06 decision for login | Specifications disagree | Approved contract update before M2 |
 | TD-10 | `.env.example` lists only `APP_ENV` and `LOG_LEVEL`; API.md lists the full variable set | Expected until each variable's feature lands | Per milestone |
 

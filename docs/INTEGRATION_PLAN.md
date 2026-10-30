@@ -19,16 +19,17 @@ How independently built pieces connect, in what order, and how each connection i
 
 ## Order of integration
 
-0. **M1.1 (before M2):** lockfile, Ruff pin and minimal pytest + Ruff CI, so every later integration is checked automatically. Not yet implemented.
+0. **M1.1 (before M2):** lockfile, Ruff pin and minimal pytest + Ruff CI, so every backend push is checked automatically. Committed on `backend` (`c8c2ec7`); first CI run pending.
 1. **M2:** schema and identity stand alone. Integrate by running migrations against the development/test-only PostgreSQL Compose configuration and exercising auth routes through the app factory. Password login ships only with shared throttling and fails closed if the shared throttle is unavailable (C-06); there is no in-process fallback for authentication.
 2. **M3:** ingestion on top of M2. Verify the full write path with all model stages `unavailable`, then concurrency, replay, outage and rate-limit behavior.
 3. **M4, M5:** each adapter replaces the unavailable stage behind the same port. Integration check: ingestion tests still pass unchanged; new behavior adds assertions, not exceptions.
 4. **M6:** correlation reads M3 events and M4/M5 scores. Integration check: both arrival orders and concurrent submission produce exactly one pair incident.
-5. **M7a then M7b:** API before UI. The UI is developed against real endpoints (or the OpenAPI schema), not hardcoded scores.
+5. **M7a then M7b:** API before UI. The UI is developed on `frontend` against real endpoints (or the OpenAPI schema), not hardcoded scores.
+5a. **Backend integration PR:** after M1.1–M7a pass acceptance testing on `backend`, the single `backend` → `dev` PR brings the complete backend into `dev` (gates in [GIT_WORKFLOW.md](GIT_WORKFLOW.md)). Steps 0–5 above happen on `backend`, not on `dev`.
 6. **M8:** assemble the whole path from simulator to reviewed incident, add live updates and health, run browser journeys.
 7. **M9–M11:** harden, measure, package.
 
-The preserved M1 health routes (`/health`, `/api/v1/health`) and their tests must keep passing at every checkpoint (C-07 deferred). `backend`, `frontend` and `feature/*` branches merge into `dev` through PRs; after each merge, `dev` is merged back into both so integration problems appear early ([GIT_WORKFLOW.md](GIT_WORKFLOW.md)).
+The preserved M1 health routes (`/health`, `/api/v1/health`) and their tests must keep passing at every checkpoint (C-07 deferred). Backend milestones M1.1–M7a accumulate on `backend` and are checked by CI on every push; they reach `dev` through one integration PR after full backend acceptance, not per milestone. Frontend work stays on `frontend`; its integration timing is an open decision ([GIT_WORKFLOW.md](GIT_WORKFLOW.md)).
 
 ## Contract discipline
 
@@ -50,7 +51,7 @@ M2 may create a development/test-only PostgreSQL Compose configuration (approved
 
 ## Integration checkpoints
 
-At the end of M3, M6, M8 and M11, produce an integration report containing: commit on `dev`, services and versions, commands with outputs, scenarios exercised (benign OTP plus family call, phishing plus human scam caller, benign synthetic IVR, unrelated close-timed events, out-of-order delivery, missing signals), duplicate-submission behavior, and failures. Scenarios that could not run are "not run" with the reason.
+At the end of M3 and M6 (on `backend`), at the backend integration PR, and at the end of M8 and M11 (on `dev`), produce an integration report containing: branch and commit, services and versions, commands with outputs, scenarios exercised (benign OTP plus family call, phishing plus human scam caller, benign synthetic IVR, unrelated close-timed events, out-of-order delivery, missing signals), duplicate-submission behavior, and failures. Scenarios that could not run are "not run" with the reason.
 
 ## Failure handling to verify at each stage
 
