@@ -10,16 +10,19 @@ The installable package is `backend/src/kavach/`. Keep routes in `api/routes/`, 
 
 ## Environment and checks
 
-Follow [README.md](README.md) for Python/uv setup and recovery commands. Direct dependencies and build tooling are pinned in `backend/pyproject.toml`; Python is pinned in `backend/.python-version`. Generate and retain `backend/uv.lock` through a successful resolver run before treating the entire dependency graph as reproducible. Never handcraft a lockfile or claim a dependency resolution succeeded when it did not.
+Follow [README.md](README.md) for Python/uv setup and recovery commands. Direct dependencies and build tooling are pinned in `backend/pyproject.toml`; Python is pinned in `backend/.python-version`. `backend/uv.lock` (generated with uv 0.11.16) pins the full dependency graph; commit it together with any `pyproject.toml` dependency change, regenerated with `uv lock --project backend`. Never handcraft a lockfile or claim a dependency resolution succeeded when it did not. Ruff is pinned at 0.17.2 in both the manifest and the lockfile.
 
-After the initial lockfile has been generated, run from the project root:
+Run from the project root (these are the commands CI runs; note that they sync `backend/.venv` to the lockfile, see the README Setup section):
 
 ```sh
+uv lock --check --project backend
 uv sync --project backend --locked
 uv run --project backend --locked pytest backend/tests
 uv run --project backend --locked ruff check backend
 uv run --project backend --locked ruff format --check backend
 ```
+
+CI (`.github/workflows/backend-ci.yml`) runs the same commands on pull requests into `dev` and `main` and on pushes to those branches. Paste local results into a PR until CI has run on it, and do not describe CI as passing without a green GitHub Actions run.
 
 Use `uv run --project backend --locked ruff format backend` to format intentional code changes, then inspect the diff. Add behavioral tests for new validation, permissions and failures. Use synthetic data only; do not commit communications, secrets or model binaries. HTTP tests of ingestion DTOs use routes registered only in the test harness, never fake production ingestion endpoints.
 

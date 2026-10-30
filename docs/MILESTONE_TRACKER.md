@@ -10,7 +10,7 @@ Status values: `not started`, `in progress`, `blocked`, `complete (verified)`, `
 | --- | --- | --- | --- | --- |
 | M0 | Repository, architecture alignment, workflow, reproducibility planning | `dev` | complete (documentation committed to `dev`; see the M0 task report for the hash) | C-07 deferred; PRD/API/ARCHITECTURE follow-ups noted under C-06 |
 | M1 | FastAPI foundation | `main` (history) | complete (verified historically: 88 passed, Ruff clean on 31 Oct 2026; HTTP startup last verified 28 Oct 2026) | Debt TD-01, TD-02, TD-03 carried forward; M1 routes preserved (C-07 deferred) |
-| M1.1 | Reproducible environment and minimal pytest + Ruff CI (pre-M2 planning milestone; approved as planned) | `feature/m1-1-ci` → `dev` | not started; implementation not yet authorized | Separate go-ahead; network/package actions; TD-01, TD-02, TD-03; D02 (tools, action versions) |
+| M1.1 | Reproducible environment and minimal pytest + Ruff CI | `backend` → `dev` (owner instruction of 31 Oct 2026; the plan's `feature/m1-1-ci` was not used) | in progress: implemented and verified locally on 31 Oct 2026; uncommitted; **no GitHub Actions run yet** | Owner review, commit and push (user-run); PR into `dev` triggers the first CI run; exit requires that run to be green |
 | M2 | PostgreSQL, migrations, identity, scoped auth, audit | `backend` | not started | M1.1; D02 packages, D03, D07 unapproved; shared login throttling decided (C-06), store/client pending D02 |
 | M3 | Authenticated ingestion, PG idempotency, Redis state, scenario catalog + submission script | `backend` | not started | M2; D08 |
 | M4 | SMS detection and evaluation | `backend` | not started | M3; D04 data/licensing |
@@ -34,6 +34,51 @@ These are results of past runs, not a statement about the current tree. Re-run b
 | Implemented routes | `GET /health`, `GET /api/v1/health` (liveness only, `analysis_ready: false`) |
 | Not implemented | event endpoints, auth, PostgreSQL, Redis, models, correlation, frontend, CI, Compose |
 
+## M1.1 local verification (31 October 2026, historical once recorded)
+
+Generated with uv 0.11.16 for Python `==3.12.*` from `https://pypi.org/simple`. `backend/uv.lock` lists 27 packages (26 third-party plus the editable project). The GitHub Actions workflow has **not** run; nothing here claims CI is passing.
+
+| Check | Existing `backend/.venv` (pip-built, Ruff 0.17.3, unchanged) | Fresh environment from `uv sync --locked` (Ruff 0.17.2) |
+| --- | --- | --- |
+| `uv lock --check --project backend` | n/a | passed |
+| pytest `backend/tests` | 88 passed, 1 warning | 88 passed, 1 warning |
+| `ruff check backend` | passed | passed |
+| `ruff format --check backend` | 17 files already formatted | 17 files already formatted |
+
+The fresh environment was created in a temporary directory outside the repository via `UV_PROJECT_ENVIRONMENT`; `backend/.venv` was confirmed unmodified afterward. The workflow YAML was parsed and checked structurally (triggers, `contents: read`, SHA-pinned actions); `actionlint` was not available and was not run.
+
+### Locked versions
+
+| Package | Version | Kind |
+| --- | --- | --- |
+| annotated-doc | 0.0.5 | transitive |
+| annotated-types | 0.8.0 | transitive |
+| anyio | 4.15.1 | transitive |
+| certifi | 2026.10.23 | transitive |
+| click | 8.5.0 | transitive |
+| colorama | 0.4.6 | transitive (Windows-only marker) |
+| fastapi | 0.162.0 | direct |
+| h11 | 0.16.0 | transitive |
+| httpcore | 1.0.9 | transitive |
+| httpx | 0.28.1 | dev group |
+| idna | 3.20 | transitive |
+| iniconfig | 2.3.1 | transitive |
+| kavach-backend | 0.1.0 | project (editable) |
+| opentelemetry-api | 1.45.2 | transitive |
+| packaging | 26.3 | transitive |
+| pluggy | 1.7.0 | transitive |
+| pydantic | 2.14.1 | direct |
+| pydantic-core | 2.50.1 | transitive |
+| pydantic-settings | 2.16.1 | direct |
+| pygments | 2.21.0 | transitive |
+| pytest | 9.1.1 | dev group |
+| python-dotenv | 1.2.4 | transitive |
+| ruff | 0.17.2 | dev group |
+| starlette | 1.10.0 | transitive |
+| typing-extensions | 4.16.0 | transitive |
+| typing-inspection | 0.4.4 | transitive |
+| uvicorn | 0.54.0 | direct |
+
 ## Conflict decisions (owner, 31 October 2026)
 
 C-01 to C-05 approved; C-06 decided (M2 implements shared login throttling; login fails closed if the shared throttle is unavailable; no in-process fallback for authentication; the API.md/ARCHITECTURE.md fallback wording still conflicts and needs a contract update); C-07 deferred (M1 health routes and tests preserved); C-10 resolved by the CONTRIBUTING.md update. Details are in MASTER_DEVELOPMENT_PLAN.md.
@@ -56,10 +101,11 @@ The owner's conflict and Git decisions do not approve any item below marked pend
 
 | ID | Item | Impact | Target |
 | --- | --- | --- | --- |
-| TD-01 | `backend/uv.lock` absent; the environment was built with pip after `uv sync` timed out against PyPI | Transitive dependencies are unpinned; a clean clone is not reproducibly installable | M1.1; diagnose the network/index issue first |
-| TD-02 | Installed Ruff 0.17.3 vs `pyproject.toml` pin 0.17.2; the pinned version has never been verified | Lint results may differ from CI | M1.1; decide pin or install, record the outcome |
-| TD-03 | No CI workflow (`.github/workflows/.gitkeep` only) | Gates depend on manual local evidence | M1.1 (approved in principle, before M2) |
-| TD-04 | `starlette.testclient`/`httpx` deprecation warning; the warning suggests `httpx2` | May become an error in a later Starlette | Evaluate when dependencies are next touched |
+| TD-01 | ~~`backend/uv.lock` absent~~ Addressed in M1.1 (uncommitted): lock generated with uv 0.11.16, 27 packages, `uv lock --check` passes, fresh isolated install verified. The earlier timeouts did not reproduce: the PyPI index answered in 0.13 s and resolution took 0.4 s, so the cause is attributed to the earlier execution environment's network sandbox, not the index or manifest (not proven). | — | Close when committed and CI is green |
+| TD-02 | Ruff pin: **kept at the documented 0.17.2** (manifest and lockfile); 0.17.2 verified clean in the fresh environment. The existing `backend/.venv` still has 0.17.3 until the user syncs it (see README Setup). | Local pip venv differs from lock until synced | Close when committed and CI is green |
+| TD-03 | CI workflow written (`.github/workflows/backend-ci.yml`) but **not yet run on GitHub** | Workflow correctness on GitHub unproven | Close after the first green run |
+| TD-04 | `starlette.testclient`/`httpx` deprecation warning; the warning suggests `httpx2` (still present in the M1.1 runs: 88 passed, 1 warning) | May become an error in a later Starlette | Evaluate when dependencies are next touched |
+| TD-12 | Lockfile resolved `opentelemetry-api` 1.45.2 (transitive via FastAPI 0.162.0; released 29 Oct 2026), while the pip venv has 1.45.1. Tests pass with both | Minor drift between local venv and lock | Disappears when the user syncs `backend/.venv` |
 | TD-05 | `docs/AGENTS.md` duplicates root `AGENTS.md` with relative paths | Rules can drift; root `AGENTS.md` is authoritative | Decide whether to keep or reduce to a pointer |
 | TD-06 | Stale Git/status statements: README and ARCHITECTURE.md line 7 corrected in M0; CONTRIBUTING.md branch rules added in M0. PRD document map now lists the six new documents | Reader confusion | Separate approved docs change |
 | TD-07 | Development/test PostgreSQL (approved under C-05) and, if used, Redis are not yet defined | Blocks M2 integration tests | M2 (D02 tooling approval) |

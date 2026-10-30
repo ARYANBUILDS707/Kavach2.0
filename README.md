@@ -60,14 +60,16 @@ No production POST ingestion routes exist yet. Schema API tests mount validation
 
 ### Setup
 
-Prerequisites: `uv` and Python 3.12.13 (uv can install Python when network access is available). Run from the project root:
+Prerequisites: `uv` (0.11.16 is the version used to generate the lockfile and pinned in CI) and Python 3.12.13 (uv can install Python when network access is available). Run from the project root:
 
 ```sh
 uv python install 3.12.13
-uv sync --project backend --python 3.12.13
+uv sync --project backend --locked --python 3.12.13
 ```
 
-The first successful sync generates `backend/uv.lock`. Retain it in version control when commits are authorized, and use `uv sync --project backend --locked` for subsequent installations. Direct pins alone do not lock transitive dependencies. Do not use `--frozen` to conceal an out-of-date lockfile.
+`backend/uv.lock` pins the complete dependency graph (27 packages). `--locked` fails instead of silently re-resolving if `backend/pyproject.toml` and the lockfile disagree; check this with `uv lock --check --project backend`. After an intentional dependency change, run `uv lock --project backend` and commit the updated lockfile with the manifest. Do not use `--frozen` to conceal an out-of-date lockfile.
+
+**Existing pip-built environment:** a `backend/.venv` created with the earlier pip workaround is not identical to the lockfile (it has Ruff 0.17.3, `opentelemetry-api` 1.45.1 and `pip`). Running `uv sync --project backend --locked`, or any `uv run --project backend --locked …` command, makes that environment match the lockfile: Ruff becomes 0.17.2, `opentelemetry-api` 1.45.2, and packages not in the lock (such as `pip`) are removed. Do this deliberately; the `backend/.venv/bin/python -m …` commands below keep using the environment as it is.
 
 Environment settings default to development/INFO. Optionally copy `.env.example` to root `.env` without overwriting an existing file. `APP_ENV` accepts `development`, `test`, or `pilot`; `LOG_LEVEL` accepts `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`. No credentials are needed for this phase. Invalid settings fail startup. Setting `APP_ENV=pilot` disables interactive API docs; it does not make this foundation pilot-ready.
 
@@ -100,9 +102,29 @@ backend/.venv/bin/python -m ruff check backend
 backend/.venv/bin/python -m ruff format --check backend
 ```
 
+Locked equivalents (the commands CI runs; they sync `backend/.venv` to the lockfile first, see Setup):
+
+```sh
+uv lock --check --project backend
+uv sync --project backend --locked
+uv run --project backend --locked pytest backend/tests
+uv run --project backend --locked ruff check backend
+uv run --project backend --locked ruff format --check backend
+```
+
+### Continuous integration
+
+`.github/workflows/backend-ci.yml` (job "Backend tests and lint") runs on pull requests targeting `dev` or `main` and on pushes to `dev` or `main`. It does not run on pushes to `backend`, `frontend` or `feature/*`; their checks run when a pull request into `dev` is opened. On `ubuntu-24.04` with Python 3.12.13 and uv 0.11.16, it verifies the lockfile is current, installs from it with `--locked`, then runs pytest, Ruff lint and Ruff format check. The workflow has read-only `contents` permission, does not persist checkout credentials, uses no secrets, pins actions to commit SHAs (`actions/checkout` v7.0.1, `astral-sh/setup-uv` v10.3.0), cancels superseded runs on the same ref, and times out after 15 minutes. Any failed step fails the job; the three checks each still run after a successful install so all failures are reported together. **No GitHub Actions run has happened yet; the workflow is unverified on GitHub.**
+
 ### Verification status
 
-**Current status (re-run in the 31 October 2026 repository audit; point-in-time, re-run before relying on it):** `pytest backend/tests` reported 88 passed with one dependency warning; `ruff check backend` passed; `ruff format --check backend` reported 17 files formatted. Uvicorn startup and HTTP requests were not repeated in that audit. `backend/uv.lock` is absent and installed Ruff is 0.17.3 against the 0.17.2 pin. No CI is configured.
+**Current status (M1.1 local verification, 31 October 2026; point-in-time, re-run before relying on it):**
+
+- `uv lock --project backend` (uv 0.11.16, Python 3.12.13) resolved 27 packages from `https://pypi.org/simple` in under a second; `uv lock --check --project backend` passed.
+- Existing `backend/.venv` (Ruff 0.17.3, left unchanged): pytest 88 passed with 1 warning; Ruff check passed; Ruff format check reported 17 files already formatted.
+- Fresh isolated environment created from the lockfile outside the repository (`UV_PROJECT_ENVIRONMENT` set to a temporary directory; `backend/.venv` untouched), Ruff 0.17.2: the five locked commands above all passed, with the same 88 passed, 1 warning and 17 files formatted.
+- Remaining warning: `StarletteDeprecationWarning` — using `httpx` with `starlette.testclient` is deprecated in favour of `httpx2` (tracked as TD-04; not changed).
+- Uvicorn startup and HTTP requests were not repeated. The GitHub Actions workflow has not run yet.
 
 **Historical record — results reported on 28 October 2026 (not re-run as a whole since):**
 
@@ -123,10 +145,11 @@ Kavach2.0/
 ├── README.md
 ├── .env.example
 ├── .gitignore
-├── .github/workflows/.gitkeep
+├── .github/workflows/backend-ci.yml
 ├── backend/
 │   ├── .python-version
 │   ├── pyproject.toml
+│   ├── uv.lock
 │   ├── src/kavach/
 │   │   ├── __init__.py
 │   │   ├── main.py
@@ -142,8 +165,8 @@ Kavach2.0/
 └── data/.gitkeep                 # Data contents excluded from Git
 ```
 
-Package `__init__.py` files are omitted from the condensed tree below the top package. Local ignored environments/caches are not shown. CI workflows have not been configured.
+Package `__init__.py` files are omitted from the condensed tree below the top package. Local ignored environments/caches are not shown. `backend/uv.lock` sits beside `backend/pyproject.toml`.
 
 ## Next milestone
 
-Dependency locking, resolution of the Ruff pin and a minimal pytest/Ruff CI workflow come before M2 (see `docs/MASTER_DEVELOPMENT_PLAN.md`, milestone M1.1); they await approval. Persistence and authentication (M2) require approval of D02 packages, D03 and D07 before real event ingestion. M2, ML, Redis correlation and frontend are not started. Branch workflow and milestone status: `docs/GIT_WORKFLOW.md`, `docs/MILESTONE_TRACKER.md`.
+M1.1 (lockfile, Ruff pin, minimal pytest/Ruff CI) is implemented locally on the `backend` branch and awaits review, commit and a first successful GitHub Actions run (see `docs/MILESTONE_TRACKER.md`). Persistence and authentication (M2) require approval of D02 packages, D03 and D07 before real event ingestion. M2, ML, Redis correlation and frontend are not started. Branch workflow and milestone status: `docs/GIT_WORKFLOW.md`, `docs/MILESTONE_TRACKER.md`.

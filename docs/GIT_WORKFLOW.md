@@ -2,7 +2,7 @@
 
 ## Status
 
-Procedure document, prepared 31 October 2026 and updated with the owner's decisions of the same day. The four branches below exist locally and on `origin` (all at `754a22a` when created). **GitHub branch protection, rulesets and the default branch (`main`) have not been configured or changed.** Owner decisions recorded here: `main` stays the stable release branch; `dev` is *intended* to become the GitHub default branch (not yet applied); short-lived `feature/*` branches are allowed; backend and frontend work enters `dev` only through pull requests; a minimal pytest + Ruff CI milestone (M1.1) comes before M2; `main` and `dev` are protected after CI is configured (not yet applied). CI does not exist yet (see "Gates until CI exists").
+Procedure document, prepared 31 October 2026 and updated with the owner's decisions of the same day. The four branches below exist locally and on `origin` (all at `754a22a` when created). **GitHub branch protection, rulesets and the default branch (`main`) have not been configured or changed.** Owner decisions recorded here: `main` stays the stable release branch; `dev` is *intended* to become the GitHub default branch (not yet applied); short-lived `feature/*` branches are allowed; backend and frontend work enters `dev` only through pull requests; a minimal pytest + Ruff CI milestone (M1.1) comes before M2; `main` and `dev` are protected after CI is configured (not yet applied). A minimal CI workflow now exists in the working tree of `backend` (M1.1) but has not run on GitHub yet (see "Gates until CI exists").
 
 ## Branches
 
@@ -63,7 +63,7 @@ Required before merging `dev` into `main`: everything above, plus the release ch
 
 ## Gates until CI exists
 
-No pipeline is configured (`.github/workflows/` holds only `.gitkeep`). The owner has approved a minimal pytest + Ruff CI milestone, M1.1, before M2 (see [MASTER_DEVELOPMENT_PLAN.md](MASTER_DEVELOPMENT_PLAN.md)); it is **not implemented yet**. It needs a committed `backend/uv.lock` (TD-01) and the Ruff pin resolved (TD-02). Until it exists, the gate is local evidence pasted into the PR:
+M1.1 adds `.github/workflows/backend-ci.yml` and `backend/uv.lock` on the `backend` branch (see [MILESTONE_TRACKER.md](MILESTONE_TRACKER.md)). The workflow runs on pull requests into `dev`/`main` and pushes to `dev`/`main`, so its first run will be the PR from `backend` into `dev`. **It has not run on GitHub yet.** Until a green run exists for a PR, the gate is local evidence pasted into the PR:
 
 ```sh
 backend/.venv/bin/python -m pytest backend/tests
@@ -71,7 +71,7 @@ backend/.venv/bin/python -m ruff check backend
 backend/.venv/bin/python -m ruff format --check backend
 ```
 
-Once `backend/uv.lock` exists and is committed, use the `uv run --project backend --locked` forms in CONTRIBUTING.md. Frontend commands are added when the frontend exists. Add integration commands for PostgreSQL/Redis when those milestones land. A local run is evidence, not a substitute for CI; mark checks that could not run as "not run".
+With `backend/uv.lock` present, the `uv run --project backend --locked` forms in CONTRIBUTING.md match CI exactly; prefer them once you have deliberately synced `backend/.venv` to the lockfile. Frontend commands are added when the frontend exists. Add integration commands for PostgreSQL/Redis when those milestones land. A local run is evidence, not a substitute for CI; mark checks that could not run as "not run".
 
 ## GitHub settings (decided in principle, not applied)
 
