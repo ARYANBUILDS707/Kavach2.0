@@ -4,11 +4,13 @@
 
 The user has explicitly started Phase A (repository foundation) and Phase B (backend foundation only). This authorizes the corresponding Python/FastAPI setup without waiting for unrelated D03–D10 decisions. It does not approve authentication implementation, database provisioning, model acquisition, Redis correlation or frontend work. The broader phases below remain the roadmap.
 
-Foundation source, event schemas and pytest tests are written under `backend/`; root README contains setup and verification status. Python 3.12.13 and an isolated virtual environment are available. Git metadata creation is denied by the execution sandbox; PyPI DNS access prevents dependency installation, lock generation and pytest/Ruff execution. These are open verification tasks, not passed gates. No commit or push has occurred.
+Foundation source, event schemas and pytest tests are written under `backend/`; root README contains setup and verification status. Status verified by the 31 October 2026 repository audit: the foundation is committed as `754a22a` on `main`, which is pushed to `origin`; `dev`, `backend` and `frontend` branches exist at the same commit locally and on `origin`; `pytest` reported 88 passed and Ruff check/format passed in the existing `backend/.venv` (Python 3.12). Still open: `backend/uv.lock` does not exist, installed Ruff is 0.17.3 against the 0.17.2 pin, and no CI is configured. These are tracked as technical debt in [MILESTONE_TRACKER.md](MILESTONE_TRACKER.md), not passed gates.
+
+The M0–M11 milestone labels, their mapping to the phases below, and unresolved mapping conflicts are in [MASTER_DEVELOPMENT_PLAN.md](MASTER_DEVELOPMENT_PLAN.md). Branch and release procedure is in [GIT_WORKFLOW.md](GIT_WORKFLOW.md).
 
 ## Planning basis
 
-Read [PRD.md](PRD.md), [DESIGN.md](DESIGN.md), [ARCHITECTURE.md](ARCHITECTURE.md), [DATABASE.md](DATABASE.md), [API.md](API.md) and [AGENTS.md](AGENTS.md). This is a development plan, not evidence that any phase has run. The initial project contains only a connection-test file and these documents. No code or infrastructure is initialized by this plan.
+Read [PRD.md](PRD.md), [DESIGN.md](DESIGN.md), [ARCHITECTURE.md](ARCHITECTURE.md), [DATABASE.md](DATABASE.md), [API.md](API.md) and [AGENTS.md](AGENTS.md). This is a development plan, not evidence that any phase has run. When this plan was first written the project contained only a connection-test file and these documents; the backend foundation described above was added afterward. This plan itself does not initialize code or infrastructure.
 
 Each numbered task should be implemented and verified independently. Do not start a dependent phase before its completion criteria hold. Approval gates refer to pending PRD decisions, not repeated permission requests once the owner has approved them.
 
@@ -204,4 +206,4 @@ Each numbered task should be implemented and verified independently. Do not star
 
 ## Recommended first task
 
-Review and record D01, D02, D03 and D09 with the owner, then implement Phase 1 only. In parallel with later foundations work, establish D04 dataset and model provenance before claiming inference functionality. Do not begin setup by assuming the proposed architecture is already approved.
+The backend part of Phase 1 is done. The next task is M2 (Phase 2: PostgreSQL, migrations, identity, scoped authentication, audit), which needs the prerequisites in [MASTER_DEVELOPMENT_PLAN.md](MASTER_DEVELOPMENT_PLAN.md): D02 package approval, D03, D07, and a PostgreSQL test setup. Establish D04 dataset and model provenance before claiming inference functionality. Do not assume the proposed architecture is approved beyond what the owner has recorded.

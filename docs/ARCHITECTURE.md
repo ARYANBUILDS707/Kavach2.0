@@ -4,7 +4,7 @@
 
 The user's current authorization selects Python 3.12 and FastAPI for the backend foundation only. The Python package uses a `backend/src/kavach/` layout; conceptual `backend/api/` and `backend/core/` paths below map to `backend/src/kavach/api/` and `backend/src/kavach/core/`. Future domain modules will follow the same mapping when needed. Backend tests remain in `backend/tests/`; root `tests/` is reserved for cross-application tests.
 
-The application factory is `kavach.main:create_app`. Current public health aliases report process liveness and `analysis_ready: false`, with no dependency details. Settings currently consume only `APP_ENV` and `LOG_LEVEL`; dotenv loading is explicit. No database, authentication, models, Redis, Compose or frontend are initialized in this phase. This user-directed milestone is narrower than the full architecture below. Exact direct dependencies and Python are pinned; transitive lock generation and runtime checks await restored package-index access.
+The application factory is `kavach.main:create_app`. Current public health aliases report process liveness and `analysis_ready: false`, with no dependency details. Settings currently consume only `APP_ENV` and `LOG_LEVEL`; dotenv loading is explicit. No database, authentication, models, Redis, Compose or frontend are initialized in this phase. This user-directed milestone is narrower than the full architecture below. Exact direct dependencies and Python are pinned and the installed environment passes the test suite (31 October 2026 audit); transitive lock generation (`backend/uv.lock`) is still outstanding technical debt.
 
 ## Status and scope
 

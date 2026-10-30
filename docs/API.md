@@ -6,7 +6,7 @@ The user authorized a backend-only foundation after the initial specification. T
 
 `SMSEvent` and `CallEvent` schemas are in `backend/src/kavach/api/schemas/events.py`. Their optional `kind` field defaults to `sms` or `call`; a conflicting value is rejected. Identifiers use bounded ASCII alphanumeric/underscore/hyphen syntax, with dot/colon also accepted for event and subscriber IDs. Call sample IDs exclude paths, extensions and URLs. Purely numeric/phone-like subscriber tokens are rejected as a syntax guard, not proof of authorized pseudonymization.
 
-Event POST routes are not exposed. Test-only HTTP handlers verify DTO validation without claiming ingestion, persistence, source authorization, sample-manifest membership or processing. No client-provided model scores or arbitrary feature objects are accepted. All endpoint contracts below describe later implementation unless explicitly identified above. Dependency installation and runtime verification remain blocked by the execution environment's PyPI DNS access; see the root README.
+Event POST routes are not exposed. Test-only HTTP handlers verify DTO validation without claiming ingestion, persistence, source authorization, sample-manifest membership or processing. No client-provided model scores or arbitrary feature objects are accepted. All endpoint contracts below describe later implementation unless explicitly identified above. The foundation was verified on 31 October 2026 in the local virtual environment (88 tests passed, Ruff clean); the dependency lockfile `backend/uv.lock` is still absent. See the root README and [MILESTONE_TRACKER.md](MILESTONE_TRACKER.md).
 
 ## Status and conventions
 

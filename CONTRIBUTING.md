@@ -23,6 +23,17 @@ uv run --project backend --locked ruff format --check backend
 
 Use `uv run --project backend --locked ruff format backend` to format intentional code changes, then inspect the diff. Add behavioral tests for new validation, permissions and failures. Use synthetic data only; do not commit communications, secrets or model binaries. HTTP tests of ingestion DTOs use routes registered only in the test harness, never fake production ingestion endpoints.
 
+## Branches and pull requests
+
+Full procedure: [docs/GIT_WORKFLOW.md](docs/GIT_WORKFLOW.md). Milestones: [docs/MASTER_DEVELOPMENT_PLAN.md](docs/MASTER_DEVELOPMENT_PLAN.md). Done criteria: [docs/DEFINITION_OF_DONE.md](docs/DEFINITION_OF_DONE.md).
+
+- `main` is the stable release branch. `dev` is the integration branch (the intended GitHub default; that setting has not been changed). `backend` and `frontend` are long-lived layer branches. Short-lived `feature/<milestone>-<topic>` branches are allowed for bounded or cross-cutting work and are deleted after merge.
+- Backend and frontend work enters `dev` only through a pull request. Releases go from `dev` to `main` through a release PR ([docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)). Do not push directly to `main` or `dev`.
+- A PR names its milestone, lists changed files, states the exact verification commands and their actual results (or "not run" with the reason), notes any contract or schema change with the updated documents, and records open risks. Schema changes include a migration.
+- Merge `dev` into your branch before opening the PR and re-run the checks; use merge commits for the long-lived branches, never rebase or force-push shared branches.
+- Required review and status checks apply once CI exists. Until then the pasted local `pytest` and `ruff` results are the gate. Branch protection is proposed for `main` and `dev` after CI is configured and has not been applied.
+- No commit, push, merge, tag or deploy happens without the owner's explicit approval for that action.
+
 ## Change discipline
 
 - Keep changes small and tied to a requirement. Reuse existing patterns and avoid unrelated dependencies or rewrites.

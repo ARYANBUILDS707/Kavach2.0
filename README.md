@@ -2,7 +2,7 @@
 
 KAVACH is a proposed fraud-analysis platform that connects authorized SMS and voice-call signals to present explainable risk evidence for human review.
 
-Backend foundation source and tests are present. Factory startup, both health routes over HTTP, pytest and Ruff were verified on 28 October 2026; see the verification status below. The MVP targets a controlled demonstration; live telecom integration and reported historical benchmarks are not verified capabilities.
+Backend foundation source and tests are present and committed (`754a22a` on `main`, pushed to `origin`; `dev`, `backend` and `frontend` branches also exist). Factory startup and both health routes over HTTP were last verified on 28 October 2026; pytest and Ruff were last re-run on 31 October 2026. See "Verification status" below, which separates historical results from current status. The MVP targets a controlled demonstration; live telecom integration and reported historical benchmarks are not verified capabilities.
 
 ## Start here
 
@@ -100,7 +100,11 @@ backend/.venv/bin/python -m ruff check backend
 backend/.venv/bin/python -m ruff format --check backend
 ```
 
-### Verification results — 28 October 2026
+### Verification status
+
+**Current status (re-run in the 31 October 2026 repository audit; point-in-time, re-run before relying on it):** `pytest backend/tests` reported 88 passed with one dependency warning; `ruff check backend` passed; `ruff format --check backend` reported 17 files formatted. Uvicorn startup and HTTP requests were not repeated in that audit. `backend/uv.lock` is absent and installed Ruff is 0.17.3 against the 0.17.2 pin. No CI is configured.
+
+**Historical record — results reported on 28 October 2026 (not re-run as a whole since):**
 
 - The startup command above launched Uvicorn 0.54.0 with Python 3.12.13. Both curl commands above returned HTTP 200 with `data: {"status":"ok","scope":"liveness","analysis_ready":false}`, distinct request IDs matching the response headers, and `Cache-Control: no-store`.
 - pytest 9.1.1: **88 passed**, one dependency warning about Starlette TestClient's deprecated HTTPX integration. The new `backend/tests/test_entrypoint.py` loads `kavach.main:create_app` through Uvicorn with factory mode and checks both health routes.
@@ -108,7 +112,7 @@ backend/.venv/bin/python -m ruff format --check backend
 - Checks used the existing installed environment. Installed Ruff is **0.17.3**, while `pyproject.toml` pins **0.17.2**; the pinned Ruff version was not verified. No dependencies or pins were changed. `backend/uv.lock` is still absent, so locked dependency reproducibility remains unverified.
 - Local server binding and curl required execution outside the sandbox; sandbox attempts were blocked. No application behavior was changed to accommodate that restriction.
 
-The previous dependency-installation failures no longer describe this installed environment. A Git repository now exists; no commit or push was made during this task. Persistence, authentication and M2 remain outside this task.
+The earlier dependency-installation failures no longer describe the installed environment, although the environment was built with pip rather than a reproducible `uv sync`. The foundation is committed as `754a22a` on `main` and pushed to `origin`; the `dev`, `backend` and `frontend` branches were created from it on 31 October 2026. Persistence, authentication and M2 are not started.
 
 ## Repository layout
 
@@ -142,4 +146,4 @@ Package `__init__.py` files are omitted from the condensed tree below the top pa
 
 ## Next milestone
 
-Dependency locking and verification with the pinned Ruff version remain pending. Persistence and authentication require a separately authorized task before real event ingestion. M2, ML, Redis correlation and frontend were not started by this startup fix.
+Dependency locking, resolution of the Ruff pin and a minimal pytest/Ruff CI workflow come before M2 (see `docs/MASTER_DEVELOPMENT_PLAN.md`, milestone M1.1); they await approval. Persistence and authentication (M2) require approval of D02 packages, D03 and D07 before real event ingestion. M2, ML, Redis correlation and frontend are not started. Branch workflow and milestone status: `docs/GIT_WORKFLOW.md`, `docs/MILESTONE_TRACKER.md`.
