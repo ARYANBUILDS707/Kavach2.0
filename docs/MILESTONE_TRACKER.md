@@ -12,8 +12,8 @@ Status values: `not started`, `in progress`, `blocked`, `complete (verified)`, `
 | M1 | FastAPI foundation | `main` (history) | complete (verified historically: 88 passed, Ruff clean on 31 Oct 2026; HTTP startup last verified 28 Oct 2026) | Debt TD-01, TD-02, TD-03 carried forward; M1 routes preserved (C-07 deferred) |
 | M1.1 | Reproducible environment and minimal pytest + Ruff CI | `backend` (stays there until full backend acceptance) | complete (verified): GitHub Actions passed on `backend` commit `c36e903` (owner-reported, 31 Oct 2026) | — |
 | M2 | PostgreSQL, migrations, identity, scoped auth, audit (owner-defined steps below) | `backend` | in progress | D02 packages, D03, D07, C-06 approved 31 Oct 2026 |
-| M2.1 | Database and development infrastructure: dependencies, dev/test Compose, engine/session and Redis client lifecycle, config validation, real-service tests, CI integration job | `backend` | in progress: implemented and verified locally on 31 Oct 2026; uncommitted; **CI integration job not yet run on GitHub** | Owner review; user commit/push; exit requires both CI jobs green on the pushed `backend` commit |
-| M2.2 | Full DATABASE.md schema, Alembic migrations, role grants | `backend` | not started | M2.1; Alembic 1.20.0 approved but not yet added (added when first used) |
+| M2.1 | Database and development infrastructure: dependencies, dev/test Compose, engine/session and Redis client lifecycle, config validation, real-service tests, CI integration job | `backend` | complete (verified): GitHub Actions run 41119537962 on `0cebb3b`, both jobs passed (checked via the public GitHub API, 31 Oct 2026) | — |
+| M2.2 | Full DATABASE.md schema, Alembic migration `0001_initial_schema`, integrity triggers, role grants | `backend` | in progress: implemented and verified locally on 31 Oct 2026; uncommitted; **not yet run on GitHub** | Owner review; user commit/push; exit requires both CI jobs (including the new migration gate) green on the pushed `backend` commit |
 | M2.3 / M2.4 | Login, sessions, CSRF, shared throttling; ingestion keys, provisioning, audit | `backend` | not started | M2.2; argon2-cffi 25.1.0 approved but not yet added; `RATE_LIMIT_HMAC_KEY` becomes required |
 | M3 | Authenticated ingestion, PG idempotency, Redis state, scenario catalog + submission script | `backend` | not started | M2; D08 |
 | M4 | SMS detection and evaluation | `backend` | not started | M3; D04 data/licensing |
@@ -82,6 +82,20 @@ The fresh environment was created in a temporary directory outside the repositor
 | typing-inspection | 0.4.4 | transitive |
 | uvicorn | 0.54.0 | direct |
 
+## M2.2 local verification (31 October 2026, historical once recorded)
+
+GitHub Actions has **not** run the M2.2 changes; everything below is local (Docker 29.8.0, linux/aarch64, the digest-pinned PostgreSQL 17.11 image).
+
+| Item | Value |
+| --- | --- |
+| New dependencies | `alembic==1.20.0` (direct); `mako` 1.4.3 and `markupsafe` 3.0.4 (transitive); 36 lock entries; no existing version changed |
+| Schema | 9 tables, 35 CHECK constraints, 8 unique constraints, 12 foreign keys (3 composite, of which the 2 circular ones are deferred), 9 secondary indexes, 4 deferred constraint triggers, `users.updated_at` trigger (counted from the SQLAlchemy metadata, which `alembic check` matched to the database) |
+| Migration | fresh `upgrade head` succeeded; repeated `upgrade head` was a no-op; `alembic check`: no differences; downgrade refused without explicit permission and for `kavach_dev`; downgrade + upgrade round trip on `kavach_test` passed |
+| Integration tests | 141 passed: 70 constraint, 48 privilege, 12 migration, 11 service (both environments) |
+| Default tests / Ruff | 103 passed, 141 deselected, 1 warning; Ruff check passed; 31 files formatted |
+| CI replay | the integration job's commands, including the new migration gate, passed locally with fresh passwords; cleanup left no containers or volumes |
+| Mutation probe | dropping the incident integrity triggers (rolled back) let an invalid incident through, confirming the tests detect their absence |
+
 ## M2.1 local verification (31 October 2026, historical once recorded)
 
 GitHub Actions has **not** run the M2.1 changes; everything below is local.
@@ -126,6 +140,7 @@ The owner's conflict and Git decisions do not approve any item below marked pend
 | TD-03 | ~~CI not yet run~~ The lint/test job passed on `c36e903`. The new M2.1 integration job has not run on GitHub yet | Integration job unproven on GitHub | Close after both jobs are green on the M2.1 push |
 | TD-04 | `starlette.testclient`/`httpx` deprecation warning; the warning suggests `httpx2` (still present in the M1.1 runs: 88 passed, 1 warning) | May become an error in a later Starlette | Evaluate when dependencies are next touched |
 | TD-12 | Lockfile resolved `opentelemetry-api` 1.45.2 (transitive via FastAPI 0.162.0; released 29 Oct 2026), while the pip venv has 1.45.1. Tests pass with both | Minor drift between local venv and lock | Disappears when the user syncs `backend/.venv` |
+| TD-13 | Retention runs as column-limited DELETE grants; DATABASE.md's narrowly scoped expiry procedures (and the cleanup job) are not written yet | Cleanup must be implemented before retention is claimed | With the retention job (M2.4 or M9) |
 | TD-05 | `docs/AGENTS.md` duplicates root `AGENTS.md` with relative paths | Rules can drift; root `AGENTS.md` is authoritative | Decide whether to keep or reduce to a pointer |
 | TD-06 | Stale Git/status statements: README and ARCHITECTURE.md line 7 corrected in M0; CONTRIBUTING.md branch rules added in M0. PRD document map now lists the six new documents | Reader confusion | Separate approved docs change |
 | TD-07 | ~~Development/test PostgreSQL and Redis not defined~~ Defined in M2.1: `deployment/compose.dev.yml` | — | Closes with M2.1 |

@@ -1,5 +1,6 @@
 # Backend CI: locked install, pytest and Ruff (M1.1), plus real PostgreSQL/Redis
-# integration tests (M2.1). Actions are pinned to full commit SHAs; the comment names the tag.
+# integration tests (M2.1) and schema migrations (M2.2). Actions are pinned to full commit
+# SHAs; the comment names the tag.
 name: Backend CI
 
 on:
@@ -92,11 +93,21 @@ jobs:
           {
             echo "TEST_DATABASE_URL=postgresql+psycopg://kavach_app:${KAVACH_DEV_APP_PASSWORD}@127.0.0.1:55432/kavach_test"
             echo "TEST_MIGRATION_DATABASE_URL=postgresql+psycopg://kavach_migrator:${KAVACH_DEV_MIGRATOR_PASSWORD}@127.0.0.1:55432/kavach_test"
+            echo "TEST_RETENTION_DATABASE_URL=postgresql+psycopg://kavach_retention:${KAVACH_DEV_RETENTION_PASSWORD}@127.0.0.1:55432/kavach_test"
             echo "TEST_REDIS_URL=redis://:${KAVACH_DEV_REDIS_PASSWORD}@127.0.0.1:56379/15"
+            echo "MIGRATION_DATABASE_URL=postgresql+psycopg://kavach_migrator:${KAVACH_DEV_MIGRATOR_PASSWORD}@127.0.0.1:55432/kavach_test"
           } >> "$GITHUB_ENV"
 
       - name: Install locked dependencies
         run: uv sync --project backend --locked
+
+      # Fresh database: upgrade, upgrade again (must be a no-op), then compare models to schema.
+      - name: Apply migrations and verify metadata
+        run: |
+          uv run --project backend --locked alembic -c backend/alembic.ini upgrade head
+          uv run --project backend --locked alembic -c backend/alembic.ini upgrade head
+          uv run --project backend --locked alembic -c backend/alembic.ini current
+          uv run --project backend --locked alembic -c backend/alembic.ini check
 
       - name: Run integration tests
         run: uv run --project backend --locked pytest backend/tests -m integration

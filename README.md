@@ -114,7 +114,7 @@ uv run --project backend --locked ruff format --check backend
 
 ### Development services (PostgreSQL and Redis)
 
-`deployment/compose.dev.yml` runs PostgreSQL 17.11 and Redis 7.4.12 for **local development and tests only**; it is not a deployment artifact. Images are pinned by digest, ports bind to `127.0.0.1` only, every password comes from the environment (there are no defaults), and Redis runs without persistence. On first start, `deployment/postgres/initdb/10-kavach-roles.sql` creates the least-privilege roles `kavach_migrator` (owns the databases and schema), `kavach_app` (runtime: connect and schema usage only) and `kavach_retention`, plus the databases `kavach_dev` and `kavach_test`. Table grants arrive with the schema migrations (M2.2).
+`deployment/compose.dev.yml` runs PostgreSQL 17.11 and Redis 7.4.12 for **local development and tests only**; it is not a deployment artifact. Images are pinned by digest, ports bind to `127.0.0.1` only, every password comes from the environment (there are no defaults), and Redis runs without persistence. On first start, `deployment/postgres/initdb/10-kavach-roles.sql` creates the least-privilege roles `kavach_migrator` (owns the databases and schema), `kavach_app` (runtime: connect and schema usage only) and `kavach_retention`, plus the databases `kavach_dev` and `kavach_test`. Table grants are applied by the schema migration (M2.2).
 
 ```sh
 cp deployment/compose.dev.env.example deployment/.env.dev   # ignored by Git
@@ -126,22 +126,46 @@ docker compose --env-file deployment/.env.dev -f deployment/compose.dev.yml down
 
 The role bootstrap only runs on an empty data volume; after changing role passwords, recreate the volume with `down --volumes`.
 
-Integration tests are excluded from the default `pytest` run and selected with `-m integration`. They read three variables and **fail (not skip)** if any is missing:
+#### Schema migrations
+
+The schema (`docs/DATABASE.md`) is created by Alembic revision `0001_initial_schema`, run as the migration owner. The URL is read from `MIGRATION_DATABASE_URL`, never from `backend/alembic.ini`:
+
+```sh
+export MIGRATION_DATABASE_URL="postgresql+psycopg://kavach_migrator:<migrator-password>@127.0.0.1:55432/kavach_dev"
+backend/.venv/bin/alembic -c backend/alembic.ini upgrade head   # safe to repeat
+backend/.venv/bin/alembic -c backend/alembic.ini check          # models and database must agree
+```
+
+Downgrading drops every table, so it is refused unless the database name ends in `_test` and is named explicitly (`-x allow-destructive-downgrade=kavach_test`). Never downgrade `kavach_dev` or any deployed database; use a forward-repair migration instead.
+
+#### Integration tests
+
+Integration tests are excluded from the default `pytest` run and selected with `-m integration`. They read four variables and **fail (not skip)** if any is missing. They rebuild the schema in the disposable `kavach_test` database from empty at the start of each session, so never point them at `kavach_dev`:
 
 ```sh
 export TEST_DATABASE_URL="postgresql+psycopg://kavach_app:<app-password>@127.0.0.1:55432/kavach_test"
 export TEST_MIGRATION_DATABASE_URL="postgresql+psycopg://kavach_migrator:<migrator-password>@127.0.0.1:55432/kavach_test"
+export TEST_RETENTION_DATABASE_URL="postgresql+psycopg://kavach_retention:<retention-password>@127.0.0.1:55432/kavach_test"
 export TEST_REDIS_URL="redis://:<redis-password>@127.0.0.1:56379/15"
 backend/.venv/bin/python -m pytest backend/tests -m integration
 ```
 
 ### Continuous integration
 
-`.github/workflows/backend-ci.yml` runs on pushes to `backend`, `dev` or `main` and on pull requests targeting `dev` or `main`. Job "Backend tests and lint" is described here; job "Backend integration (PostgreSQL and Redis)" (M2.1) generates fresh masked passwords for each run, starts `deployment/compose.dev.yml` on the runner, runs `pytest -m integration` against it, prints service logs on failure and always removes the containers and volumes. Every backend milestone pushed to `backend` is checked; `frontend` and `feature/*` pushes are not. On `ubuntu-24.04` with Python 3.12.13 and uv 0.11.16, it verifies the lockfile is current, installs from it with `--locked`, then runs pytest, Ruff lint and Ruff format check. The workflow has read-only `contents` permission, does not persist checkout credentials, uses no secrets, pins actions to commit SHAs (`actions/checkout` v7.0.1, `astral-sh/setup-uv` v10.3.0), cancels superseded runs on the same ref, and times out after 15 minutes. Any failed step fails the job; the three checks each still run after a successful install so all failures are reported together. The "Backend tests and lint" job passed on GitHub Actions for `backend` commit `c36e903` (reported by the owner). **The M2.1 integration job has not run on GitHub yet**; it is verified only by replaying its commands locally.
+`.github/workflows/backend-ci.yml` runs on pushes to `backend`, `dev` or `main` and on pull requests targeting `dev` or `main`. Job "Backend tests and lint" is described here; job "Backend integration (PostgreSQL and Redis)" (M2.1) generates fresh masked passwords for each run, starts `deployment/compose.dev.yml` on the runner, applies the migrations twice and runs `alembic check` (M2.2), runs `pytest -m integration` against it, prints service logs on failure and always removes the containers and volumes. Every backend milestone pushed to `backend` is checked; `frontend` and `feature/*` pushes are not. On `ubuntu-24.04` with Python 3.12.13 and uv 0.11.16, it verifies the lockfile is current, installs from it with `--locked`, then runs pytest, Ruff lint and Ruff format check. The workflow has read-only `contents` permission, does not persist checkout credentials, uses no secrets, pins actions to commit SHAs (`actions/checkout` v7.0.1, `astral-sh/setup-uv` v10.3.0), cancels superseded runs on the same ref, and times out after 15 minutes. Any failed step fails the job; the three checks each still run after a successful install so all failures are reported together. The "Backend tests and lint" job passed on GitHub Actions for `backend` commit `c36e903` (reported by the owner). **The M2.1 integration job has not run on GitHub yet**; it is verified only by replaying its commands locally.
 
 ### Verification status
 
-**Current status (M2.1 local verification, 31 October 2026; point-in-time, re-run before relying on it):**
+**Current status (M2.2 local verification, 31 October 2026; point-in-time, re-run before relying on it):**
+
+- `uv lock` added exactly `alembic` 1.20.0, `mako` 1.4.3 and `markupsafe` 3.0.4 (36 entries); no existing version changed; `uv lock --check` passed.
+- On a fresh `kavach_test` database: `alembic upgrade head` succeeded, a second `upgrade head` was a no-op, `alembic current` reported `0001_initial_schema (head)` and `alembic check` reported "No new upgrade operations detected". A downgrade was refused without permission and for `kavach_dev`.
+- Default suite: 103 passed, 141 deselected, 1 warning. Integration suite: 141 passed (70 constraint, 48 privilege, 12 migration, 11 service tests), in both the existing `backend/.venv` (Ruff 0.17.3) and a fresh locked environment (Ruff 0.17.2). Ruff check passed; 31 files already formatted.
+- The CI integration job's commands were replayed locally with fresh passwords: migrations, `alembic check` and 141 integration tests passed; containers and volumes were removed.
+- A mutation probe (dropping the incident triggers inside a rolled-back transaction) turned a rejected invalid incident into an accepted one, so the trigger tests depend on the triggers.
+- GitHub Actions has **not** run M2.2 yet. M2.1 passed on GitHub (run 41119537962, commit `0cebb3b`, both jobs).
+
+**Historical record — M2.1 local verification, 31 October 2026:**
 
 - `uv lock --project backend` added exactly six entries (`sqlalchemy` 2.0.55, `psycopg` 3.3.6, `psycopg-binary` 3.3.6, `redis` 8.1.0, and the platform-conditional `greenlet` 3.5.6 and Windows-only `tzdata` 2026.6); no existing version changed. `uv lock --check` passed.
 - Default suite (service-free): 103 passed, 11 deselected, 1 warning, in both the existing `backend/.venv` (Ruff 0.17.3) and a fresh environment built from the lockfile (Ruff 0.17.2). Ruff check passed and 24 files were already formatted in both.
@@ -185,6 +209,7 @@ Kavach2.0/
 │   ├── .python-version
 │   ├── pyproject.toml
 │   ├── uv.lock
+│   ├── alembic.ini
 │   ├── src/kavach/
 │   │   ├── __init__.py
 │   │   ├── main.py
@@ -192,10 +217,10 @@ Kavach2.0/
 │   │   │   ├── routes/health.py
 │   │   │   └── schemas/{events,health}.py
 │   │   ├── core/{config,errors,redis_client}.py
-│   │   └── db/engine.py
+│   │   └── db/{engine,models}.py, db/migrations/{env.py,script.py.mako,versions/0001_initial_schema.py}
 │   └── tests/
 │       ├── {conftest,test_config,test_entrypoint,test_errors,test_events,test_health,test_infrastructure}.py
-│       └── integration/{conftest,test_services}.py
+│       └── integration/{conftest,schema_rows,test_services,test_migrations,test_constraints,test_privileges}.py
 ├── docs/                         # Specifications and workflow documents
 ├── frontend/.gitkeep             # Reserved; no frontend implementation
 ├── tests/.gitkeep                # Reserved for cross-application tests
@@ -207,4 +232,4 @@ Package `__init__.py` files are omitted from the condensed tree below the top pa
 
 ## Next milestone
 
-M1.1 is complete (GitHub Actions green on `c36e903`). M2 proceeds in steps on `backend`: M2.1 database and Redis infrastructure (implemented locally, uncommitted, integration job not yet run on GitHub), then M2.2 schema and migrations, then M2.3/M2.4 login, sessions, CSRF and ingestion keys (see `docs/MILESTONE_TRACKER.md`). Backend milestones M1.1–M7a stay on `backend` and reach `dev` through a single integration pull request after full backend acceptance (`docs/GIT_WORKFLOW.md`). D02 packages, D03, D07 and C-06 were approved on 31 October 2026. Ingestion, ML, Redis correlation and frontend are not started. Branch workflow and milestone status: `docs/GIT_WORKFLOW.md`, `docs/MILESTONE_TRACKER.md`.
+M1.1 and M2.1 are complete (GitHub Actions green on `c36e903` and `0cebb3b`). M2.2 (schema, migrations, grants) is implemented and verified locally, uncommitted, and has not yet run on GitHub. M2.3/M2.4 (login, sessions, CSRF, throttling, ingestion keys, provisioning, audit) follow (see `docs/MILESTONE_TRACKER.md`). Backend milestones M1.1–M7a stay on `backend` and reach `dev` through a single integration pull request after full backend acceptance (`docs/GIT_WORKFLOW.md`). D02 packages, D03, D07 and C-06 were approved on 31 October 2026. Ingestion, ML, Redis correlation and frontend are not started. Branch workflow and milestone status: `docs/GIT_WORKFLOW.md`, `docs/MILESTONE_TRACKER.md`.

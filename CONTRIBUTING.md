@@ -22,7 +22,9 @@ uv run --project backend --locked ruff check backend
 uv run --project backend --locked ruff format --check backend
 ```
 
-Integration tests (`-m integration`) need the development services from `deployment/compose.dev.yml` and the `TEST_DATABASE_URL`, `TEST_MIGRATION_DATABASE_URL` and `TEST_REDIS_URL` variables (README, "Development services"); they fail rather than skip when those are missing. Persistence and cache behavior must be tested against these real services, not mocks.
+Integration tests (`-m integration`) need the development services from `deployment/compose.dev.yml` and the `TEST_DATABASE_URL`, `TEST_MIGRATION_DATABASE_URL`, `TEST_RETENTION_DATABASE_URL` and `TEST_REDIS_URL` variables (README, "Development services"); they fail rather than skip when those are missing, and they rebuild the schema in the disposable `kavach_test` database. Persistence and cache behavior must be tested against these real services, not mocks.
+
+Schema changes need a new Alembic revision under `backend/src/kavach/db/migrations/versions/` together with the model change; `alembic check` must stay clean and the grants, checks and triggers it cannot see need explicit tests. Never edit an applied revision, and never downgrade a database that is not a disposable `*_test` database.
 
 CI (`.github/workflows/backend-ci.yml`) runs the same commands on pushes to `backend`, `dev` and `main` and on pull requests into `dev` and `main`. Include local results in the milestone report, and do not describe CI as passing without a green GitHub Actions run.
 

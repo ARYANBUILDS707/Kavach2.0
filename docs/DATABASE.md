@@ -2,7 +2,7 @@
 
 ## Status and conventions
 
-Proposed under PRD D02, D03, D05 and D07. Use PostgreSQL for durable state and Redis only for temporary cache/rate counters. No schema has been created. [ARCHITECTURE.md](ARCHITECTURE.md) defines transaction flow; [API.md](API.md) defines exposure.
+Approved for M2 under PRD D02, D03 and D07 (31 October 2026); D05 remains proposed. Use PostgreSQL for durable state and Redis only for temporary cache/rate counters. The schema below is implemented by Alembic revision `0001_initial_schema` (M2.2) with SQLAlchemy models in `backend/src/kavach/db/models.py`; see "Implementation notes (M2.2)" for the database-level details that this specification left to implementation. [ARCHITECTURE.md](ARCHITECTURE.md) defines transaction flow; [API.md](API.md) defines exposure.
 
 All durable IDs are UUIDs unless stated otherwise. All timestamps are UTC `timestamptz`. Fields are required unless marked nullable. Server-generated `created_at` defaults to the database current time. Scores use `double precision` with finite range checks 0–1; nonfinite values are forbidden. Enum-like fields use text plus CHECK constraints so additions are explicit migrations. JSONB has an application schema and a bounded size; it is not an unrestricted payload archive.
 
@@ -198,6 +198,19 @@ Tier/status filters join the current assessment/latest review. Inspect actual qu
 Single organization per deployment. Only backend/operator jobs connect to PostgreSQL; browsers never do. Every route enforces role permissions. Ingestors see only event receipts scoped by their key source. Dashboard users see the single organization's evidence; user/session/key administration is operator-only.
 
 Use distinct migration-owner, runtime and retention roles. Runtime has no schema DDL, user-role bypass, review/assessment UPDATE/DELETE, or audit UPDATE/DELETE. Retention uses narrowly scoped expiry procedures. Table grants and service authorization are the proposed MVP boundary. Row-level security is not required for one deployment scope and no direct client database access; if tenant ownership is introduced, add tenant keys and default-deny policies before enabling tenant traffic. PostgreSQL RLS policy behavior and owner bypass must be explicitly tested in that change. [PostgreSQL row security](https://www.postgresql.org/docs/17/ddl-rowsecurity.html)
+
+## Implementation notes (M2.2)
+
+These record how the tables above are enforced in PostgreSQL. They do not change any documented column, type or relationship.
+
+- **Roles.** `kavach_migrator` owns the schema and runs migrations; `kavach_app` is the runtime role; `kavach_retention` is the expiry role. Development/test roles are created by `deployment/postgres/initdb/10-kavach-roles.sql`; other environments must create roles with the same names before migrating. PUBLIC has no access to the databases and no `CREATE` on schema `public`.
+- **Runtime grants.** SELECT and INSERT on all nine tables. UPDATE only on named columns: `users` (display_name, password_hash, role, is_active), `sessions` (last_seen_at, revoked_at), `ingest_keys` (revoked_at), `incidents` (current_revision, latest_review_id, version, updated_at). No UPDATE on events, incident_events, assessments, reviews or audit_records; no DELETE, TRUNCATE, REFERENCES, TRIGGER or DDL anywhere; no access to `alembic_version`.
+- **Retention grants.** DELETE on sessions, incidents, events and audit_records, with SELECT only on the columns a cleanup query needs (`id`, `expires_at`, plus `sessions.revoked_at` and `incident_events.event_id`). No INSERT or UPDATE. Deleting an incident cascades to its links, assessments and reviews. The narrowly scoped expiry procedures are still to be written (the cleanup job); these column-limited grants are the boundary until then.
+- **Deferred cross-row rules.** A deferred constraint trigger on incident_events, incidents, assessments and events calls `kavach_check_incident_integrity()` at commit. It enforces: link channel equals event kind (`incident_events_channel_matches_kind`); standalone = exactly one event, pair = exactly one SMS and one call (`incident_membership_cardinality`); one subscriber digest and key version per incident (`incident_membership_same_subscriber`); `fusion_score` only on pair incidents (`assessments_fusion_only_for_pairs`). Violations raise SQLSTATE 23514 with those constraint names. The functions are `SECURITY DEFINER` with a pinned `search_path`, and PUBLIC cannot execute them.
+- **Deferred foreign keys.** `(incidents.id, current_revision)` → `assessments` and `(incidents.id, latest_review_id)` → `reviews(incident_id, id)` are `DEFERRABLE INITIALLY DEFERRED`.
+- **Checks added at the database boundary** (consistent with the column rules above): 32-byte length for every digest/HMAC column; canonical non-empty lowercase usernames; JSONB columns must be objects, with the documented 16 KiB (`events.signals`), 4 KiB (`events.model_versions`) and 32 KiB (`assessments.evidence`) caps; NaN and infinities fail the 0–1 score checks.
+- **Server defaults.** UUID primary keys default to `gen_random_uuid()`; `created_at` defaults to `now()`; `users.updated_at` is maintained by a `BEFORE UPDATE` trigger. `incidents.updated_at` is set by the service.
+- **Migrations.** `alembic -c backend/alembic.ini upgrade head` with `MIGRATION_DATABASE_URL` set to the migration owner. Repeated upgrades are no-ops; `alembic check` must report no differences. The downgrade drops the schema and is refused unless the target database name ends in `_test` and is passed explicitly (`-x allow-destructive-downgrade=<database>`); deployed databases use forward repair only.
 
 ## Redis keys
 
