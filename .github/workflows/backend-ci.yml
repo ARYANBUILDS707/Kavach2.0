@@ -1,5 +1,5 @@
-# Minimal backend CI (milestone M1.1): locked install, pytest and Ruff only.
-# Actions are pinned to full commit SHAs; the comment names the release tag.
+# Backend CI: locked install, pytest and Ruff (M1.1), plus real PostgreSQL/Redis
+# integration tests (M2.1). Actions are pinned to full commit SHAs; the comment names the tag.
 name: Backend CI
 
 on:
@@ -53,3 +53,58 @@ jobs:
       - name: Run Ruff format check
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: uv run --project backend --locked ruff format --check backend
+
+  integration:
+    name: Backend integration (PostgreSQL and Redis)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      UV_PYTHON: "3.12.13"
+      COMPOSE_FILE: deployment/compose.dev.yml
+      COMPOSE_PROJECT_NAME: kavach-ci
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.11.16"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      # Fresh random credentials per run; masked in logs and discarded with the runner.
+      - name: Generate ephemeral service passwords
+        run: |
+          for name in POSTGRES MIGRATOR APP RETENTION REDIS; do
+            value="$(openssl rand -hex 24)"
+            echo "::add-mask::${value}"
+            echo "KAVACH_DEV_${name}_PASSWORD=${value}" >> "$GITHUB_ENV"
+          done
+
+      - name: Start PostgreSQL and Redis
+        run: docker compose up --detach --wait --wait-timeout 180
+
+      - name: Export test service URLs
+        run: |
+          {
+            echo "TEST_DATABASE_URL=postgresql+psycopg://kavach_app:${KAVACH_DEV_APP_PASSWORD}@127.0.0.1:55432/kavach_test"
+            echo "TEST_MIGRATION_DATABASE_URL=postgresql+psycopg://kavach_migrator:${KAVACH_DEV_MIGRATOR_PASSWORD}@127.0.0.1:55432/kavach_test"
+            echo "TEST_REDIS_URL=redis://:${KAVACH_DEV_REDIS_PASSWORD}@127.0.0.1:56379/15"
+          } >> "$GITHUB_ENV"
+
+      - name: Install locked dependencies
+        run: uv sync --project backend --locked
+
+      - name: Run integration tests
+        run: uv run --project backend --locked pytest backend/tests -m integration
+
+      - name: Show service logs
+        if: ${{ failure() }}
+        run: docker compose logs --no-color
+
+      - name: Stop services and remove volumes
+        if: ${{ always() }}
+        run: docker compose down --volumes

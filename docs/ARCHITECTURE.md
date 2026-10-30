@@ -122,7 +122,7 @@ Use validated server settings with fail-fast required secrets. Document names in
 - Model boundary treats input as untrusted data. No executing text instructions, arbitrary file loading, outbound URL fetching, or shell interpolation.
 - Persistence boundary allowlists structured output and uses parameterized queries. Redaction alone is insufficient.
 - External error responses expose a safe code/request ID; internal logs exclude raw content, credentials, subscriber digests and transcript-derived free text.
-- Database outage: fail writes with 503 and no successful receipt. Redis outage: durable correlation fallback; conservative local throttling or fail-closed for writes if limits cannot be enforced.
+- Database outage: fail writes with 503 and no successful receipt. Redis outage: durable correlation fallback; password login fails closed with 503 (shared throttle state cannot be validated; no in-process fallback, C-06); other writes fail closed if limits cannot be enforced; any conservative in-process limit for reads is an M3 decision.
 - Model failure: persist explicit partial/unavailable stage results if metadata processing succeeds; system status indicates loss of capability.
 - Audit write/sign failure on an audited mutation: roll back mutation. HMAC protects detectable modification, not removal of records by a privileged database operator.
 

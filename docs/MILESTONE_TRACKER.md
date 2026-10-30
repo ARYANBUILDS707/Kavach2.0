@@ -10,8 +10,11 @@ Status values: `not started`, `in progress`, `blocked`, `complete (verified)`, `
 | --- | --- | --- | --- | --- |
 | M0 | Repository, architecture alignment, workflow, reproducibility planning | `dev` | complete (documentation committed to `dev`; see the M0 task report for the hash) | C-07 deferred; PRD/API/ARCHITECTURE follow-ups noted under C-06 |
 | M1 | FastAPI foundation | `main` (history) | complete (verified historically: 88 passed, Ruff clean on 31 Oct 2026; HTTP startup last verified 28 Oct 2026) | Debt TD-01, TD-02, TD-03 carried forward; M1 routes preserved (C-07 deferred) |
-| M1.1 | Reproducible environment and minimal pytest + Ruff CI | `backend` (stays there until full backend acceptance) | in progress: committed by the user as `c8c2ec7` and pushed; `backend` push trigger added afterward (uncommitted); **no GitHub Actions run yet** | Exit requires a green CI run on a `backend` push, which first happens when the trigger change is pushed |
-| M2 | PostgreSQL, migrations, identity, scoped auth, audit | `backend` | not started | M1.1; D02 packages, D03, D07 unapproved; shared login throttling decided (C-06), store/client pending D02 |
+| M1.1 | Reproducible environment and minimal pytest + Ruff CI | `backend` (stays there until full backend acceptance) | complete (verified): GitHub Actions passed on `backend` commit `c36e903` (owner-reported, 31 Oct 2026) | — |
+| M2 | PostgreSQL, migrations, identity, scoped auth, audit (owner-defined steps below) | `backend` | in progress | D02 packages, D03, D07, C-06 approved 31 Oct 2026 |
+| M2.1 | Database and development infrastructure: dependencies, dev/test Compose, engine/session and Redis client lifecycle, config validation, real-service tests, CI integration job | `backend` | in progress: implemented and verified locally on 31 Oct 2026; uncommitted; **CI integration job not yet run on GitHub** | Owner review; user commit/push; exit requires both CI jobs green on the pushed `backend` commit |
+| M2.2 | Full DATABASE.md schema, Alembic migrations, role grants | `backend` | not started | M2.1; Alembic 1.20.0 approved but not yet added (added when first used) |
+| M2.3 / M2.4 | Login, sessions, CSRF, shared throttling; ingestion keys, provisioning, audit | `backend` | not started | M2.2; argon2-cffi 25.1.0 approved but not yet added; `RATE_LIMIT_HMAC_KEY` becomes required |
 | M3 | Authenticated ingestion, PG idempotency, Redis state, scenario catalog + submission script | `backend` | not started | M2; D08 |
 | M4 | SMS detection and evaluation | `backend` | not started | M3; D04 data/licensing |
 | M5 | Voice transcription, intent, synthesis indication | `backend` | not started | M3; D04 data/licensing/hardware |
@@ -79,9 +82,26 @@ The fresh environment was created in a temporary directory outside the repositor
 | typing-inspection | 0.4.4 | transitive |
 | uvicorn | 0.54.0 | direct |
 
+## M2.1 local verification (31 October 2026, historical once recorded)
+
+GitHub Actions has **not** run the M2.1 changes; everything below is local.
+
+| Item | Value |
+| --- | --- |
+| New direct dependencies | `sqlalchemy==2.0.55`, `psycopg[binary]==3.3.6`, `redis==8.1.0` |
+| New lock entries | sqlalchemy 2.0.55, psycopg 3.3.6, psycopg-binary 3.3.6, redis 8.1.0, greenlet 3.5.6 (x86_64/aarch64 Linux and Windows only), tzdata 2026.6 (Windows only); no existing version changed; 33 entries total |
+| Approved but deferred | `alembic==1.20.0` (M2.2), `argon2-cffi==25.1.0` (M2.3); added only when first used |
+| PostgreSQL image | `postgres:17.11-bookworm@sha256:839fbb5a4942a7758dd93e18b42ea5649807491a0545b5eeeb8f0b8bb11857a5` (index; linux/amd64 and linux/arm64/v8) |
+| Redis image | `redis:7.4.12-alpine@sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f` (index; linux/amd64 and linux/arm64/v8) |
+| Default suite | 103 passed, 11 deselected, 1 warning (existing `backend/.venv` and fresh locked environment) |
+| Integration suite | 11 passed against the Compose services (both environments); CI job commands replayed locally: 11 passed, cleanup left no containers or volumes |
+| Missing service variables | `pytest -m integration` fails (4 failed, 7 errors), it does not skip |
+| Ruff | check passed; 24 files already formatted (0.17.3 and 0.17.2) |
+| Manual probes | wrong PostgreSQL password rejected; Redis password absent from the container process list; `kavach_*` roles not superuser; only the three roles have database access |
+
 ## Conflict decisions (owner, 31 October 2026)
 
-C-01 to C-05 approved; C-06 decided (M2 implements shared login throttling; login fails closed if the shared throttle is unavailable; no in-process fallback for authentication; the API.md/ARCHITECTURE.md fallback wording still conflicts and needs a contract update); C-07 deferred (M1 health routes and tests preserved); C-10 resolved by the CONTRIBUTING.md update. Details are in MASTER_DEVELOPMENT_PLAN.md.
+C-01 to C-05 approved; C-06 approved (shared Redis login throttling; login fails closed with 503 if Redis cannot validate throttle state; no in-process fallback; API.md and ARCHITECTURE.md updated in M2.1; `RATE_LIMIT_HMAC_KEY` added to the API.md inventory); C-07 deferred (M1 health routes and tests preserved); C-10 resolved by the CONTRIBUTING.md update. Details are in MASTER_DEVELOPMENT_PLAN.md.
 
 ## Decisions
 
@@ -90,11 +110,11 @@ The owner's conflict and Git decisions do not approve any item below marked pend
 | ID | Topic | Status |
 | --- | --- | --- |
 | D01 | Scope | Approved for the backend foundation only; remaining use needs a recorded decision |
-| D02 | Stack and **package choices** | Approved for the backend foundation only. **Pending explicit approval:** SQLAlchemy, Alembic, psycopg, Argon2 library, Redis client (if used in M2), PostgreSQL/Redis container images, CI tooling and action versions, frontend packages |
-| D03 | Authentication | **Pending explicit approval**; proposal in PRD/ARCHITECTURE; see MASTER_DEVELOPMENT_PLAN |
+| D02 | Stack and **package choices** | **Approved 31 Oct 2026** for M2: SQLAlchemy 2.0.55, Alembic 1.20.0, psycopg[binary] 3.3.6, argon2-cffi 25.1.0, redis 8.1.0, the digest-pinned PostgreSQL 17.11 and Redis 7.4.12 dev images. Frontend packages still pending |
+| D03 | Authentication | **Approved direction 31 Oct 2026**: provisioned accounts (viewer/analyst/admin), Argon2id with versioned parameters and rehash, database-backed opaque sessions (30 min idle, 8 h absolute), HttpOnly + SameSite=Lax cookies (Secure outside explicit local development), session-bound CSRF and exact Origin, source-scoped Bearer ingestion keys (90-day default, expiry, revocation), no public registration. Denied logins → sanitized security telemetry, not permanent audit rows; successful authentication and account/key lifecycle changes are audited |
 | D04 | Dataset and model provenance | **Pending explicit approval**; no datasets or artifacts approved |
 | D05–D06, D08–D09 | Correlation window, tiers, limits, UI | Proposed, unapproved; each gates the milestone listed in the master plan |
-| D07 | Retention | **Pending explicit approval**; gates the M2 schema |
+| D07 | Retention | **Approved 31 Oct 2026 for the synthetic-data local MVP only**: synthetic events/incidents 7 days; metadata-only audit 30 days; metadata-only application logs 14 days; deactivated users and referenced keys follow referential integrity and explicit cleanup rules; all configurable. Not authorization to ingest real user data |
 | D10 | Hosting | **Pending explicit approval**; local Compose is the working assumption only |
 
 ## Technical debt
@@ -103,15 +123,15 @@ The owner's conflict and Git decisions do not approve any item below marked pend
 | --- | --- | --- | --- |
 | TD-01 | ~~`backend/uv.lock` absent~~ Addressed in M1.1 (uncommitted): lock generated with uv 0.11.16, 27 packages, `uv lock --check` passes, fresh isolated install verified. The earlier timeouts did not reproduce: the PyPI index answered in 0.13 s and resolution took 0.4 s, so the cause is attributed to the earlier execution environment's network sandbox, not the index or manifest (not proven). | — | Close when committed and CI is green |
 | TD-02 | Ruff pin: **kept at the documented 0.17.2** (manifest and lockfile); 0.17.2 verified clean in the fresh environment. The existing `backend/.venv` still has 0.17.3 until the user syncs it (see README Setup). | Local pip venv differs from lock until synced | Close when committed and CI is green |
-| TD-03 | CI workflow committed (`c8c2ec7`) but **not yet run on GitHub**: `backend` was not a push trigger at that commit; trigger added afterward (uncommitted) | Workflow correctness on GitHub unproven | Close after the first green run on a `backend` push |
+| TD-03 | ~~CI not yet run~~ The lint/test job passed on `c36e903`. The new M2.1 integration job has not run on GitHub yet | Integration job unproven on GitHub | Close after both jobs are green on the M2.1 push |
 | TD-04 | `starlette.testclient`/`httpx` deprecation warning; the warning suggests `httpx2` (still present in the M1.1 runs: 88 passed, 1 warning) | May become an error in a later Starlette | Evaluate when dependencies are next touched |
 | TD-12 | Lockfile resolved `opentelemetry-api` 1.45.2 (transitive via FastAPI 0.162.0; released 29 Oct 2026), while the pip venv has 1.45.1. Tests pass with both | Minor drift between local venv and lock | Disappears when the user syncs `backend/.venv` |
 | TD-05 | `docs/AGENTS.md` duplicates root `AGENTS.md` with relative paths | Rules can drift; root `AGENTS.md` is authoritative | Decide whether to keep or reduce to a pointer |
 | TD-06 | Stale Git/status statements: README and ARCHITECTURE.md line 7 corrected in M0; CONTRIBUTING.md branch rules added in M0. PRD document map now lists the six new documents | Reader confusion | Separate approved docs change |
-| TD-07 | Development/test PostgreSQL (approved under C-05) and, if used, Redis are not yet defined | Blocks M2 integration tests | M2 (D02 tooling approval) |
+| TD-07 | ~~Development/test PostgreSQL and Redis not defined~~ Defined in M2.1: `deployment/compose.dev.yml` | — | Closes with M2.1 |
 | TD-08 | Public `/health` vs API.md's authenticated `/health` (C-07) | Contract mismatch once auth exists; deferred, M1 routes and tests preserved | Separate compatibility plan, owner approval |
 | TD-09 | GitHub default branch (`dev` intended) and protection for `main`/`dev` not configured; protection for `backend` undecided | Nothing prevents force-push or direct pushes | After the first green CI run, on explicit owner instruction (user applies) |
-| TD-11 | API.md and ARCHITECTURE.md permit in-process throttling fallbacks, contradicting the C-06 decision for login | Specifications disagree | Approved contract update before M2 |
+| TD-11 | ~~API.md/ARCHITECTURE.md in-process throttling wording~~ Updated in M2.1 to the approved C-06 behavior | — | Closes with M2.1 |
 | TD-10 | `.env.example` lists only `APP_ENV` and `LOG_LEVEL`; API.md lists the full variable set | Expected until each variable's feature lands | Per milestone |
 
 ## Update protocol

@@ -22,6 +22,8 @@ uv run --project backend --locked ruff check backend
 uv run --project backend --locked ruff format --check backend
 ```
 
+Integration tests (`-m integration`) need the development services from `deployment/compose.dev.yml` and the `TEST_DATABASE_URL`, `TEST_MIGRATION_DATABASE_URL` and `TEST_REDIS_URL` variables (README, "Development services"); they fail rather than skip when those are missing. Persistence and cache behavior must be tested against these real services, not mocks.
+
 CI (`.github/workflows/backend-ci.yml`) runs the same commands on pushes to `backend`, `dev` and `main` and on pull requests into `dev` and `main`. Include local results in the milestone report, and do not describe CI as passing without a green GitHub Actions run.
 
 Use `uv run --project backend --locked ruff format backend` to format intentional code changes, then inspect the diff. Add behavioral tests for new validation, permissions and failures. Use synthetic data only; do not commit communications, secrets or model binaries. HTTP tests of ingestion DTOs use routes registered only in the test harness, never fake production ingestion endpoints.

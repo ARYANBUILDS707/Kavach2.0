@@ -67,9 +67,9 @@ uv python install 3.12.13
 uv sync --project backend --locked --python 3.12.13
 ```
 
-`backend/uv.lock` pins the complete dependency graph (27 packages). `--locked` fails instead of silently re-resolving if `backend/pyproject.toml` and the lockfile disagree; check this with `uv lock --check --project backend`. After an intentional dependency change, run `uv lock --project backend` and commit the updated lockfile with the manifest. Do not use `--frozen` to conceal an out-of-date lockfile.
+`backend/uv.lock` pins the complete dependency graph (33 entries including the project itself; M2.1 added SQLAlchemy 2.0.55, psycopg 3.3.6 with its binary wheel, and redis 8.1.0). `--locked` fails instead of silently re-resolving if `backend/pyproject.toml` and the lockfile disagree; check this with `uv lock --check --project backend`. After an intentional dependency change, run `uv lock --project backend` and commit the updated lockfile with the manifest. Do not use `--frozen` to conceal an out-of-date lockfile.
 
-**Existing pip-built environment:** a `backend/.venv` created with the earlier pip workaround is not identical to the lockfile (it has Ruff 0.17.3, `opentelemetry-api` 1.45.1 and `pip`). Running `uv sync --project backend --locked`, or any `uv run --project backend --locked …` command, makes that environment match the lockfile: Ruff becomes 0.17.2, `opentelemetry-api` 1.45.2, and packages not in the lock (such as `pip`) are removed. Do this deliberately; the `backend/.venv/bin/python -m …` commands below keep using the environment as it is.
+**Existing pip-built environment:** a `backend/.venv` created with the earlier pip workaround is not identical to the lockfile (it has Ruff 0.17.3, `opentelemetry-api` 1.45.1 and `pip`). Running `uv sync --project backend --locked`, or any `uv run --project backend --locked …` command, makes that environment match the lockfile: Ruff becomes 0.17.2, `opentelemetry-api` 1.45.2, and packages not in the lock (such as `pip`) are removed. Do this deliberately; the `backend/.venv/bin/python -m …` commands below keep using the environment as it is. For M2.1 the four new packages (`sqlalchemy==2.0.55`, `psycopg==3.3.6`, `psycopg-binary==3.3.6`, `redis==8.1.0`) were added to that environment additively with `uv pip install --python backend/.venv/bin/python --no-deps …`; nothing else in it changed.
 
 Environment settings default to development/INFO. Optionally copy `.env.example` to root `.env` without overwriting an existing file. `APP_ENV` accepts `development`, `test`, or `pilot`; `LOG_LEVEL` accepts `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`. No credentials are needed for this phase. Invalid settings fail startup. Setting `APP_ENV=pilot` disables interactive API docs; it does not make this foundation pilot-ready.
 
@@ -112,13 +112,44 @@ uv run --project backend --locked ruff check backend
 uv run --project backend --locked ruff format --check backend
 ```
 
+### Development services (PostgreSQL and Redis)
+
+`deployment/compose.dev.yml` runs PostgreSQL 17.11 and Redis 7.4.12 for **local development and tests only**; it is not a deployment artifact. Images are pinned by digest, ports bind to `127.0.0.1` only, every password comes from the environment (there are no defaults), and Redis runs without persistence. On first start, `deployment/postgres/initdb/10-kavach-roles.sql` creates the least-privilege roles `kavach_migrator` (owns the databases and schema), `kavach_app` (runtime: connect and schema usage only) and `kavach_retention`, plus the databases `kavach_dev` and `kavach_test`. Table grants arrive with the schema migrations (M2.2).
+
+```sh
+cp deployment/compose.dev.env.example deployment/.env.dev   # ignored by Git
+# edit deployment/.env.dev: replace every password with `openssl rand -hex 24` output
+docker compose --env-file deployment/.env.dev -f deployment/compose.dev.yml up --detach --wait
+docker compose --env-file deployment/.env.dev -f deployment/compose.dev.yml down            # keep dev data
+docker compose --env-file deployment/.env.dev -f deployment/compose.dev.yml down --volumes  # discard it
+```
+
+The role bootstrap only runs on an empty data volume; after changing role passwords, recreate the volume with `down --volumes`.
+
+Integration tests are excluded from the default `pytest` run and selected with `-m integration`. They read three variables and **fail (not skip)** if any is missing:
+
+```sh
+export TEST_DATABASE_URL="postgresql+psycopg://kavach_app:<app-password>@127.0.0.1:55432/kavach_test"
+export TEST_MIGRATION_DATABASE_URL="postgresql+psycopg://kavach_migrator:<migrator-password>@127.0.0.1:55432/kavach_test"
+export TEST_REDIS_URL="redis://:<redis-password>@127.0.0.1:56379/15"
+backend/.venv/bin/python -m pytest backend/tests -m integration
+```
+
 ### Continuous integration
 
-`.github/workflows/backend-ci.yml` (job "Backend tests and lint") runs on pushes to `backend`, `dev` or `main` and on pull requests targeting `dev` or `main`. Every backend milestone pushed to `backend` is checked; `frontend` and `feature/*` pushes are not. On `ubuntu-24.04` with Python 3.12.13 and uv 0.11.16, it verifies the lockfile is current, installs from it with `--locked`, then runs pytest, Ruff lint and Ruff format check. The workflow has read-only `contents` permission, does not persist checkout credentials, uses no secrets, pins actions to commit SHAs (`actions/checkout` v7.0.1, `astral-sh/setup-uv` v10.3.0), cancels superseded runs on the same ref, and times out after 15 minutes. Any failed step fails the job; the three checks each still run after a successful install so all failures are reported together. **No GitHub Actions run has happened yet** (commit `c8c2ec7` added the workflow before `backend` was a push trigger); the workflow is unverified on GitHub until the first green run.
+`.github/workflows/backend-ci.yml` runs on pushes to `backend`, `dev` or `main` and on pull requests targeting `dev` or `main`. Job "Backend tests and lint" is described here; job "Backend integration (PostgreSQL and Redis)" (M2.1) generates fresh masked passwords for each run, starts `deployment/compose.dev.yml` on the runner, runs `pytest -m integration` against it, prints service logs on failure and always removes the containers and volumes. Every backend milestone pushed to `backend` is checked; `frontend` and `feature/*` pushes are not. On `ubuntu-24.04` with Python 3.12.13 and uv 0.11.16, it verifies the lockfile is current, installs from it with `--locked`, then runs pytest, Ruff lint and Ruff format check. The workflow has read-only `contents` permission, does not persist checkout credentials, uses no secrets, pins actions to commit SHAs (`actions/checkout` v7.0.1, `astral-sh/setup-uv` v10.3.0), cancels superseded runs on the same ref, and times out after 15 minutes. Any failed step fails the job; the three checks each still run after a successful install so all failures are reported together. The "Backend tests and lint" job passed on GitHub Actions for `backend` commit `c36e903` (reported by the owner). **The M2.1 integration job has not run on GitHub yet**; it is verified only by replaying its commands locally.
 
 ### Verification status
 
-**Current status (M1.1 local verification, 31 October 2026; point-in-time, re-run before relying on it):**
+**Current status (M2.1 local verification, 31 October 2026; point-in-time, re-run before relying on it):**
+
+- `uv lock --project backend` added exactly six entries (`sqlalchemy` 2.0.55, `psycopg` 3.3.6, `psycopg-binary` 3.3.6, `redis` 8.1.0, and the platform-conditional `greenlet` 3.5.6 and Windows-only `tzdata` 2026.6); no existing version changed. `uv lock --check` passed.
+- Default suite (service-free): 103 passed, 11 deselected, 1 warning, in both the existing `backend/.venv` (Ruff 0.17.3) and a fresh environment built from the lockfile (Ruff 0.17.2). Ruff check passed and 24 files were already formatted in both.
+- Integration suite against `deployment/compose.dev.yml` on Docker 29.8.0 (linux/aarch64): 11 passed in both environments. The CI integration job's commands were replayed locally with fresh passwords (11 passed; containers and volumes removed afterwards).
+- Without the `TEST_*` variables, `pytest -m integration` fails (4 failed, 7 errors) rather than skipping.
+- The warning is the existing Starlette/httpx deprecation (TD-04). Uvicorn startup over HTTP was not repeated.
+
+**Historical record — M1.1 local verification, 31 October 2026:**
 
 - `uv lock --project backend` (uv 0.11.16, Python 3.12.13) resolved 27 packages from `https://pypi.org/simple` in under a second; `uv lock --check --project backend` passed.
 - Existing `backend/.venv` (Ruff 0.17.3, left unchanged): pytest 88 passed with 1 warning; Ruff check passed; Ruff format check reported 17 files already formatted.
@@ -134,7 +165,7 @@ uv run --project backend --locked ruff format --check backend
 - Checks used the existing installed environment. Installed Ruff is **0.17.3**, while `pyproject.toml` pins **0.17.2**; the pinned Ruff version was not verified. No dependencies or pins were changed. `backend/uv.lock` is still absent, so locked dependency reproducibility remains unverified.
 - Local server binding and curl required execution outside the sandbox; sandbox attempts were blocked. No application behavior was changed to accommodate that restriction.
 
-The earlier dependency-installation failures no longer describe the installed environment, although the environment was built with pip rather than a reproducible `uv sync`. The foundation is committed as `754a22a` on `main` and pushed to `origin`; the `dev`, `backend` and `frontend` branches were created from it on 31 October 2026. Persistence, authentication and M2 are not started.
+The earlier dependency-installation failures no longer describe the installed environment, although the environment was built with pip rather than a reproducible `uv sync`. The foundation is committed as `754a22a` on `main` and pushed to `origin`; the `dev`, `backend` and `frontend` branches were created from it on 31 October 2026. M2 started with M2.1 (database and Redis infrastructure); see "Next milestone".
 
 ## Repository layout
 
@@ -146,6 +177,10 @@ Kavach2.0/
 ├── .env.example
 ├── .gitignore
 ├── .github/workflows/backend-ci.yml
+├── deployment/                   # Development/test-only services (not a deployment)
+│   ├── compose.dev.yml
+│   ├── compose.dev.env.example
+│   └── postgres/initdb/10-kavach-roles.sql
 ├── backend/
 │   ├── .python-version
 │   ├── pyproject.toml
@@ -156,8 +191,11 @@ Kavach2.0/
 │   │   ├── api/
 │   │   │   ├── routes/health.py
 │   │   │   └── schemas/{events,health}.py
-│   │   └── core/{config,errors}.py
-│   └── tests/{conftest,test_config,test_entrypoint,test_errors,test_events,test_health}.py
+│   │   ├── core/{config,errors,redis_client}.py
+│   │   └── db/engine.py
+│   └── tests/
+│       ├── {conftest,test_config,test_entrypoint,test_errors,test_events,test_health,test_infrastructure}.py
+│       └── integration/{conftest,test_services}.py
 ├── docs/                         # Specifications and workflow documents
 ├── frontend/.gitkeep             # Reserved; no frontend implementation
 ├── tests/.gitkeep                # Reserved for cross-application tests
@@ -169,4 +207,4 @@ Package `__init__.py` files are omitted from the condensed tree below the top pa
 
 ## Next milestone
 
-M1.1 (lockfile, Ruff pin, minimal pytest/Ruff CI) is committed on `backend` (`c8c2ec7`) and awaits its first successful GitHub Actions run (see `docs/MILESTONE_TRACKER.md`). Backend milestones M1.1–M7a stay on `backend` and reach `dev` through a single integration pull request after full backend acceptance (`docs/GIT_WORKFLOW.md`). Persistence and authentication (M2) require approval of D02 packages, D03 and D07 before real event ingestion. M2, ML, Redis correlation and frontend are not started. Branch workflow and milestone status: `docs/GIT_WORKFLOW.md`, `docs/MILESTONE_TRACKER.md`.
+M1.1 is complete (GitHub Actions green on `c36e903`). M2 proceeds in steps on `backend`: M2.1 database and Redis infrastructure (implemented locally, uncommitted, integration job not yet run on GitHub), then M2.2 schema and migrations, then M2.3/M2.4 login, sessions, CSRF and ingestion keys (see `docs/MILESTONE_TRACKER.md`). Backend milestones M1.1–M7a stay on `backend` and reach `dev` through a single integration pull request after full backend acceptance (`docs/GIT_WORKFLOW.md`). D02 packages, D03, D07 and C-06 were approved on 31 October 2026. Ingestion, ML, Redis correlation and frontend are not started. Branch workflow and milestone status: `docs/GIT_WORKFLOW.md`, `docs/MILESTONE_TRACKER.md`.

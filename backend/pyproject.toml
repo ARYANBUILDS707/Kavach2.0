@@ -9,8 +9,11 @@ description = "KAVACH V4 backend foundation for controlled fraud-analysis resear
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi==0.162.0",
+    "psycopg[binary]==3.3.6",
     "pydantic==2.14.1",
     "pydantic-settings==2.16.1",
+    "redis==8.1.0",
+    "sqlalchemy==2.0.55",
     "uvicorn==0.54.0",
 ]
 
@@ -26,7 +29,11 @@ packages = ["src/kavach"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers"
+# Integration tests need real PostgreSQL/Redis; select them explicitly with `-m integration`.
+addopts = "-ra --strict-markers -m 'not integration'"
+markers = [
+    "integration: requires the development/test PostgreSQL and Redis services",
+]
 
 [tool.ruff]
 target-version = "py312"

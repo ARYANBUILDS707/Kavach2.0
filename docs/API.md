@@ -105,7 +105,7 @@ Simulator catalog returns synthetic scenario ID/name/description, ordered SMS/ca
 | 500 | INTERNAL_ERROR | Request ID and safe retry guidance |
 | 503 | DEPENDENCY_UNAVAILABLE, PROCESSING_TIMEOUT | Backoff; same-ID retry for writes |
 
-D08 proposal: failed login 5/15 minutes per account+IP plus IP ceiling 30/15 minutes; reads 120/minute/user; ingestion 30/minute/key or admin; reviews 30/minute/user; WebSocket 2 concurrent connections/user. Trusted proxy IP handling must be configured explicitly. Redis counters store short-lived keyed identifiers, not raw IP histories. Redis outage uses conservative in-process limits for this single-process MVP or rejects writes if enforcement cannot be assured. Revisit before multiple replicas.
+D08 proposal: failed login 5/15 minutes per account+IP plus IP ceiling 30/15 minutes; reads 120/minute/user; ingestion 30/minute/key or admin; reviews 30/minute/user; WebSocket 2 concurrent connections/user. Trusted proxy IP handling must be configured explicitly. Redis counters store short-lived keyed identifiers (HMAC with `RATE_LIMIT_HMAC_KEY`), not raw IP histories. **Login (C-06, approved 31 October 2026):** login throttling is always shared through Redis; if Redis cannot validate throttle state, `POST /auth/login` fails closed with 503 `DEPENDENCY_UNAVAILABLE` before any password check, and there is no in-process fallback. For the other limits (reads, ingestion, reviews) a Redis outage rejects writes if enforcement cannot be assured; whether reads may use conservative in-process limits is decided in M3. Revisit before multiple replicas.
 
 ## External integrations and webhooks
 
@@ -117,10 +117,11 @@ Required services are local PostgreSQL, Redis and model artifacts. Runtime audio
 | --- | --- | --- |
 | APP_ENV | Server | development, test or pilot |
 | APP_ORIGIN | Server/proxy | Exact browser origin and redirect/Origin allowlist |
-| DATABASE_URL | Secret server config | Runtime PostgreSQL credentials |
+| DATABASE_URL | Secret server config | Runtime PostgreSQL credentials; `postgresql+psycopg://` URL for the least-privilege runtime role (validated when set since M2.1) |
 | MIGRATION_DATABASE_URL | Secret operator config | Separate migration credentials |
 | RETENTION_DATABASE_URL | Secret job config | Restricted expiry job credentials |
-| REDIS_URL | Secret server config | Private Redis endpoint/auth |
+| REDIS_URL | Secret server config | Private Redis endpoint/auth; `redis://` or `rediss://` URL (validated when set since M2.1) |
+| RATE_LIMIT_HMAC_KEY | Secret server config | Key for the keyed identifiers in Redis throttle counters; required once login throttling exists (M2.3) |
 | SUBSCRIBER_HMAC_KEYS / SUBSCRIBER_HMAC_ACTIVE_VERSION | Secret server config | Versioned identity digest keys and selected version |
 | PAYLOAD_HMAC_KEYS / PAYLOAD_HMAC_ACTIVE_VERSION | Secret server config | Versioned idempotency digest keys |
 | AUDIT_HMAC_KEYS / AUDIT_HMAC_ACTIVE_VERSION | Secret server/job config | Versioned audit signing/verification keys |

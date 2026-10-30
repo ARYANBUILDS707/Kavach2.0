@@ -1,0 +1,51 @@
+# Development/test-only PostgreSQL and Redis (milestone M2.1). Not a deployment artifact.
+# Ports bind to 127.0.0.1 only. Every password comes from the environment; there are no defaults.
+# Usage: see README.md, "Development services".
+name: kavach-dev
+
+services:
+  postgres:
+    image: postgres:17.11-bookworm@sha256:839fbb5a4942a7758dd93e18b42ea5649807491a0545b5eeeb8f0b8bb11857a5
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: ${KAVACH_DEV_POSTGRES_PASSWORD:?set KAVACH_DEV_POSTGRES_PASSWORD}
+      # Read by the bootstrap script through psql \getenv, never placed on a command line.
+      KAVACH_DEV_MIGRATOR_PASSWORD: ${KAVACH_DEV_MIGRATOR_PASSWORD:?set KAVACH_DEV_MIGRATOR_PASSWORD}
+      KAVACH_DEV_APP_PASSWORD: ${KAVACH_DEV_APP_PASSWORD:?set KAVACH_DEV_APP_PASSWORD}
+      KAVACH_DEV_RETENTION_PASSWORD: ${KAVACH_DEV_RETENTION_PASSWORD:?set KAVACH_DEV_RETENTION_PASSWORD}
+    ports:
+      - "127.0.0.1:${KAVACH_DEV_POSTGRES_PORT:-55432}:5432"
+    volumes:
+      - kavach_dev_pgdata:/var/lib/postgresql/data
+      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # TCP probe: the temporary init-time server listens on the Unix socket only,
+      # so this succeeds only after the bootstrap script has finished.
+      test: ["CMD", "pg_isready", "--host=127.0.0.1", "--username=postgres", "--dbname=postgres"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  redis:
+    image: redis:7.4.12-alpine@sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f
+    environment:
+      KAVACH_DEV_REDIS_PASSWORD: ${KAVACH_DEV_REDIS_PASSWORD:?set KAVACH_DEV_REDIS_PASSWORD}
+    # Config is piped on stdin so the password is not a process argument. Persistence is off:
+    # Redis holds temporary state only.
+    command:
+      - sh
+      - -c
+      - printf 'requirepass %s\nsave ""\nappendonly no\n' "$$KAVACH_DEV_REDIS_PASSWORD" | exec redis-server -
+    ports:
+      - "127.0.0.1:${KAVACH_DEV_REDIS_PORT:-56379}:6379"
+    tmpfs:
+      - /data
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$KAVACH_DEV_REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  kavach_dev_pgdata:
