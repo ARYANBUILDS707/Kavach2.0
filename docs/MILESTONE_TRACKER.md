@@ -13,8 +13,9 @@ Status values: `not started`, `in progress`, `blocked`, `complete (verified)`, `
 | M1.1 | Reproducible environment and minimal pytest + Ruff CI | `backend` (stays there until full backend acceptance) | complete (verified): GitHub Actions passed on `backend` commit `c36e903` (owner-reported, 31 Oct 2026) | — |
 | M2 | PostgreSQL, migrations, identity, scoped auth, audit (owner-defined steps below) | `backend` | in progress | D02 packages, D03, D07, C-06 approved 31 Oct 2026 |
 | M2.1 | Database and development infrastructure: dependencies, dev/test Compose, engine/session and Redis client lifecycle, config validation, real-service tests, CI integration job | `backend` | complete (verified): GitHub Actions run 41119537962 on `0cebb3b`, both jobs passed (checked via the public GitHub API, 31 Oct 2026) | — |
-| M2.2 | Full DATABASE.md schema, Alembic migration `0001_initial_schema`, integrity triggers, role grants | `backend` | in progress: implemented and verified locally on 31 Oct 2026; uncommitted; **not yet run on GitHub** | Owner review; user commit/push; exit requires both CI jobs (including the new migration gate) green on the pushed `backend` commit |
-| M2.3 / M2.4 | Login, sessions, CSRF, shared throttling; ingestion keys, provisioning, audit | `backend` | not started | M2.2; argon2-cffi 25.1.0 approved but not yet added; `RATE_LIMIT_HMAC_KEY` becomes required |
+| M2.2 | Full DATABASE.md schema, Alembic migration `0001_initial_schema`, integrity triggers, role grants | `backend` | complete (verified): GitHub Actions run 41121829796 on `e7c0873`, both jobs passed (public GitHub API, 31 Oct 2026) | — |
+| M2.3 | Login/session/logout, Argon2id, opaque DB sessions, CSRF, Origin, shared Redis throttling (fail closed), audited minimal provisioning | `backend` | in progress: implemented and verified locally on 31 Oct 2026; uncommitted; **not yet run on GitHub** | Owner review; user commit/push; exit requires both CI jobs green on the pushed `backend` commit |
+| M2.4 | Operator CLI (deactivate, reset, role change), ingestion keys and `require_ingest_key`, retention job/procedures | `backend` | not started | M2.3 |
 | M3 | Authenticated ingestion, PG idempotency, Redis state, scenario catalog + submission script | `backend` | not started | M2; D08 |
 | M4 | SMS detection and evaluation | `backend` | not started | M3; D04 data/licensing |
 | M5 | Voice transcription, intent, synthesis indication | `backend` | not started | M3; D04 data/licensing/hardware |
@@ -82,6 +83,21 @@ The fresh environment was created in a temporary directory outside the repositor
 | typing-inspection | 0.4.4 | transitive |
 | uvicorn | 0.54.0 | direct |
 
+## M2.3 local verification (31 October 2026, historical once recorded)
+
+GitHub Actions has **not** run the M2.3 changes; everything below is local.
+
+| Item | Value |
+| --- | --- |
+| New dependencies | `argon2-cffi==25.1.0` (direct); `argon2-cffi-bindings` 26.1.0, `cffi` 2.1.1, `pycparser` 3.12 (transitive); 40 lock entries; no existing version changed |
+| Endpoints | `POST /api/v1/auth/login`, `GET /api/v1/auth/session`, `POST /api/v1/auth/logout` |
+| Default suite | 144 passed (40 new service-free auth tests, including real closed-port and hung-socket Redis outages), 168 deselected |
+| Integration suite | 168 passed (27 new auth tests against real PostgreSQL and Redis, including a two-process throttle test: 12 concurrent wrong-password attempts → exactly 5 × 401 and 7 × 429) |
+| Ruff | check passed; 50 files formatted (0.17.3 and 0.17.2) |
+| Real outage probe | Redis container stopped mid-run → login 503 in 0.00 s with only sanitized telemetry; restarted → 200 |
+| Provisioning CLI probe | provisioned an account from stdin; rejected a short password and a duplicate (case-insensitive) username |
+| Changed existing tests | OpenAPI path set (adds auth routes); pilot docs test now supplies the complete test-only configuration pilot requires |
+
 ## M2.2 local verification (31 October 2026, historical once recorded)
 
 GitHub Actions has **not** run the M2.2 changes; everything below is local (Docker 29.8.0, linux/aarch64, the digest-pinned PostgreSQL 17.11 image).
@@ -141,6 +157,8 @@ The owner's conflict and Git decisions do not approve any item below marked pend
 | TD-04 | `starlette.testclient`/`httpx` deprecation warning; the warning suggests `httpx2` (still present in the M1.1 runs: 88 passed, 1 warning) | May become an error in a later Starlette | Evaluate when dependencies are next touched |
 | TD-12 | Lockfile resolved `opentelemetry-api` 1.45.2 (transitive via FastAPI 0.162.0; released 29 Oct 2026), while the pip venv has 1.45.1. Tests pass with both | Minor drift between local venv and lock | Disappears when the user syncs `backend/.venv` |
 | TD-13 | Retention runs as column-limited DELETE grants; DATABASE.md's narrowly scoped expiry procedures (and the cleanup job) are not written yet | Cleanup must be implemented before retention is claimed | With the retention job (M2.4 or M9) |
+| TD-14 | Login throttling uses fixed 15-minute windows keyed by HMAC(username, client IP); `X-Forwarded-For` is ignored, so behind a proxy every client shares one IP and its 30-failure ceiling | Proxy deployments need explicit trusted-proxy handling first | Before any proxied deployment (M11) |
+| TD-15 | Deactivation and password reset are audited service functions without an operator command; role changes have no audited path yet | Operators cannot perform them safely outside tests | M2.4 |
 | TD-05 | `docs/AGENTS.md` duplicates root `AGENTS.md` with relative paths | Rules can drift; root `AGENTS.md` is authoritative | Decide whether to keep or reduce to a pointer |
 | TD-06 | Stale Git/status statements: README and ARCHITECTURE.md line 7 corrected in M0; CONTRIBUTING.md branch rules added in M0. PRD document map now lists the six new documents | Reader confusion | Separate approved docs change |
 | TD-07 | ~~Development/test PostgreSQL and Redis not defined~~ Defined in M2.1: `deployment/compose.dev.yml` | — | Closes with M2.1 |

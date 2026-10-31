@@ -23,8 +23,24 @@ def test_invalid_configuration_fails_startup(
         create_app()
 
 
+def test_pilot_requires_the_authentication_configuration() -> None:
+    with pytest.raises(ValidationError):
+        Settings(app_env="pilot")
+
+
 def test_pilot_does_not_expose_development_docs() -> None:
-    with TestClient(create_app(Settings(app_env="pilot", log_level="INFO"))) as client:
+    # Explicit test-only configuration: complete, never connected to (clients are lazy).
+    settings = Settings(
+        app_env="pilot",
+        log_level="INFO",
+        database_url="postgresql+psycopg://kavach_app:unused@127.0.0.1:1/kavach_test",
+        redis_url="redis://:unused@127.0.0.1:1/15",
+        app_origin="https://kavach.test",
+        rate_limit_hmac_key="r" * 32,
+        audit_hmac_keys='{"v1": "' + "a" * 32 + '"}',
+        audit_hmac_active_version="v1",
+    )
+    with TestClient(create_app(settings)) as client:
         assert client.get("/docs").status_code == 404
         assert client.get("/openapi.json").status_code == 404
         assert client.get("/health").json()["data"]["analysis_ready"] is False

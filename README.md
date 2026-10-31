@@ -138,6 +138,17 @@ backend/.venv/bin/alembic -c backend/alembic.ini check          # models and dat
 
 Downgrading drops every table, so it is refused unless the database name ends in `_test` and is named explicitly (`-x allow-destructive-downgrade=kavach_test`). Never downgrade `kavach_dev` or any deployed database; use a forward-repair migration instead.
 
+#### Authentication (M2.3)
+
+`POST /api/v1/auth/login`, `GET /api/v1/auth/session` and `POST /api/v1/auth/logout` need the authentication settings described in `.env.example` (all-or-nothing; without them the routes return 503). Accounts are provisioned by an operator, never by signup:
+
+```sh
+# with DATABASE_URL, REDIS_URL, APP_ORIGIN, RATE_LIMIT_HMAC_KEY and AUDIT_HMAC_* exported
+backend/.venv/bin/python -m kavach.auth.provision --username alice --display-name "Alice" --role analyst
+```
+
+The password is prompted for twice (or read from the first line of stdin with `--password-stdin`), must be 12–256 characters and differ from the username, and is stored only as an Argon2id hash. Provisioning is audited. Deactivation and password reset exist as audited service functions (they revoke all of the user's sessions) but have no command yet; the full operator CLI and ingestion keys are M2.4.
+
 #### Integration tests
 
 Integration tests are excluded from the default `pytest` run and selected with `-m integration`. They read four variables and **fail (not skip)** if any is missing. They rebuild the schema in the disposable `kavach_test` database from empty at the start of each session, so never point them at `kavach_dev`:
@@ -156,7 +167,16 @@ backend/.venv/bin/python -m pytest backend/tests -m integration
 
 ### Verification status
 
-**Current status (M2.2 local verification, 31 October 2026; point-in-time, re-run before relying on it):**
+**Current status (M2.3 local verification, 31 October 2026; point-in-time, re-run before relying on it):**
+
+- `uv lock` added exactly `argon2-cffi` 25.1.0, `argon2-cffi-bindings` 26.1.0, `cffi` 2.1.1 and `pycparser` 3.12 (40 entries); no existing version changed; `uv lock --check` passed.
+- Default suite: 144 passed, 168 deselected, 1 warning. Integration suite: 168 passed (27 of them new authentication tests). Both in the existing `backend/.venv` (Ruff 0.17.3) and a fresh locked environment (Ruff 0.17.2). Ruff check passed; 50 files already formatted.
+- Two existing tests were updated for the new contract: the OpenAPI path set now includes the three auth routes, and the pilot docs test now supplies the complete (test-only, never connected) configuration that pilot requires.
+- Real outage probes: with the Redis container stopped mid-run, login returned 503 immediately, then 200 after Redis was restarted; with Redis refusing connections or never replying, login returned 503 within 1.5 s and verified no password.
+- The CI integration job's commands were replayed locally with fresh passwords: migrations, `alembic check` and 168 integration tests passed; cleanup left no containers or volumes.
+- GitHub Actions has **not** run M2.3 yet. M2.2 passed on GitHub (run 41121829796, commit `e7c0873`, both jobs).
+
+**Historical record — M2.2 local verification, 31 October 2026:**
 
 - `uv lock` added exactly `alembic` 1.20.0, `mako` 1.4.3 and `markupsafe` 3.0.4 (36 entries); no existing version changed; `uv lock --check` passed.
 - On a fresh `kavach_test` database: `alembic upgrade head` succeeded, a second `upgrade head` was a no-op, `alembic current` reported `0001_initial_schema (head)` and `alembic check` reported "No new upgrade operations detected". A downgrade was refused without permission and for `kavach_dev`.
@@ -232,4 +252,4 @@ Package `__init__.py` files are omitted from the condensed tree below the top pa
 
 ## Next milestone
 
-M1.1 and M2.1 are complete (GitHub Actions green on `c36e903` and `0cebb3b`). M2.2 (schema, migrations, grants) is implemented and verified locally, uncommitted, and has not yet run on GitHub. M2.3/M2.4 (login, sessions, CSRF, throttling, ingestion keys, provisioning, audit) follow (see `docs/MILESTONE_TRACKER.md`). Backend milestones M1.1–M7a stay on `backend` and reach `dev` through a single integration pull request after full backend acceptance (`docs/GIT_WORKFLOW.md`). D02 packages, D03, D07 and C-06 were approved on 31 October 2026. Ingestion, ML, Redis correlation and frontend are not started. Branch workflow and milestone status: `docs/GIT_WORKFLOW.md`, `docs/MILESTONE_TRACKER.md`.
+M1.1, M2.1 and M2.2 are complete (GitHub Actions green on `c36e903`, `0cebb3b` and `e7c0873`). M2.3 (login, sessions, CSRF, Origin, shared throttling, minimal provisioning, audit) is implemented and verified locally, uncommitted, and has not yet run on GitHub. M2.4 (operator CLI, ingestion keys, retention job) follows (see `docs/MILESTONE_TRACKER.md`). Backend milestones M1.1–M7a stay on `backend` and reach `dev` through a single integration pull request after full backend acceptance (`docs/GIT_WORKFLOW.md`). D02 packages, D03, D07 and C-06 were approved on 31 October 2026. Ingestion, ML, Redis correlation and frontend are not started. Branch workflow and milestone status: `docs/GIT_WORKFLOW.md`, `docs/MILESTONE_TRACKER.md`.

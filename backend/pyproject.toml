@@ -9,6 +9,7 @@ description = "KAVACH V4 backend foundation for controlled fraud-analysis resear
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic==1.20.0",
+    "argon2-cffi==25.1.0",
     "fastapi==0.162.0",
     "psycopg[binary]==3.3.6",
     "pydantic==2.14.1",

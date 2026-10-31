@@ -6,6 +6,15 @@ The user authorized a backend-only foundation after the initial specification. T
 
 `SMSEvent` and `CallEvent` schemas are in `backend/src/kavach/api/schemas/events.py`. Their optional `kind` field defaults to `sms` or `call`; a conflicting value is rejected. Identifiers use bounded ASCII alphanumeric/underscore/hyphen syntax, with dot/colon also accepted for event and subscriber IDs. Call sample IDs exclude paths, extensions and URLs. Purely numeric/phone-like subscriber tokens are rejected as a syntax guard, not proof of authorized pseudonymization.
 
+**Authentication (M2.3, implemented).** `POST /api/v1/auth/login`, `GET /api/v1/auth/session` and `POST /api/v1/auth/logout` follow "Authentication formats" below. Implementation details that the contract left open:
+
+- Success bodies are `{"data": {"user": {"id", "display_name", "role"}, "expires_at", "csrf_token"}, "request_id"}`. `expires_at` is the earlier of the idle (30 min) and absolute (8 h) deadlines. Logout returns 204 and clears the cookie.
+- Cookie: `__Host-kavach_session` (HttpOnly, Secure, SameSite=Lax, Path=/, no Domain, Max-Age = absolute lifetime) when `APP_ORIGIN` is https. `kavach_dev_session` without Secure is used only when `APP_ENV=development` and `APP_ORIGIN` is a plain-http loopback origin; any other http origin fails startup.
+- The CSRF token is derived from the session token (HMAC), so `GET /auth/session` can return it without storing it; only its SHA-256 digest is stored. Login and logout require `Origin` to equal `APP_ORIGIN` exactly; logout also requires `X-CSRF-Token`. Either failure returns 403 `CSRF_REJECTED`.
+- A request with both a session cookie and an `Authorization` header, or a login request carrying `Authorization`, returns 401 `MIXED_CREDENTIALS` (new code, listed in the error table).
+- Order of checks: Origin, credential exclusivity, body validation, throttle reservation, password verification. Throttling is reserved atomically in Redis before the password is checked; if Redis cannot answer within its 0.5 s timeouts (no retries), login returns 503 `DEPENDENCY_UNAVAILABLE` without verifying the password. A database failure also returns 503.
+- Without the complete authentication configuration (`APP_ORIGIN`, `RATE_LIMIT_HMAC_KEY`, `AUDIT_HMAC_KEYS`, `AUDIT_HMAC_ACTIVE_VERSION`, `DATABASE_URL`, `REDIS_URL`) the auth routes return 503; `APP_ENV=pilot` refuses to start without it, and setting only part of it fails startup.
+
 Event POST routes are not exposed. Test-only HTTP handlers verify DTO validation without claiming ingestion, persistence, source authorization, sample-manifest membership or processing. No client-provided model scores or arbitrary feature objects are accepted. All endpoint contracts below describe later implementation unless explicitly identified above. The foundation was verified on 31 October 2026 in the local virtual environment (88 tests passed, Ruff clean); the dependency lockfile `backend/uv.lock` is still absent. See the root README and [MILESTONE_TRACKER.md](MILESTONE_TRACKER.md).
 
 ## Status and conventions
@@ -95,7 +104,7 @@ Simulator catalog returns synthetic scenario ID/name/description, ordered SMS/ca
 | HTTP | Code examples | Client behavior |
 | --- | --- | --- |
 | 400 | INVALID_CURSOR | Correct request; preserve filters |
-| 401 | INVALID_CREDENTIALS, SESSION_EXPIRED | Authenticate; clear protected client state |
+| 401 | INVALID_CREDENTIALS, SESSION_EXPIRED, MIXED_CREDENTIALS | Authenticate; clear protected client state; send exactly one credential type |
 | 403 | FORBIDDEN, CSRF_REJECTED | Explain access restriction; no retry loop |
 | 404 | NOT_FOUND | Resource unavailable/expired |
 | 409 | EVENT_ID_CONFLICT, REVIEW_CONFLICT | Resolve conflict; never overwrite silently |
@@ -124,14 +133,14 @@ Required services are local PostgreSQL, Redis and model artifacts. Runtime audio
 | RATE_LIMIT_HMAC_KEY | Secret server config | Key for the keyed identifiers in Redis throttle counters; required once login throttling exists (M2.3) |
 | SUBSCRIBER_HMAC_KEYS / SUBSCRIBER_HMAC_ACTIVE_VERSION | Secret server config | Versioned identity digest keys and selected version |
 | PAYLOAD_HMAC_KEYS / PAYLOAD_HMAC_ACTIVE_VERSION | Secret server config | Versioned idempotency digest keys |
-| AUDIT_HMAC_KEYS / AUDIT_HMAC_ACTIVE_VERSION | Secret server/job config | Versioned audit signing/verification keys |
+| AUDIT_HMAC_KEYS / AUDIT_HMAC_ACTIVE_VERSION | Secret server/job config | Versioned audit signing/verification keys; JSON object `{"<version>": "<32+ character secret>"}` (M2.3) |
 | MODEL_DIR / MODEL_MANIFEST_PATH | Server | Trusted local model assets |
 | AUDIO_SAMPLE_MANIFEST_PATH | Server | Allowlisted controlled samples |
 | POLICY_PATH | Server | Approved versioned thresholds/window configuration |
 | INFERENCE_DEVICE | Server | Explicit CPU/GPU selection |
 | MAX_INFLIGHT_ANALYSES / INFERENCE_TIMEOUT_SECONDS | Server | Bounded admission/deadline |
 | EVENT_RETENTION_DAYS / AUDIT_RETENTION_DAYS | Server/job | Approved expiry policies |
-| SESSION_IDLE_MINUTES / SESSION_MAX_HOURS | Server | Approved session limits |
+| SESSION_IDLE_MINUTES / SESSION_MAX_HOURS | Server | Approved session limits; defaults 30 and 8 (M2.3) |
 | LOG_LEVEL | Server | Structured safe logging verbosity |
 
 Use a documented JSON map or secret-file references for versioned key sets; never include real values in examples. API keys and account passwords are provisioned securely, not hardcoded environment defaults. Relative same-origin browser URLs require no frontend secrets. Bootstrap secret input must not appear in command history or logs.
