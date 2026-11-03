@@ -6,7 +6,7 @@ import re
 from typing import Literal, Self
 from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
@@ -47,6 +47,14 @@ class Settings(BaseSettings):
     session_idle_minutes: int = Field(default=30, ge=1, le=24 * 60)
     session_max_hours: int = Field(default=8, ge=1, le=24)
     audit_retention_days: int = Field(default=30, ge=1, le=3650)
+
+    # Event ingestion (M3.1). All-or-nothing like authentication, which it requires; pilot
+    # requires it. Key maps use the AUDIT_HMAC_KEYS format: {"<version>": "<32+ chars>"}.
+    subscriber_hmac_keys: SecretStr | None = None
+    subscriber_hmac_active_version: str | None = None
+    payload_hmac_keys: SecretStr | None = None
+    payload_hmac_active_version: str | None = None
+    event_retention_days: int = Field(default=7, ge=1, le=3650)
 
     @field_validator("database_url", "retention_database_url")
     @classmethod
@@ -110,11 +118,13 @@ class Settings(BaseSettings):
             raise ValueError(f"RATE_LIMIT_HMAC_KEY must be at least {MIN_SECRET_LENGTH} characters")
         return value
 
-    @field_validator("audit_hmac_keys")
+    @field_validator("audit_hmac_keys", "subscriber_hmac_keys", "payload_hmac_keys")
     @classmethod
-    def require_versioned_audit_keys(cls, value: SecretStr | None) -> SecretStr | None:
+    def require_versioned_keys(
+        cls, value: SecretStr | None, info: ValidationInfo
+    ) -> SecretStr | None:
         if value is not None:
-            parse_audit_keys(value)
+            parse_key_map(value, (info.field_name or "").upper())
         return value
 
     @model_validator(mode="after")
@@ -142,26 +152,52 @@ class Settings(BaseSettings):
                 raise ValueError("Plain-HTTP APP_ORIGIN is allowed only for local development")
         if self.session_idle_minutes >= self.session_max_hours * 60:
             raise ValueError("SESSION_IDLE_MINUTES must be shorter than SESSION_MAX_HOURS")
+        ingestion = {
+            "SUBSCRIBER_HMAC_KEYS": self.subscriber_hmac_keys,
+            "SUBSCRIBER_HMAC_ACTIVE_VERSION": self.subscriber_hmac_active_version,
+            "PAYLOAD_HMAC_KEYS": self.payload_hmac_keys,
+            "PAYLOAD_HMAC_ACTIVE_VERSION": self.payload_hmac_active_version,
+        }
+        if self.app_env == "pilot" or any(value is not None for value in ingestion.values()):
+            missing = sorted(name for name, value in ingestion.items() if value is None)
+            if missing:
+                raise ValueError(f"Event ingestion requires: {', '.join(missing)}")
+            if not self.auth_configured:
+                raise ValueError("Event ingestion requires the authentication configuration")
+            for keys, version, name in (
+                (self.subscriber_hmac_keys, self.subscriber_hmac_active_version, "SUBSCRIBER"),
+                (self.payload_hmac_keys, self.payload_hmac_active_version, "PAYLOAD"),
+            ):
+                if keys is not None and version not in parse_key_map(keys, f"{name}_HMAC_KEYS"):
+                    raise ValueError(f"{name}_HMAC_ACTIVE_VERSION is not a key in {name}_HMAC_KEYS")
         return self
 
     @property
     def auth_configured(self) -> bool:
         return self.app_origin is not None
 
+    @property
+    def ingestion_configured(self) -> bool:
+        return self.payload_hmac_keys is not None
 
-def parse_audit_keys(value: SecretStr) -> dict[str, bytes]:
-    """AUDIT_HMAC_KEYS is a JSON object mapping key versions to secrets."""
+
+def parse_key_map(value: SecretStr, name: str) -> dict[str, bytes]:
+    """A versioned key map is a JSON object mapping key versions to secrets."""
     try:
         raw = json.loads(value.get_secret_value())
     except json.JSONDecodeError:
-        raise ValueError("AUDIT_HMAC_KEYS must be a JSON object") from None
+        raise ValueError(f"{name} must be a JSON object") from None
     if not isinstance(raw, dict) or not raw:
-        raise ValueError("AUDIT_HMAC_KEYS must be a non-empty JSON object")
+        raise ValueError(f"{name} must be a non-empty JSON object")
     keys: dict[str, bytes] = {}
     for version, secret in raw.items():
         if not KEY_VERSION.fullmatch(version):
-            raise ValueError("AUDIT_HMAC_KEYS versions must be 1-32 safe characters")
+            raise ValueError(f"{name} versions must be 1-32 safe characters")
         if not isinstance(secret, str) or len(secret) < MIN_SECRET_LENGTH:
-            raise ValueError(f"Each AUDIT_HMAC_KEYS secret needs {MIN_SECRET_LENGTH}+ characters")
+            raise ValueError(f"Each {name} secret needs {MIN_SECRET_LENGTH}+ characters")
         keys[version] = secret.encode()
     return keys
+
+
+def parse_audit_keys(value: SecretStr) -> dict[str, bytes]:
+    return parse_key_map(value, "AUDIT_HMAC_KEYS")

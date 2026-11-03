@@ -1,8 +1,9 @@
-"""Input schemas only: no ingestion, persistence, inference or identity authorization."""
+"""Event request DTOs (validation only) and the receipt returned by the ingestion routes."""
 
 import re
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
+from uuid import UUID
 
 from pydantic import (
     AwareDatetime,
@@ -92,3 +93,22 @@ class SMSEvent(EventBase):
 class CallEvent(EventBase):
     kind: Literal["call"] = "call"
     audio_reference: SampleReference | None = None
+
+
+class EventReceipt(BaseModel):
+    """API.md receipt fields. Ingestor receipts never include incident IDs or subscriber data."""
+
+    event_id: UUID
+    external_event_id: str
+    source: str
+    kind: Literal["sms", "call"]
+    analysis_status: Literal["complete", "partial", "unavailable"]
+    received_at: datetime
+    processing_ms: int
+    replayed: bool
+    warnings: list[str]
+
+
+class ReceiptResponse(BaseModel):
+    data: EventReceipt
+    request_id: UUID

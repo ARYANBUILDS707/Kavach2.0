@@ -16,8 +16,9 @@ Status values: `not started`, `in progress`, `blocked`, `complete (verified)`, `
 | M2.2 | Full DATABASE.md schema, Alembic migration `0001_initial_schema`, integrity triggers, role grants | `backend` | complete (verified): GitHub Actions run 41121829796 on `e7c0873`, both jobs passed (public GitHub API, 31 Oct 2026) | — |
 | M2.3 | Login/session/logout, Argon2id, opaque DB sessions, CSRF, Origin, shared Redis throttling (fail closed), audited minimal provisioning | `backend` | complete (verified): GitHub Actions run 41186469837 on `24e6538`, both jobs passed (public GitHub API, 3 Nov 2026) | — |
 | M2.4 | Source-scoped ingestion keys and `require_ingest_key`/`require_source`; operator CLI (bootstrap, provision, deactivate, reset, role change, key create/rotate/revoke/list, retention); admin-actor authorization; operator-triggered retention | `backend` | complete (verified): GitHub Actions run 41693476877 on `0db68fb`, both jobs passed (public GitHub API, 4 Nov 2026) | — |
-| M2.5 | Full M2 security acceptance: audit, findings M-1–M-3 and L-1–L-3 fixed (migration `0002_retention_procedure`, write-ahead retention audit, final revocation), report in `M2_SECURITY_ACCEPTANCE.md` | `backend` | in progress: verified locally on 4 Nov 2026; uncommitted; **not yet run on GitHub** | Owner review; user commit/push; exit requires both CI jobs green on the pushed commit. Acceptance decision: CONDITIONAL (see report) |
+| M2.5 | Full M2 security acceptance: findings M-1–M-3 and L-1–L-3 fixed (migration `0002_retention_procedure`, write-ahead retention audit, final revocation), report in `M2_SECURITY_ACCEPTANCE.md` | `backend` | complete (verified): GitHub Actions run 41695959367 on `a4a5578`, both jobs passed (public GitHub API, 4 Nov 2026). **M2 acceptance: PASS** | — |
 | M3 | Authenticated ingestion, PG idempotency, Redis state, scenario catalog + submission script | `backend` | not started | M2; D08 |
+| M3.1 | Key-authenticated SMS/call ingestion, transactional PostgreSQL idempotency (201/200/409), receipt recovery, standalone incident with unavailable analysis, ingestion audit | `backend` | in progress: verified locally on 4 Nov 2026; uncommitted; **not yet run on GitHub** | Owner review; user commit/push; exit requires both CI jobs green |
 | M4 | SMS detection and evaluation | `backend` | not started | M3; D04 data/licensing |
 | M5 | Voice transcription, intent, synthesis indication | `backend` | not started | M3; D04 data/licensing/hardware |
 | M6 | Correlation and continuous fusion | `backend` | not started | M4, M5; D05, D06; paired labeled data |
@@ -83,6 +84,20 @@ The fresh environment was created in a temporary directory outside the repositor
 | typing-extensions | 4.16.0 | transitive |
 | typing-inspection | 0.4.4 | transitive |
 | uvicorn | 0.54.0 | direct |
+
+## M3.1 local verification (4 November 2026, historical once recorded)
+
+GitHub Actions has **not** run the M3.1 changes; everything below is local.
+
+| Item | Value |
+| --- | --- |
+| Endpoints | `POST /api/v1/events/sms`, `POST /api/v1/events/call`, `GET /api/v1/events/{id}` (ingestion keys only) |
+| Dependencies / migrations | none added / none (existing `events` schema) |
+| Default suite | 187 passed (25 new: canonicalization, keyed digests, stage reporting, configuration, unauthenticated bodies never read), 266 deselected |
+| Integration suite | 266 passed (29 new: create/replay/conflict, per-source IDs, concurrency, key scope and validity, validation bounds, audio references, receipt recovery, audit rollback, database outage, privacy scan of every stored row and log) |
+| Concurrency evidence | 8 identical concurrent submissions → one 201 and seven 200, one row; 8 conflicting → one 201 and seven 409. Instrumented runs: 7–14 of 14 losing requests took the `ON CONFLICT DO NOTHING` path |
+| Real outage | PostgreSQL container stopped → 503, nothing stored; restored → replay 200, failed event created on retry 201 |
+| Ruff / lock | check passed, 63 files formatted / `uv lock --check` passed |
 
 ## M2.5 security acceptance (4 November 2026, historical once recorded)
 
@@ -188,6 +203,9 @@ The owner's conflict and Git decisions do not approve any item below marked pend
 | TD-13 | Retention runs are operator-triggered and destructive only on `*_test` databases; no schedule exists. Since M2.5 the retention role is limited to the expiry procedure and runs are audited before deleting | Synthetic dev data is not yet cleaned automatically | Scheduling and the dev/pilot policy with the deployment milestone (M11) |
 | TD-14 | Login throttling uses fixed 15-minute windows keyed by HMAC(username, client IP); `X-Forwarded-For` is ignored, so behind a proxy every client shares one IP and its 30-failure ceiling | Proxy deployments need explicit trusted-proxy handling first | Before any proxied deployment (M11) |
 | TD-15 | ~~No operator commands for deactivation, reset or role change~~ Implemented in M2.4 (`python -m kavach.cli`) | — | Closes with M2.4 |
+| TD-16 | The documented admin session path for event submission (`simulator` source + CSRF) and admin receipt reads is not implemented; M3.1 is key-only | Browser simulator cannot submit yet | With the simulator UI (M8) or on approval |
+| TD-17 | No approved audio sample manifest (`AUDIO_SAMPLE_MANIFEST_PATH`): every non-null `audio_reference` is rejected | Calls are metadata-only | Before voice analysis (M5) |
+| TD-18 | D08 ingestion limits (30/minute/key, admission and deadline) are not enforced | No per-key ingestion throttle yet | M3.2+ once D08 is approved |
 | TD-05 | `docs/AGENTS.md` duplicates root `AGENTS.md` with relative paths | Rules can drift; root `AGENTS.md` is authoritative | Decide whether to keep or reduce to a pointer |
 | TD-06 | Stale Git/status statements: README and ARCHITECTURE.md line 7 corrected in M0; CONTRIBUTING.md branch rules added in M0. PRD document map now lists the six new documents | Reader confusion | Separate approved docs change |
 | TD-07 | ~~Development/test PostgreSQL and Redis not defined~~ Defined in M2.1: `deployment/compose.dev.yml` | — | Closes with M2.1 |

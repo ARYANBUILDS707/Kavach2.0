@@ -166,6 +166,18 @@ $C retention run --database kavach_test --dry-run --actor root
 - **API keys** are `kvk_` + 256 random bits, stored only as SHA-256 digests, bound to one source, and always expire (default 90 days, maximum 365). For an overlap window, `key create` a replacement and `key revoke` the old key later instead of `key rotate`.
 - **Retention** deletes rows whose `expires_at` (or a session's `revoked_at`) is at or before the cutoff (`--as-of`, default now): expired incidents with their links, assessments and reviews, then events no longer linked to any incident, then audit records, then sessions. Users and keys are never deleted. `--database` must name the connected database; destructive runs are refused unless it is a `*_test` database (dry runs are allowed anywhere). A dry run executes the batches in one transaction and rolls back, so its counts are exact. Scheduling is a later milestone.
 
+#### Event ingestion (M3.1)
+
+With the ingestion settings in `.env.example` (they require the authentication settings), an ingestion key for source `simulator` can submit synthetic events:
+
+```sh
+curl -sS -X POST http://127.0.0.1:8000/api/v1/events/sms \
+  -H "Authorization: Bearer $KAVACH_KEY" -H "Content-Type: application/json" \
+  -d '{"event_id":"demo-1","subscriber_token":"sub_demo_a","timestamp":"<now, RFC 3339>","source":"simulator","text":"Synthetic test message"}'
+```
+
+The first submission returns 201, an identical retry 200 (`replayed: true`), and a changed payload with the same `event_id` 409. `GET /api/v1/events/<receipt event_id>` recovers the receipt for the same source. No models are deployed, so every receipt reports `analysis_status: unavailable` with a warning per unavailable stage. Only synthetic data may be submitted.
+
 #### Integration tests
 
 Integration tests are excluded from the default `pytest` run and selected with `-m integration`. They read four variables and **fail (not skip)** if any is missing. They rebuild the schema in the disposable `kavach_test` database from empty at the start of each session, so never point them at `kavach_dev`:
@@ -184,7 +196,9 @@ backend/.venv/bin/python -m pytest backend/tests -m integration
 
 ### Verification status
 
-**Current status (M2.5 security acceptance, 3–4 November 2026; point-in-time, re-run before relying on it):** see `docs/M2_SECURITY_ACCEPTANCE.md` for findings and evidence. Default suite 162 passed; integration suite 237 passed (both environments); Ruff clean (56 files); `uv lock --check` passed; migrations `0001` → `0002` verified from empty and on existing data, `alembic check` clean. GitHub Actions has **not** run the M2.5 changes yet; M2.4 passed on GitHub (run 41693476877, commit `0db68fb`).
+**Current status (M3.1 local verification, 4 November 2026; point-in-time, re-run before relying on it):** default suite 187 passed; integration suite 266 passed (29 new ingestion tests); both environments; Ruff clean (63 files); `uv lock --check` passed with no dependency changes. A real PostgreSQL container stop returned 503 for new events with nothing stored; after restart the stored event replayed (200) and the failed one was created on retry (201). GitHub Actions has **not** run M3.1 yet; M2.5 passed on GitHub (run 41695959367, commit `a4a5578`).
+
+**Historical record — M2.5 security acceptance, 3–4 November 2026:** see `docs/M2_SECURITY_ACCEPTANCE.md` for findings and evidence. Default suite 162 passed; integration suite 237 passed (both environments); Ruff clean (56 files); `uv lock --check` passed; migrations `0001` → `0002` verified from empty and on existing data, `alembic check` clean. GitHub Actions has **not** run the M2.5 changes yet; M2.4 passed on GitHub (run 41693476877, commit `0db68fb`).
 
 **Historical record — M2.4 local verification, 3 November 2026:**
 

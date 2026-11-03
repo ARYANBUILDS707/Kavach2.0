@@ -75,13 +75,14 @@ class AuditWriter:
         request_id: UUID | None,
         now: datetime,
         actor_user_id: UUID | None = None,
+        actor_ingest_key_id: UUID | None = None,
         outcome: Literal["success", "denied"] = "success",
     ) -> UUID:
         """Insert within the caller's transaction, so a failed audit write rolls back the change."""
         fields: dict[str, Any] = {
             "id": uuid4(),
             "actor_user_id": actor_user_id,
-            "actor_ingest_key_id": None,
+            "actor_ingest_key_id": actor_ingest_key_id,
             "actor_kind": actor_kind,
             "action": action,
             "resource_type": resource_type,

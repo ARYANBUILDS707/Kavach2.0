@@ -21,6 +21,8 @@ ORIGIN = "https://kavach.test"
 # Test-only operator, bootstrapped once per test session in the disposable kavach_test database.
 OPERATOR_USERNAME = "operator.root"
 OPERATOR_PASSWORD = "operator test passphrase"
+TEST_SUBSCRIBER_KEYS = '{"v1": "test-only-subscriber-key-0000000000000000"}'
+TEST_PAYLOAD_KEYS = '{"v1": "test-only-payload-key-00000000000000000000"}'
 
 
 @dataclass(frozen=True)
@@ -50,6 +52,11 @@ def auth_settings(rate_limit_key: str, audit_keys: str, **override: Any) -> Sett
         "rate_limit_hmac_key": rate_limit_key,
         "audit_hmac_keys": audit_keys,
         "audit_hmac_active_version": "v1",
+        # Fixed, test-only ingestion keys, so separate app instances agree on digests.
+        "subscriber_hmac_keys": TEST_SUBSCRIBER_KEYS,
+        "subscriber_hmac_active_version": "v1",
+        "payload_hmac_keys": TEST_PAYLOAD_KEYS,
+        "payload_hmac_active_version": "v1",
     }
     return Settings(**(values | override))
 

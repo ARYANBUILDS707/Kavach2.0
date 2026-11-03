@@ -39,6 +39,10 @@ def test_pilot_does_not_expose_development_docs() -> None:
         rate_limit_hmac_key="r" * 32,
         audit_hmac_keys='{"v1": "' + "a" * 32 + '"}',
         audit_hmac_active_version="v1",
+        subscriber_hmac_keys='{"v1": "' + "s" * 32 + '"}',
+        subscriber_hmac_active_version="v1",
+        payload_hmac_keys='{"v1": "' + "p" * 32 + '"}',
+        payload_hmac_active_version="v1",
     )
     with TestClient(create_app(settings)) as client:
         assert client.get("/docs").status_code == 404
