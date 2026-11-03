@@ -162,7 +162,7 @@ $C retention run --database kavach_test --dry-run --actor root
 
 - **Actor.** Every command except `--bootstrap` authenticates `--actor` (password prompt) as an *active admin*, re-checked in the same transaction as the change. Operators cannot deactivate themselves, and the last active admin cannot be deactivated or demoted. The password check gives attribution and policy; the real boundary is custody of the database credentials the CLI runs with.
 - **Secrets** are never arguments. They are prompted for (new passwords twice), or with `--stdin` read one per line: the actor's password first, then any new password.
-- **Audit.** Bootstrap, provisioning, role change, password reset, deactivation, key create/rotate/revoke are audited in the same transaction as the change (an audit failure rolls the change back). A destructive retention run is audited after it commits (the retention role cannot write audit rows).
+- **Audit.** Bootstrap, provisioning, role change, password reset, deactivation, key create/rotate/revoke are audited in the same transaction as the change (an audit failure rolls the change back). A destructive retention run writes `retention.start` before deleting anything and `retention.complete` afterwards (same run ID); the retention role itself cannot write audit rows.
 - **API keys** are `kvk_` + 256 random bits, stored only as SHA-256 digests, bound to one source, and always expire (default 90 days, maximum 365). For an overlap window, `key create` a replacement and `key revoke` the old key later instead of `key rotate`.
 - **Retention** deletes rows whose `expires_at` (or a session's `revoked_at`) is at or before the cutoff (`--as-of`, default now): expired incidents with their links, assessments and reviews, then events no longer linked to any incident, then audit records, then sessions. Users and keys are never deleted. `--database` must name the connected database; destructive runs are refused unless it is a `*_test` database (dry runs are allowed anywhere). A dry run executes the batches in one transaction and rolls back, so its counts are exact. Scheduling is a later milestone.
 
@@ -184,7 +184,9 @@ backend/.venv/bin/python -m pytest backend/tests -m integration
 
 ### Verification status
 
-**Current status (M2.4 local verification, 3 November 2026; point-in-time, re-run before relying on it):**
+**Current status (M2.5 security acceptance, 3–4 November 2026; point-in-time, re-run before relying on it):** see `docs/M2_SECURITY_ACCEPTANCE.md` for findings and evidence. Default suite 162 passed; integration suite 237 passed (both environments); Ruff clean (56 files); `uv lock --check` passed; migrations `0001` → `0002` verified from empty and on existing data, `alembic check` clean. GitHub Actions has **not** run the M2.5 changes yet; M2.4 passed on GitHub (run 41693476877, commit `0db68fb`).
+
+**Historical record — M2.4 local verification, 3 November 2026:**
 
 - No dependency changes; `uv lock --check` passed (40 entries).
 - Default suite: 162 passed, 207 deselected, 1 warning. Integration suite: 207 passed (39 new M2.4 tests). Both in the existing `backend/.venv` (Ruff 0.17.3) and a fresh locked environment (Ruff 0.17.2). Ruff check passed; 54 files already formatted.

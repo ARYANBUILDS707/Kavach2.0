@@ -15,7 +15,8 @@ Status values: `not started`, `in progress`, `blocked`, `complete (verified)`, `
 | M2.1 | Database and development infrastructure: dependencies, dev/test Compose, engine/session and Redis client lifecycle, config validation, real-service tests, CI integration job | `backend` | complete (verified): GitHub Actions run 41119537962 on `0cebb3b`, both jobs passed (checked via the public GitHub API, 31 Oct 2026) | — |
 | M2.2 | Full DATABASE.md schema, Alembic migration `0001_initial_schema`, integrity triggers, role grants | `backend` | complete (verified): GitHub Actions run 41121829796 on `e7c0873`, both jobs passed (public GitHub API, 31 Oct 2026) | — |
 | M2.3 | Login/session/logout, Argon2id, opaque DB sessions, CSRF, Origin, shared Redis throttling (fail closed), audited minimal provisioning | `backend` | complete (verified): GitHub Actions run 41186469837 on `24e6538`, both jobs passed (public GitHub API, 3 Nov 2026) | — |
-| M2.4 | Source-scoped ingestion keys and `require_ingest_key`/`require_source`; operator CLI (bootstrap, provision, deactivate, reset, role change, key create/rotate/revoke/list, retention); admin-actor authorization; operator-triggered retention | `backend` | in progress: implemented and verified locally on 3 Nov 2026; uncommitted; **not yet run on GitHub** | Owner review; user commit/push; exit requires both CI jobs green on the pushed `backend` commit |
+| M2.4 | Source-scoped ingestion keys and `require_ingest_key`/`require_source`; operator CLI (bootstrap, provision, deactivate, reset, role change, key create/rotate/revoke/list, retention); admin-actor authorization; operator-triggered retention | `backend` | complete (verified): GitHub Actions run 41693476877 on `0db68fb`, both jobs passed (public GitHub API, 4 Nov 2026) | — |
+| M2.5 | Full M2 security acceptance: audit, findings M-1–M-3 and L-1–L-3 fixed (migration `0002_retention_procedure`, write-ahead retention audit, final revocation), report in `M2_SECURITY_ACCEPTANCE.md` | `backend` | in progress: verified locally on 4 Nov 2026; uncommitted; **not yet run on GitHub** | Owner review; user commit/push; exit requires both CI jobs green on the pushed commit. Acceptance decision: CONDITIONAL (see report) |
 | M3 | Authenticated ingestion, PG idempotency, Redis state, scenario catalog + submission script | `backend` | not started | M2; D08 |
 | M4 | SMS detection and evaluation | `backend` | not started | M3; D04 data/licensing |
 | M5 | Voice transcription, intent, synthesis indication | `backend` | not started | M3; D04 data/licensing/hardware |
@@ -82,6 +83,20 @@ The fresh environment was created in a temporary directory outside the repositor
 | typing-extensions | 4.16.0 | transitive |
 | typing-inspection | 0.4.4 | transitive |
 | uvicorn | 0.54.0 | direct |
+
+## M2.5 security acceptance (4 November 2026, historical once recorded)
+
+Full report with evidence: [M2_SECURITY_ACCEPTANCE.md](M2_SECURITY_ACCEPTANCE.md). GitHub Actions has **not** run the M2.5 changes.
+
+| Item | Value |
+| --- | --- |
+| Findings | 0 critical, 0 high; 3 medium (M-1 retention role could delete unexpired rows, M-2 retention audited only after commit, M-3 revocation reversible) **fixed**; 7 low (3 fixed, 4 open/accepted); 3 informational |
+| Schema change | revision `0002_retention_procedure`: `kavach_retention_purge` (SECURITY DEFINER, expired rows only, no future cutoff), retention role table grants revoked, `revocation_is_final` triggers; no table or column changes |
+| Default suite | 162 passed, 237 deselected |
+| Integration suite | 237 passed (30 new acceptance tests), both environments |
+| Ruff / lock | check passed, 56 files formatted / `uv lock --check` passed, no dependency changes |
+| Advisories | OSV.dev: no known advisories for the 39 locked third-party packages |
+| Real outages | Redis and PostgreSQL containers stopped and restarted: login 503 with 0 password verifications, recovery to 200 |
 
 ## M2.4 local verification (3 November 2026, historical once recorded)
 
@@ -170,7 +185,7 @@ The owner's conflict and Git decisions do not approve any item below marked pend
 | TD-03 | ~~CI not yet run~~ The lint/test job passed on `c36e903`. The new M2.1 integration job has not run on GitHub yet | Integration job unproven on GitHub | Close after both jobs are green on the M2.1 push |
 | TD-04 | `starlette.testclient`/`httpx` deprecation warning; the warning suggests `httpx2` (still present in the M1.1 runs: 88 passed, 1 warning) | May become an error in a later Starlette | Evaluate when dependencies are next touched |
 | TD-12 | Lockfile resolved `opentelemetry-api` 1.45.2 (transitive via FastAPI 0.162.0; released 29 Oct 2026), while the pip venv has 1.45.1. Tests pass with both | Minor drift between local venv and lock | Disappears when the user syncs `backend/.venv` |
-| TD-13 | Retention runs are operator-triggered and destructive only on `*_test` databases; no schedule exists, and a destructive run is audited after commit (retention role cannot write audit) | Synthetic dev data is not yet cleaned automatically | Scheduling and the dev/pilot policy with the deployment milestone (M11) |
+| TD-13 | Retention runs are operator-triggered and destructive only on `*_test` databases; no schedule exists. Since M2.5 the retention role is limited to the expiry procedure and runs are audited before deleting | Synthetic dev data is not yet cleaned automatically | Scheduling and the dev/pilot policy with the deployment milestone (M11) |
 | TD-14 | Login throttling uses fixed 15-minute windows keyed by HMAC(username, client IP); `X-Forwarded-For` is ignored, so behind a proxy every client shares one IP and its 30-failure ceiling | Proxy deployments need explicit trusted-proxy handling first | Before any proxied deployment (M11) |
 | TD-15 | ~~No operator commands for deactivation, reset or role change~~ Implemented in M2.4 (`python -m kavach.cli`) | — | Closes with M2.4 |
 | TD-05 | `docs/AGENTS.md` duplicates root `AGENTS.md` with relative paths | Rules can drift; root `AGENTS.md` is authoritative | Decide whether to keep or reduce to a pointer |

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
 from kavach.auth.accounts import AccountError, require_active_admin
@@ -22,6 +22,9 @@ from kavach.core.clock import Clock
 from kavach.core.telemetry import security_event
 from kavach.db import auth_repository as repo
 from kavach.privacy.audit import AuditWriter
+
+# Connection-level failures only; privilege or programming errors must surface as 500s.
+UNREACHABLE = (OperationalError, InterfaceError)
 
 KEY_PREFIX = "kvk_"
 KEY_BYTES = 32
@@ -76,7 +79,7 @@ class IngestKeyService:
         try:
             with self.sessions.begin() as db:
                 record = repo.find_ingest_key_by_digest(db, digest)
-        except DBAPIError:
+        except UNREACHABLE:
             raise IngestKeysUnavailable from None
         now = self.clock()
         if record is None or not hmac.compare_digest(record.key_digest, digest):

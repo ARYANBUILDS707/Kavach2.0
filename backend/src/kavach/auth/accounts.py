@@ -14,6 +14,7 @@ credentials they run with.
 from typing import Literal
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from kavach.auth.passwords import PasswordService, validate_new_password
@@ -143,13 +144,21 @@ class AccountService:
     ) -> UUID:
         if repo.find_user(db, username) is not None:
             raise AccountError("That username is already provisioned")
-        return repo.insert_user(
-            db,
-            username=username,
-            display_name=display_name.strip(),
-            role=role,
-            password_hash=password_hash,
-        )
+        try:
+            # A savepoint, so a concurrent duplicate surfaces as a clean refusal.
+            with db.begin_nested():
+                return repo.insert_user(
+                    db,
+                    username=username,
+                    display_name=display_name.strip(),
+                    role=role,
+                    password_hash=password_hash,
+                )
+        except IntegrityError as error:
+            constraint = getattr(getattr(error.orig, "diag", None), "constraint_name", None)
+            if constraint == "uq_users_username":
+                raise AccountError("That username is already provisioned") from None
+            raise
 
     def _existing(self, db: Session, username: str) -> repo.UserRecord:
         user = repo.find_user(db, username.lower())

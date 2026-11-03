@@ -1,10 +1,12 @@
 """Real-service fixtures; the services come from deployment/compose.dev.yml (or CI)."""
 
+import io
 import json
 import os
 import secrets
 from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
@@ -18,6 +20,7 @@ from sqlalchemy import Connection, Engine
 
 import kavach.db
 from kavach.auth.accounts import AccountService
+from kavach.cli import main as cli
 from kavach.core.redis_client import create_redis_client
 from kavach.db.engine import create_db_engine
 from kavach.main import create_app
@@ -184,3 +187,24 @@ def make_user(accounts: AccountService, operator_id: UUID) -> Callable[..., Acco
 @pytest.fixture
 def user(make_user: Callable[..., Account]) -> Account:
     return make_user()
+
+
+@pytest.fixture
+def run_cli(keys: tuple[str, str], clock: FakeClock, migrated_schema: None) -> Callable[..., Any]:
+    settings = auth_settings(
+        *keys, retention_database_url=os.environ["TEST_RETENTION_DATABASE_URL"]
+    )
+
+    def run(argv: list[str], *stdin_lines: str) -> tuple[int, str, str]:
+        out, err = io.StringIO(), io.StringIO()
+        code = cli(
+            [*argv, "--stdin"],
+            stdin=io.StringIO("".join(f"{line}\n" for line in stdin_lines)),
+            out=out,
+            err=err,
+            clock=clock,
+            settings=settings,
+        )
+        return code, out.getvalue(), err.getvalue()
+
+    return run

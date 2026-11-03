@@ -1,6 +1,7 @@
 """Least-privilege grants for the runtime and retention roles (DATABASE.md, M2.2)."""
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
@@ -32,14 +33,10 @@ RUNTIME_UPDATABLE = {
     "ingest_keys": {"revoked_at"},
     "incidents": {"current_revision", "latest_review_id", "version", "updated_at"},
 }
-RETENTION_DELETABLE = {"sessions", "incidents", "events", "audit_records"}
-RETENTION_READABLE = {
-    "sessions": {"id", "expires_at", "revoked_at"},
-    "incidents": {"id", "expires_at"},
-    "events": {"id", "expires_at"},
-    "audit_records": {"id", "expires_at"},
-    "incident_events": {"event_id"},
-}
+# Since revision 0002 the retention role holds no table privileges at all: it can only call
+# kavach_retention_purge, which deletes expired rows (DATABASE.md "narrowly scoped procedures").
+RETENTION_DELETABLE: set[str] = set()
+RETENTION_READABLE: dict[str, set[str]] = {}
 
 
 def table_privilege(connection: Connection, role: str, table: str, privilege: str) -> bool:
@@ -155,6 +152,12 @@ def retention_tx(migrated_schema: None, retention_engine: Engine) -> Iterator[Co
         "DELETE FROM reviews",
         "DELETE FROM users",
         "DELETE FROM assessments",
+        "DELETE FROM audit_records",
+        "DELETE FROM sessions",
+        "DELETE FROM incidents",
+        "DELETE FROM events",
+        "SELECT id, expires_at FROM audit_records",
+        "SELECT event_id FROM incident_events",
     ],
 )
 def test_retention_role_is_denied(retention_tx: Connection, statement: str) -> None:
@@ -209,16 +212,17 @@ def test_retention_role_deletes_an_expired_incident_graph(
     committed_incident: dict[str, UUID], retention_engine: Engine, migration_engine: Engine
 ) -> None:
     incident_id, event_id = committed_incident["incident"], committed_incident["event"]
-    with retention_engine.connect() as connection, connection.begin():
-        # Same shape as the future cleanup job: incidents first, then unreferenced events.
-        connection.execute(text("DELETE FROM incidents WHERE id = :id"), {"id": incident_id})
+    expired = datetime(2001, 1, 1, tzinfo=UTC)
+    with migration_engine.begin() as connection:
         connection.execute(
-            text(
-                "DELETE FROM events WHERE id = :id AND NOT EXISTS"
-                " (SELECT 1 FROM incident_events WHERE event_id = events.id)"
-            ),
-            {"id": event_id},
+            update(Incident).where(Incident.id == incident_id).values(expires_at=expired)
         )
+        connection.execute(update(Event).where(Event.id == event_id).values(expires_at=expired))
+    purge = text("SELECT kavach_retention_purge(:target, :cutoff, 100)")
+    with retention_engine.connect() as connection, connection.begin():
+        # The cleanup job's order: incidents first, then events no longer linked.
+        for target in ("incidents", "events"):
+            connection.execute(purge, {"target": target, "cutoff": expired})
     with migration_engine.connect() as connection:
         for model, column, value in (
             (Incident, Incident.id, incident_id),

@@ -30,7 +30,7 @@ from typing import TextIO
 from uuid import UUID
 
 from sqlalchemy import Engine
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import IntegrityError, InterfaceError, OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
 from kavach.auth.accounts import ROLES, AccountError, AccountService
@@ -39,7 +39,7 @@ from kavach.auth.passwords import PasswordService
 from kavach.core.clock import Clock, utc_now
 from kavach.core.config import Settings, parse_audit_keys
 from kavach.db.engine import create_db_engine, create_session_factory
-from kavach.db.retention import DEFAULT_BATCH_SIZE, RetentionRefused, run_retention
+from kavach.db.retention import DEFAULT_BATCH_SIZE, RetentionRefused, run_audited_retention
 from kavach.privacy.audit import AuditWriter
 
 
@@ -211,13 +211,30 @@ class Operator:
         if self.settings.retention_database_url is None:
             raise AccountError("RETENTION_DATABASE_URL is required for retention runs")
         try:
-            as_of = datetime.fromisoformat(args.as_of) if args.as_of else self.clock()
+            # Default: the database's own clock (expiry can never be brought forward).
+            as_of = datetime.fromisoformat(args.as_of) if args.as_of else None
         except ValueError:
             raise AccountError("--as-of must be an ISO 8601 timestamp with a timezone") from None
+
+        def record(action: str, run_id: UUID) -> None:
+            # Committed through the runtime role; retention.start is written before any delete.
+            with self.sessions.begin() as db:
+                self.audit.record(
+                    db,
+                    actor_kind="user",
+                    actor_user_id=actor,
+                    action=action,
+                    resource_type="retention",
+                    resource_id=None,
+                    request_id=run_id,
+                    now=self.clock(),
+                )
+
         engine = create_db_engine(self.settings.retention_database_url)
         try:
-            report = run_retention(
+            report = run_audited_retention(
                 engine,
+                record=record,
                 confirm_database=args.database,
                 as_of=as_of,
                 dry_run=args.dry_run,
@@ -230,19 +247,7 @@ class Operator:
         for table, count in report.deleted.items():
             print(f"  {table}: {mode} {count}", file=self.out)
         if not report.dry_run:
-            # The retention role cannot write audit rows (by design), so the run is recorded
-            # after it commits, through the runtime role. A crash in between leaves no record.
-            with self.sessions.begin() as db:
-                self.audit.record(
-                    db,
-                    actor_kind="user",
-                    actor_user_id=actor,
-                    action="retention.run",
-                    resource_type="retention",
-                    resource_id=None,
-                    request_id=None,
-                    now=self.clock(),
-                )
+            print(f"Audited as retention run {report.run_id}", file=self.out)
 
     def _print_key(self, key_id: UUID, source: str, expires_at: datetime, plaintext: str) -> None:
         print(
@@ -273,7 +278,10 @@ def main(
     except (AccountError, RetentionRefused) as error:
         print(f"Refused: {error}", file=err)
         return 1
-    except DBAPIError:
+    except IntegrityError:
+        print("Refused: the database rejected the change", file=err)
+        return 1
+    except (OperationalError, InterfaceError):
         # Each change is one transaction; only already-committed retention batches persist.
         print("Database unavailable; the command did not complete", file=err)
         return 3

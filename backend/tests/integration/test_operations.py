@@ -2,9 +2,7 @@
 CLI, audit integrity and its limits, and retention."""
 
 import hashlib
-import io
 import logging
-import os
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -17,7 +15,6 @@ from sqlalchemy import Engine, delete, func, select, text, update
 
 from kavach.auth.accounts import AccountError, AccountService
 from kavach.auth.ingest_keys import IngestKeyService, IssuedKey
-from kavach.cli import main as cli
 from kavach.db.models import (
     Assessment,
     AuditRecord,
@@ -432,27 +429,6 @@ def test_audit_detects_modification_but_not_deletion(
 # --- CLI ----------------------------------------------------------------------------------
 
 
-@pytest.fixture
-def run_cli(keys: tuple[str, str], clock: FakeClock, migrated_schema: None) -> Callable[..., Any]:
-    settings = auth_settings(
-        *keys, retention_database_url=os.environ["TEST_RETENTION_DATABASE_URL"]
-    )
-
-    def run(argv: list[str], *stdin_lines: str) -> tuple[int, str, str]:
-        out, err = io.StringIO(), io.StringIO()
-        code = cli(
-            [*argv, "--stdin"],
-            stdin=io.StringIO("".join(f"{line}\n" for line in stdin_lines)),
-            out=out,
-            err=err,
-            clock=clock,
-            settings=settings,
-        )
-        return code, out.getvalue(), err.getvalue()
-
-    return run
-
-
 def operator(*argv: str) -> list[str]:
     return [*argv, "--actor", OPERATOR_USERNAME]
 
@@ -728,13 +704,16 @@ def test_cli_retention_run_is_audited_only_when_destructive(
     operator_id: UUID,
     migration_engine: Engine,
 ) -> None:
-    def retention_audits() -> int:
-        return scalar(
-            migration_engine,
-            select(func.count())
-            .select_from(AuditRecord)
-            .where(AuditRecord.action == "retention.run"),
-        )
+    def retention_audits() -> list[tuple[str, UUID]]:
+        with migration_engine.connect() as connection:
+            return [
+                (row.action, row.request_id)
+                for row in connection.execute(
+                    select(AuditRecord.action, AuditRecord.request_id)
+                    .where(AuditRecord.resource_type == "retention")
+                    .order_by(AuditRecord.created_at, AuditRecord.action.desc())
+                )
+            ]
 
     before = retention_audits()
     base = operator("retention", "run", "--database", "kavach_test", "--as-of", CUTOFF.isoformat())
@@ -745,7 +724,11 @@ def test_cli_retention_run_is_audited_only_when_destructive(
     code, out, err = run_cli(base, OPERATOR_PASSWORD)
     assert code == 0, err
     assert "incidents: deleted" in out
-    assert retention_audits() == before + 1
+    run_id = UUID(out.strip().split()[-1])
+    assert retention_audits()[len(before) :] == [
+        ("retention.start", run_id),
+        ("retention.complete", run_id),
+    ]
     code, _, err = run_cli(
         operator("retention", "run", "--database", "kavach_test", "--as-of", "2001-01-01"),
         OPERATOR_PASSWORD,

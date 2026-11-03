@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
 from kavach.auth.passwords import PasswordService
@@ -14,6 +14,9 @@ from kavach.core.clock import Clock
 from kavach.core.telemetry import security_event
 from kavach.db import auth_repository as repo
 from kavach.privacy.audit import AuditWriter
+
+# Connection-level failures only; privilege or programming errors must surface as 500s.
+UNREACHABLE = (OperationalError, InterfaceError)
 
 # last_seen_at is written at most this often, so reads do not all become writes.
 TOUCH_INTERVAL = timedelta(seconds=60)
@@ -101,7 +104,7 @@ class AuthService:
         try:
             with self.sessions.begin() as db:
                 user = repo.find_user(db, canonical)
-        except DBAPIError:
+        except UNREACHABLE:
             raise DependencyUnavailable from None
         # Always one Argon2 verification, whether or not the user exists or is active.
         verified = self.passwords.verify(user.password_hash if user else None, password)
@@ -137,7 +140,7 @@ class AuthService:
                     request_id=request_id,
                     now=now,
                 )
-        except DBAPIError:
+        except UNREACHABLE:
             raise DependencyUnavailable from None
         self.throttle.release(canonical, client_ip)
         return IssuedSession(
@@ -172,7 +175,7 @@ class AuthService:
                 if now - last_seen >= TOUCH_INTERVAL:
                     repo.touch_session(db, record.id, now)
                     last_seen = now
-        except DBAPIError:
+        except UNREACHABLE:
             raise DependencyUnavailable from None
         return ActiveSession(
             session_id=record.id,
@@ -198,5 +201,5 @@ class AuthService:
                         request_id=request_id,
                         now=now,
                     )
-        except DBAPIError:
+        except UNREACHABLE:
             raise DependencyUnavailable from None
