@@ -2,112 +2,40 @@
 throttling across processes, outages, audit and log redaction (M2.3)."""
 
 import hashlib
-import json
 import logging
 import multiprocessing
 import secrets
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Annotated, Any
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
 from argon2 import PasswordHasher
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from httpx import Response
 from redis import Redis
 from sqlalchemy import Engine, func, select, update
 
 from kavach.auth.accounts import AccountService
-from kavach.auth.dependencies import require_role
 from kavach.auth.passwords import PasswordService
-from kavach.auth.service import ActiveSession
 from kavach.db.models import AuditRecord, User, UserSession
 from kavach.main import create_app
 
-from .auth_support import ORIGIN, FakeClock, auth_settings, failed_logins_in_process, login
+from .auth_support import (
+    ORIGIN,
+    Account,
+    FakeClock,
+    auth_settings,
+    failed_logins_in_process,
+    login,
+)
 
 pytestmark = pytest.mark.integration
 
 SECURE_COOKIE = "__Host-kavach_session"
-
-
-@dataclass(frozen=True)
-class Account:
-    id: UUID
-    username: str
-    password: str
-
-
-@pytest.fixture
-def keys() -> tuple[str, str]:
-    return secrets.token_urlsafe(32), json.dumps({"v1": secrets.token_urlsafe(32)})
-
-
-@pytest.fixture
-def clock() -> FakeClock:
-    return FakeClock()
-
-
-@pytest.fixture
-def clean_throttle(redis_client: Redis) -> Iterator[None]:
-    def clear() -> None:
-        for key in redis_client.scan_iter("kavach:test:ratelimit:*"):
-            redis_client.delete(key)
-
-    clear()
-    yield
-    clear()
-
-
-@pytest.fixture
-def app(
-    migrated_schema: None, keys: tuple[str, str], clock: FakeClock, clean_throttle: None
-) -> FastAPI:
-    application = create_app(auth_settings(*keys), clock=clock)
-
-    @application.get("/_test/admin-only")
-    def admin_only(session: Annotated[ActiveSession, Depends(require_role("admin"))]) -> dict:
-        return {"role": session.role}
-
-    return application
-
-
-@pytest.fixture
-def client(app: FastAPI) -> Iterator[TestClient]:
-    with TestClient(app, base_url=ORIGIN) as test_client:
-        yield test_client
-
-
-@pytest.fixture
-def accounts(app: FastAPI, clock: FakeClock) -> AccountService:
-    return AccountService(
-        sessions=app.state.db_sessions,
-        passwords=app.state.auth.passwords,
-        audit=app.state.auth.audit,
-        clock=clock,
-    )
-
-
-@pytest.fixture
-def make_user(accounts: AccountService) -> Callable[..., Account]:
-    def make(role: str = "analyst") -> Account:
-        username = f"user.{uuid4().hex[:12]}"
-        password = f"pw-{uuid4().hex}"
-        user_id = accounts.provision_user(
-            username=username, display_name="Synthetic Analyst", role=role, password=password
-        )
-        return Account(user_id, username, password)
-
-    return make
-
-
-@pytest.fixture
-def user(make_user: Callable[..., Account]) -> Account:
-    return make_user()
 
 
 def set_cookie_attributes(response: Response) -> dict[str, str]:
@@ -169,10 +97,13 @@ def test_only_digests_of_session_and_csrf_tokens_are_stored(
 
 
 def test_invalid_credentials_are_indistinguishable(
-    client: TestClient, make_user: Callable[..., Account], accounts: AccountService
+    client: TestClient,
+    make_user: Callable[..., Account],
+    accounts: AccountService,
+    operator_id: UUID,
 ) -> None:
     known, inactive = make_user(), make_user()
-    accounts.deactivate_user(inactive.username)
+    accounts.deactivate_user(actor_id=operator_id, username=inactive.username)
     responses = [
         login(client, known.username, "wrong password!"),
         login(client, "nobody." + uuid4().hex, known.password),
@@ -264,13 +195,15 @@ def test_last_seen_is_written_at_most_once_a_minute(
 
 @pytest.mark.parametrize("action", ["deactivate", "reset"])
 def test_deactivation_and_password_reset_revoke_sessions(
-    client: TestClient, user: Account, accounts: AccountService, action: str
+    client: TestClient, user: Account, accounts: AccountService, operator_id: UUID, action: str
 ) -> None:
     logged_in(client, user)
     if action == "deactivate":
-        accounts.deactivate_user(user.username)
+        accounts.deactivate_user(actor_id=operator_id, username=user.username)
     else:
-        accounts.reset_password(user.username, "a brand new passphrase")
+        accounts.reset_password(
+            actor_id=operator_id, username=user.username, new_password="a brand new passphrase"
+        )
     assert client.get("/api/v1/auth/session").status_code == 401
     assert login(client, user.username, user.password).status_code == 401
     if action == "reset":
@@ -373,13 +306,13 @@ def audit_rows(engine: Engine, **where: Any) -> list[Any]:
 
 
 def test_successful_authentication_and_provisioning_are_audited(
-    client: TestClient, user: Account, app: FastAPI, migration_engine: Engine
+    client: TestClient, user: Account, app: FastAPI, migration_engine: Engine, operator_id: UUID
 ) -> None:
     csrf = logged_in(client, user)["csrf_token"]
     assert logout(client, csrf).status_code == 204
     writer = app.state.auth.audit
     (provisioned,) = audit_rows(migration_engine, resource_id=user.id, action="user.provision")
-    assert (provisioned["actor_kind"], provisioned["actor_user_id"]) == ("system", None)
+    assert (provisioned["actor_kind"], provisioned["actor_user_id"]) == ("user", operator_id)
     sessions = audit_rows(migration_engine, actor_user_id=user.id)
     assert sorted(row["action"] for row in sessions) == ["auth.login", "auth.logout"]
     for row in [provisioned, *sessions]:

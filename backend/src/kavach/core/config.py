@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     app_env: Literal["development", "test", "pilot"] = "development"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     database_url: SecretStr | None = None
+    # Only the operator retention command uses this (kavach_retention role).
+    retention_database_url: SecretStr | None = None
     redis_url: SecretStr | None = None
 
     # Authentication (M2.3). All-or-nothing: setting any of these requires the full group, and
@@ -46,7 +48,7 @@ class Settings(BaseSettings):
     session_max_hours: int = Field(default=8, ge=1, le=24)
     audit_retention_days: int = Field(default=30, ge=1, le=3650)
 
-    @field_validator("database_url")
+    @field_validator("database_url", "retention_database_url")
     @classmethod
     def require_psycopg_database_url(cls, value: SecretStr | None) -> SecretStr | None:
         if value is None:
@@ -54,11 +56,11 @@ class Settings(BaseSettings):
         try:
             url = make_url(value.get_secret_value())
         except ArgumentError:
-            raise ValueError("DATABASE_URL is not a valid database URL") from None
+            raise ValueError("Database URLs must be valid database URLs") from None
         if url.drivername != "postgresql+psycopg":
-            raise ValueError("DATABASE_URL must use the postgresql+psycopg scheme")
+            raise ValueError("Database URLs must use the postgresql+psycopg scheme")
         if not url.host or not url.database:
-            raise ValueError("DATABASE_URL must name a host and a database")
+            raise ValueError("Database URLs must name a host and a database")
         return value
 
     @field_validator("redis_url")

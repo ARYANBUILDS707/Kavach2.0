@@ -1,13 +1,16 @@
-"""Database access for users and sessions, within the runtime role's grants."""
+"""Database access for users, sessions and ingestion keys, within the runtime role's grants."""
 
 from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import insert, select, update
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.orm import Session
 
-from kavach.db.models import User, UserSession
+from kavach.db.models import IngestKey, User, UserSession
+
+# Serializes changes that could leave no active admin (bootstrap, deactivation, demotion).
+ADMIN_CHANGE_LOCK = 7_420_104_001
 
 
 @dataclass(frozen=True)
@@ -57,6 +60,34 @@ def insert_user(
         )
         .returning(User.id)
     ).scalar_one()
+
+
+def find_user_by_id(db: Session, user_id: UUID) -> UserRecord | None:
+    row = db.execute(
+        select(
+            User.id,
+            User.username,
+            User.display_name,
+            User.role,
+            User.password_hash,
+            User.is_active,
+        ).where(User.id == user_id)
+    ).one_or_none()
+    return UserRecord(*row) if row else None
+
+
+def lock_admin_changes(db: Session) -> None:
+    db.execute(select(func.pg_advisory_xact_lock(ADMIN_CHANGE_LOCK)))
+
+
+def count_active_admins(db: Session) -> int:
+    return db.execute(
+        select(func.count()).select_from(User).where(User.role == "admin", User.is_active)
+    ).scalar_one()
+
+
+def set_user_role(db: Session, user_id: UUID, role: str) -> None:
+    db.execute(update(User).where(User.id == user_id).values(role=role))
 
 
 def update_password_hash(db: Session, user_id: UUID, password_hash: str) -> None:
@@ -137,3 +168,77 @@ def revoke_user_sessions(db: Session, user_id: UUID, now: datetime) -> int:
         .values(revoked_at=now)
     )
     return result.rowcount
+
+
+@dataclass(frozen=True)
+class IngestKeyRecord:
+    id: UUID
+    name: str
+    key_digest: bytes
+    source: str
+    created_by: UUID
+    created_at: datetime
+    expires_at: datetime
+    revoked_at: datetime | None
+
+
+INGEST_KEY_COLUMNS = (
+    IngestKey.id,
+    IngestKey.name,
+    IngestKey.key_digest,
+    IngestKey.source,
+    IngestKey.created_by,
+    IngestKey.created_at,
+    IngestKey.expires_at,
+    IngestKey.revoked_at,
+)
+
+
+def insert_ingest_key(
+    db: Session,
+    *,
+    name: str,
+    key_digest: bytes,
+    source: str,
+    created_by: UUID,
+    now: datetime,
+    expires_at: datetime,
+) -> UUID:
+    return db.execute(
+        insert(IngestKey)
+        .values(
+            name=name,
+            key_digest=key_digest,
+            source=source,
+            created_by=created_by,
+            created_at=now,
+            expires_at=expires_at,
+        )
+        .returning(IngestKey.id)
+    ).scalar_one()
+
+
+def find_ingest_key(db: Session, key_id: UUID) -> IngestKeyRecord | None:
+    row = db.execute(select(*INGEST_KEY_COLUMNS).where(IngestKey.id == key_id)).one_or_none()
+    return IngestKeyRecord(*row) if row else None
+
+
+def find_ingest_key_by_digest(db: Session, key_digest: bytes) -> IngestKeyRecord | None:
+    row = db.execute(
+        select(*INGEST_KEY_COLUMNS).where(IngestKey.key_digest == key_digest)
+    ).one_or_none()
+    return IngestKeyRecord(*row) if row else None
+
+
+def list_ingest_keys(db: Session) -> list[IngestKeyRecord]:
+    rows = db.execute(select(*INGEST_KEY_COLUMNS).order_by(IngestKey.created_at, IngestKey.id))
+    return [IngestKeyRecord(*row) for row in rows]
+
+
+def revoke_ingest_key(db: Session, key_id: UUID, now: datetime) -> bool:
+    result = db.execute(
+        update(IngestKey)
+        .where(IngestKey.id == key_id, IngestKey.revoked_at.is_(None))
+        .values(revoked_at=now)
+    )
+    return result.rowcount == 1

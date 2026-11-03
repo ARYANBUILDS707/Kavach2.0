@@ -1,11 +1,19 @@
-"""FastAPI dependencies enforcing origin, credential exclusivity, session, CSRF and role."""
+"""FastAPI dependencies enforcing origin, credential exclusivity, session, CSRF, role and
+ingestion-key source scope."""
 
+import hmac
 from collections.abc import Callable
 from typing import Annotated
 
 from fastapi import Depends, Request
 
 from kavach.auth.cookies import LOCAL_DEVELOPMENT_COOKIE, SECURE_COOKIE, CookiePolicy
+from kavach.auth.ingest_keys import (
+    IngestKeyService,
+    IngestKeysUnavailable,
+    IngestPrincipal,
+    InvalidIngestKey,
+)
 from kavach.auth.service import ActiveSession, AuthService, DependencyUnavailable, SessionInvalid
 from kavach.auth.tokens import presented_token_matches
 from kavach.core.errors import ApiError
@@ -97,3 +105,40 @@ def require_role(*roles: str) -> Callable[[ActiveSession], ActiveSession]:
         return session
 
     return check
+
+
+def ingest_key_service(request: Request) -> IngestKeyService:
+    service: IngestKeyService | None = request.app.state.ingest_keys
+    if service is None:
+        raise unavailable("API key authentication is not configured")
+    return service
+
+
+IngestKeyServiceDep = Annotated[IngestKeyService, Depends(ingest_key_service)]
+
+
+def require_ingest_key(request: Request, keys: IngestKeyServiceDep) -> IngestPrincipal:
+    """Machine authentication: exactly `Authorization: Bearer kvk_...` and no session cookie."""
+    if has_session_cookie(request):
+        raise ApiError(401, "MIXED_CREDENTIALS", "Use exactly one authentication mechanism")
+    scheme, _, token = request.headers.get("authorization", "").partition(" ")
+    rejected = ApiError(
+        401, "INVALID_CREDENTIALS", "Invalid or expired API key", {"WWW-Authenticate": "Bearer"}
+    )
+    if scheme.lower() != "bearer" or not token.strip():
+        raise rejected
+    try:
+        return keys.authenticate(token.strip(), request.state.request_id)
+    except InvalidIngestKey:
+        raise rejected from None
+    except IngestKeysUnavailable:
+        raise unavailable("API key validation is temporarily unavailable") from None
+
+
+IngestPrincipalDep = Annotated[IngestPrincipal, Depends(require_ingest_key)]
+
+
+def require_source(principal: IngestPrincipal, source: str) -> None:
+    """A key may only act for the single source it was issued for."""
+    if not hmac.compare_digest(principal.source.encode(), source.encode()):
+        raise ApiError(403, "FORBIDDEN", "This API key is not authorized for that source")

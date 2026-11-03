@@ -1,19 +1,35 @@
 """Real-service fixtures; the services come from deployment/compose.dev.yml (or CI)."""
 
+import json
 import os
-from collections.abc import Iterator
+import secrets
+from collections.abc import Callable, Iterator
 from pathlib import Path
+from uuid import UUID, uuid4
 
 import pytest
 from alembic import command
 from alembic.config import Config
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from redis import Redis
 from sqlalchemy import Connection, Engine
 
 import kavach.db
+from kavach.auth.accounts import AccountService
 from kavach.core.redis_client import create_redis_client
 from kavach.db.engine import create_db_engine
+from kavach.main import create_app
+
+from .auth_support import (
+    ORIGIN,
+    Account,
+    FakeClock,
+    add_test_probes,
+    auth_settings,
+    ensure_operator,
+)
 
 MIGRATIONS_DIR = Path(kavach.db.__file__).parent / "migrations"
 # The only database these tests may migrate destructively (created by the dev bootstrap).
@@ -94,3 +110,77 @@ def redis_client() -> Iterator[Redis]:
     client = create_redis_client(required_url("TEST_REDIS_URL"))
     yield client
     client.close()
+
+
+# --- authentication fixtures shared by the M2.3/M2.4 tests ---------------------------------
+
+
+@pytest.fixture
+def keys() -> tuple[str, str]:
+    return secrets.token_urlsafe(32), json.dumps({"v1": secrets.token_urlsafe(32)})
+
+
+@pytest.fixture
+def clock() -> FakeClock:
+    return FakeClock()
+
+
+@pytest.fixture
+def clean_throttle(redis_client: Redis) -> Iterator[None]:
+    def clear() -> None:
+        for key in redis_client.scan_iter("kavach:test:ratelimit:*"):
+            redis_client.delete(key)
+
+    clear()
+    yield
+    clear()
+
+
+@pytest.fixture
+def app(
+    migrated_schema: None, keys: tuple[str, str], clock: FakeClock, clean_throttle: None
+) -> FastAPI:
+    return add_test_probes(create_app(auth_settings(*keys), clock=clock))
+
+
+@pytest.fixture
+def client(app: FastAPI) -> Iterator[TestClient]:
+    with TestClient(app, base_url=ORIGIN) as test_client:
+        yield test_client
+
+
+@pytest.fixture
+def accounts(app: FastAPI, clock: FakeClock) -> AccountService:
+    return AccountService(
+        sessions=app.state.db_sessions,
+        passwords=app.state.auth.passwords,
+        audit=app.state.auth.audit,
+        clock=clock,
+    )
+
+
+@pytest.fixture
+def operator_id(accounts: AccountService) -> UUID:
+    return ensure_operator(accounts)
+
+
+@pytest.fixture
+def make_user(accounts: AccountService, operator_id: UUID) -> Callable[..., Account]:
+    def make(role: str = "analyst") -> Account:
+        username = f"user.{uuid4().hex[:12]}"
+        password = f"pw-{uuid4().hex}"
+        user_id = accounts.provision_user(
+            actor_id=operator_id,
+            username=username,
+            display_name="Synthetic Analyst",
+            role=role,
+            password=password,
+        )
+        return Account(user_id, username, password)
+
+    return make
+
+
+@pytest.fixture
+def user(make_user: Callable[..., Account]) -> Account:
+    return make_user()

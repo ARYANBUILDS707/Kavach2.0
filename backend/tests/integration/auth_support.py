@@ -2,16 +2,32 @@
 used to prove that login throttling holds across processes."""
 
 import os
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Annotated, Any
+from uuid import UUID
 
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 from httpx import Response
 
+from kavach.auth.accounts import AccountError, AccountService
+from kavach.auth.dependencies import IngestPrincipalDep, require_role, require_source
+from kavach.auth.service import ActiveSession
 from kavach.core.config import Settings
 from kavach.main import create_app
 
 ORIGIN = "https://kavach.test"
+# Test-only operator, bootstrapped once per test session in the disposable kavach_test database.
+OPERATOR_USERNAME = "operator.root"
+OPERATOR_PASSWORD = "operator test passphrase"
+
+
+@dataclass(frozen=True)
+class Account:
+    id: UUID
+    username: str
+    password: str
 
 
 class FakeClock:
@@ -36,6 +52,31 @@ def auth_settings(rate_limit_key: str, audit_keys: str, **override: Any) -> Sett
         "audit_hmac_active_version": "v1",
     }
     return Settings(**(values | override))
+
+
+def add_test_probes(app: FastAPI) -> FastAPI:
+    """Test-only routes exercising the dependencies that real routes will use from M3 on."""
+
+    @app.get("/_test/admin-only")
+    def admin_only(session: Annotated[ActiveSession, Depends(require_role("admin"))]) -> dict:
+        return {"role": session.role}
+
+    @app.get("/_test/ingest/{source}")
+    def ingest_probe(source: str, principal: IngestPrincipalDep) -> dict:
+        require_source(principal, source)
+        return {"key_id": str(principal.key_id), "source": principal.source}
+
+    return app
+
+
+def ensure_operator(accounts: AccountService) -> UUID:
+    """The bootstrap admin used as the acting operator; created on first use."""
+    try:
+        return accounts.bootstrap_admin(
+            username=OPERATOR_USERNAME, display_name="Test Operator", password=OPERATOR_PASSWORD
+        )
+    except AccountError:
+        return accounts.authenticate_operator(OPERATOR_USERNAME, OPERATOR_PASSWORD)
 
 
 def login(

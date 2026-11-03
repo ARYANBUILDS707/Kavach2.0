@@ -13,6 +13,7 @@ from starlette.exceptions import HTTPException
 from kavach.api.routes.auth import router as auth_router
 from kavach.api.routes.health import router as health_router
 from kavach.auth.cookies import cookie_policy_for
+from kavach.auth.ingest_keys import IngestKeyService
 from kavach.auth.passwords import PasswordService
 from kavach.auth.service import AuthService, SessionPolicy
 from kavach.auth.throttle import LoginThrottle
@@ -87,6 +88,11 @@ def create_app(settings: Settings | None = None, *, clock: Clock = utc_now) -> F
     app.state.auth = build_auth_service(settings, app, clock) if settings.app_origin else None
     app.state.cookie_policy = (
         cookie_policy_for(settings.app_origin) if settings.app_origin else None
+    )
+    app.state.ingest_keys = (
+        IngestKeyService(sessions=app.state.db_sessions, audit=app.state.auth.audit, clock=clock)
+        if app.state.auth is not None
+        else None
     )
 
     @app.middleware("http")

@@ -140,14 +140,31 @@ Downgrading drops every table, so it is refused unless the database name ends in
 
 #### Authentication (M2.3)
 
-`POST /api/v1/auth/login`, `GET /api/v1/auth/session` and `POST /api/v1/auth/logout` need the authentication settings described in `.env.example` (all-or-nothing; without them the routes return 503). Accounts are provisioned by an operator, never by signup:
+`POST /api/v1/auth/login`, `GET /api/v1/auth/session` and `POST /api/v1/auth/logout` need the authentication settings described in `.env.example` (all-or-nothing; without them the routes return 503). Accounts are provisioned by an operator, never by signup.
+
+#### Operator commands (M2.4)
+
+`python -m kavach.cli` manages accounts, ingestion API keys and retention. It needs the authentication settings (with `DATABASE_URL` for the runtime role) and, for retention, `RETENTION_DATABASE_URL`.
 
 ```sh
-# with DATABASE_URL, REDIS_URL, APP_ORIGIN, RATE_LIMIT_HMAC_KEY and AUDIT_HMAC_* exported
-backend/.venv/bin/python -m kavach.auth.provision --username alice --display-name "Alice" --role analyst
+C="backend/.venv/bin/python -m kavach.cli"
+$C user create --username root --display-name "First Admin" --bootstrap   # only while no active admin exists
+$C user create --username alice --display-name "Alice" --role analyst --actor root
+$C user set-role --username alice --role admin --actor root
+$C user reset-password --username alice --actor root      # revokes alice's sessions
+$C user deactivate --username alice --actor root          # revokes alice's sessions
+$C key create --name "simulator feed" --source simulator --actor root   # prints the key once
+$C key rotate --key-id <id> --actor root                  # new key, old key revoked atomically
+$C key revoke --key-id <id> --actor root
+$C key list --actor root                                  # never shows key material
+$C retention run --database kavach_test --dry-run --actor root
 ```
 
-The password is prompted for twice (or read from the first line of stdin with `--password-stdin`), must be 12–256 characters and differ from the username, and is stored only as an Argon2id hash. Provisioning is audited. Deactivation and password reset exist as audited service functions (they revoke all of the user's sessions) but have no command yet; the full operator CLI and ingestion keys are M2.4.
+- **Actor.** Every command except `--bootstrap` authenticates `--actor` (password prompt) as an *active admin*, re-checked in the same transaction as the change. Operators cannot deactivate themselves, and the last active admin cannot be deactivated or demoted. The password check gives attribution and policy; the real boundary is custody of the database credentials the CLI runs with.
+- **Secrets** are never arguments. They are prompted for (new passwords twice), or with `--stdin` read one per line: the actor's password first, then any new password.
+- **Audit.** Bootstrap, provisioning, role change, password reset, deactivation, key create/rotate/revoke are audited in the same transaction as the change (an audit failure rolls the change back). A destructive retention run is audited after it commits (the retention role cannot write audit rows).
+- **API keys** are `kvk_` + 256 random bits, stored only as SHA-256 digests, bound to one source, and always expire (default 90 days, maximum 365). For an overlap window, `key create` a replacement and `key revoke` the old key later instead of `key rotate`.
+- **Retention** deletes rows whose `expires_at` (or a session's `revoked_at`) is at or before the cutoff (`--as-of`, default now): expired incidents with their links, assessments and reviews, then events no longer linked to any incident, then audit records, then sessions. Users and keys are never deleted. `--database` must name the connected database; destructive runs are refused unless it is a `*_test` database (dry runs are allowed anywhere). A dry run executes the batches in one transaction and rolls back, so its counts are exact. Scheduling is a later milestone.
 
 #### Integration tests
 
@@ -167,7 +184,14 @@ backend/.venv/bin/python -m pytest backend/tests -m integration
 
 ### Verification status
 
-**Current status (M2.3 local verification, 31 October 2026; point-in-time, re-run before relying on it):**
+**Current status (M2.4 local verification, 3 November 2026; point-in-time, re-run before relying on it):**
+
+- No dependency changes; `uv lock --check` passed (40 entries).
+- Default suite: 162 passed, 207 deselected, 1 warning. Integration suite: 207 passed (39 new M2.4 tests). Both in the existing `backend/.venv` (Ruff 0.17.3) and a fresh locked environment (Ruff 0.17.2). Ruff check passed; 54 files already formatted.
+- Real-service probes with `python -m kavach.cli` subprocesses: a key created over stdin authenticated (200); with the PostgreSQL container stopped, key authentication returned 503 and `key list`/`retention run` exited 3 ("Database unavailable"); after restart, both worked again. A destructive retention run against `kavach_dev` and a run naming the wrong database were refused.
+- GitHub Actions has **not** run M2.4 yet. M2.3 passed on GitHub (run 41186469837, commit `24e6538`, both jobs).
+
+**Historical record — M2.3 local verification, 31 October 2026:**
 
 - `uv lock` added exactly `argon2-cffi` 25.1.0, `argon2-cffi-bindings` 26.1.0, `cffi` 2.1.1 and `pycparser` 3.12 (40 entries); no existing version changed; `uv lock --check` passed.
 - Default suite: 144 passed, 168 deselected, 1 warning. Integration suite: 168 passed (27 of them new authentication tests). Both in the existing `backend/.venv` (Ruff 0.17.3) and a fresh locked environment (Ruff 0.17.2). Ruff check passed; 50 files already formatted.
@@ -252,4 +276,4 @@ Package `__init__.py` files are omitted from the condensed tree below the top pa
 
 ## Next milestone
 
-M1.1, M2.1 and M2.2 are complete (GitHub Actions green on `c36e903`, `0cebb3b` and `e7c0873`). M2.3 (login, sessions, CSRF, Origin, shared throttling, minimal provisioning, audit) is implemented and verified locally, uncommitted, and has not yet run on GitHub. M2.4 (operator CLI, ingestion keys, retention job) follows (see `docs/MILESTONE_TRACKER.md`). Backend milestones M1.1–M7a stay on `backend` and reach `dev` through a single integration pull request after full backend acceptance (`docs/GIT_WORKFLOW.md`). D02 packages, D03, D07 and C-06 were approved on 31 October 2026. Ingestion, ML, Redis correlation and frontend are not started. Branch workflow and milestone status: `docs/GIT_WORKFLOW.md`, `docs/MILESTONE_TRACKER.md`.
+M1.1 and M2.1–M2.3 are complete (GitHub Actions green on `c36e903`, `0cebb3b`, `e7c0873` and `24e6538`). M2.4 (source-scoped API keys, operator CLI, audit, retention) is implemented and verified locally, uncommitted, and has not yet run on GitHub (see `docs/MILESTONE_TRACKER.md`). Backend milestones M1.1–M7a stay on `backend` and reach `dev` through a single integration pull request after full backend acceptance (`docs/GIT_WORKFLOW.md`). D02 packages, D03, D07 and C-06 were approved on 31 October 2026. Ingestion, ML, Redis correlation and frontend are not started. Branch workflow and milestone status: `docs/GIT_WORKFLOW.md`, `docs/MILESTONE_TRACKER.md`.

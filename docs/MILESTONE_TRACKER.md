@@ -14,8 +14,8 @@ Status values: `not started`, `in progress`, `blocked`, `complete (verified)`, `
 | M2 | PostgreSQL, migrations, identity, scoped auth, audit (owner-defined steps below) | `backend` | in progress | D02 packages, D03, D07, C-06 approved 31 Oct 2026 |
 | M2.1 | Database and development infrastructure: dependencies, dev/test Compose, engine/session and Redis client lifecycle, config validation, real-service tests, CI integration job | `backend` | complete (verified): GitHub Actions run 41119537962 on `0cebb3b`, both jobs passed (checked via the public GitHub API, 31 Oct 2026) | — |
 | M2.2 | Full DATABASE.md schema, Alembic migration `0001_initial_schema`, integrity triggers, role grants | `backend` | complete (verified): GitHub Actions run 41121829796 on `e7c0873`, both jobs passed (public GitHub API, 31 Oct 2026) | — |
-| M2.3 | Login/session/logout, Argon2id, opaque DB sessions, CSRF, Origin, shared Redis throttling (fail closed), audited minimal provisioning | `backend` | in progress: implemented and verified locally on 31 Oct 2026; uncommitted; **not yet run on GitHub** | Owner review; user commit/push; exit requires both CI jobs green on the pushed `backend` commit |
-| M2.4 | Operator CLI (deactivate, reset, role change), ingestion keys and `require_ingest_key`, retention job/procedures | `backend` | not started | M2.3 |
+| M2.3 | Login/session/logout, Argon2id, opaque DB sessions, CSRF, Origin, shared Redis throttling (fail closed), audited minimal provisioning | `backend` | complete (verified): GitHub Actions run 41186469837 on `24e6538`, both jobs passed (public GitHub API, 3 Nov 2026) | — |
+| M2.4 | Source-scoped ingestion keys and `require_ingest_key`/`require_source`; operator CLI (bootstrap, provision, deactivate, reset, role change, key create/rotate/revoke/list, retention); admin-actor authorization; operator-triggered retention | `backend` | in progress: implemented and verified locally on 3 Nov 2026; uncommitted; **not yet run on GitHub** | Owner review; user commit/push; exit requires both CI jobs green on the pushed `backend` commit |
 | M3 | Authenticated ingestion, PG idempotency, Redis state, scenario catalog + submission script | `backend` | not started | M2; D08 |
 | M4 | SMS detection and evaluation | `backend` | not started | M3; D04 data/licensing |
 | M5 | Voice transcription, intent, synthesis indication | `backend` | not started | M3; D04 data/licensing/hardware |
@@ -82,6 +82,20 @@ The fresh environment was created in a temporary directory outside the repositor
 | typing-extensions | 4.16.0 | transitive |
 | typing-inspection | 0.4.4 | transitive |
 | uvicorn | 0.54.0 | direct |
+
+## M2.4 local verification (3 November 2026, historical once recorded)
+
+GitHub Actions has **not** run the M2.4 changes; everything below is local.
+
+| Item | Value |
+| --- | --- |
+| Dependencies | none added; 40 lock entries; `uv lock --check` passed |
+| Default suite | 162 passed (18 new: key format and scope, CLI argument safety, retention guards), 207 deselected |
+| Integration suite | 207 passed (39 new: key enforcement/expiry/rotation/revocation, operator authorization and last-admin protection, audit rollback/tamper/deletion limits, CLI lifecycles, retention boundaries/dry run/permissions) |
+| Ruff | check passed; 54 files formatted (0.17.3 and 0.17.2) |
+| Real-service probes | PostgreSQL container stopped → key auth 503, CLI exit 3; restored → 200; destructive retention on `kavach_dev` and a mismatched `--database` refused |
+| Removed | `kavach.auth.provision` (it created accounts with no operator authentication); replaced by `kavach.cli user create` (admin actor, or explicit bootstrap) |
+| Changed existing tests | auth fixtures moved to `integration/conftest.py` and now provision through a bootstrap operator; provisioning audit now attributes the admin actor instead of `system` |
 
 ## M2.3 local verification (31 October 2026, historical once recorded)
 
@@ -156,9 +170,9 @@ The owner's conflict and Git decisions do not approve any item below marked pend
 | TD-03 | ~~CI not yet run~~ The lint/test job passed on `c36e903`. The new M2.1 integration job has not run on GitHub yet | Integration job unproven on GitHub | Close after both jobs are green on the M2.1 push |
 | TD-04 | `starlette.testclient`/`httpx` deprecation warning; the warning suggests `httpx2` (still present in the M1.1 runs: 88 passed, 1 warning) | May become an error in a later Starlette | Evaluate when dependencies are next touched |
 | TD-12 | Lockfile resolved `opentelemetry-api` 1.45.2 (transitive via FastAPI 0.162.0; released 29 Oct 2026), while the pip venv has 1.45.1. Tests pass with both | Minor drift between local venv and lock | Disappears when the user syncs `backend/.venv` |
-| TD-13 | Retention runs as column-limited DELETE grants; DATABASE.md's narrowly scoped expiry procedures (and the cleanup job) are not written yet | Cleanup must be implemented before retention is claimed | With the retention job (M2.4 or M9) |
+| TD-13 | Retention runs are operator-triggered and destructive only on `*_test` databases; no schedule exists, and a destructive run is audited after commit (retention role cannot write audit) | Synthetic dev data is not yet cleaned automatically | Scheduling and the dev/pilot policy with the deployment milestone (M11) |
 | TD-14 | Login throttling uses fixed 15-minute windows keyed by HMAC(username, client IP); `X-Forwarded-For` is ignored, so behind a proxy every client shares one IP and its 30-failure ceiling | Proxy deployments need explicit trusted-proxy handling first | Before any proxied deployment (M11) |
-| TD-15 | Deactivation and password reset are audited service functions without an operator command; role changes have no audited path yet | Operators cannot perform them safely outside tests | M2.4 |
+| TD-15 | ~~No operator commands for deactivation, reset or role change~~ Implemented in M2.4 (`python -m kavach.cli`) | — | Closes with M2.4 |
 | TD-05 | `docs/AGENTS.md` duplicates root `AGENTS.md` with relative paths | Rules can drift; root `AGENTS.md` is authoritative | Decide whether to keep or reduce to a pointer |
 | TD-06 | Stale Git/status statements: README and ARCHITECTURE.md line 7 corrected in M0; CONTRIBUTING.md branch rules added in M0. PRD document map now lists the six new documents | Reader confusion | Separate approved docs change |
 | TD-07 | ~~Development/test PostgreSQL and Redis not defined~~ Defined in M2.1: `deployment/compose.dev.yml` | — | Closes with M2.1 |
