@@ -17,12 +17,13 @@ Status values: `not started`, `in progress`, `blocked`, `complete (verified)`, `
 | M2.3 | Login/session/logout, Argon2id, opaque DB sessions, CSRF, Origin, shared Redis throttling (fail closed), audited minimal provisioning | `backend` | complete (verified): GitHub Actions run 41186469837 on `24e6538`, both jobs passed (public GitHub API, 3 Nov 2026) | — |
 | M2.4 | Source-scoped ingestion keys and `require_ingest_key`/`require_source`; operator CLI (bootstrap, provision, deactivate, reset, role change, key create/rotate/revoke/list, retention); admin-actor authorization; operator-triggered retention | `backend` | complete (verified): GitHub Actions run 41693476877 on `0db68fb`, both jobs passed (public GitHub API, 4 Nov 2026) | — |
 | M2.5 | Full M2 security acceptance: findings M-1–M-3 and L-1–L-3 fixed (migration `0002_retention_procedure`, write-ahead retention audit, final revocation), report in `M2_SECURITY_ACCEPTANCE.md` | `backend` | complete (verified): GitHub Actions run 41695959367 on `a4a5578`, both jobs passed (public GitHub API, 4 Nov 2026). **M2 acceptance: PASS** | — |
-| M3 | Authenticated ingestion, PG idempotency, Redis state, scenario catalog + submission script | `backend` | in progress: M3.1–M3.3 verified on GitHub; M3.4 acceptance **CONDITIONAL PASS** locally (see `M3_INGESTION_ACCEPTANCE.md`); exit needs CI on the M3.4 commit and the listed conditions | M2; D05/D08/TD-19 owner decisions |
+| M3 | Authenticated ingestion, PG idempotency, Redis state, scenario catalog + submission script | `backend` | complete with conditions (verified): M3.1–M3.4 all passed both CI jobs on GitHub (M3.4: run 41885380731 on `90c32b4`). Acceptance verdict **CONDITIONAL PASS** (`M3_INGESTION_ACCEPTANCE.md`); the conditions (D05/D08/TD-19 values confirmed, `--no-proxy-headers` launch, M6 treats Redis as an accelerator only) remain open | M2; D05/D08/TD-19 owner decisions |
 | M3.1 | Key-authenticated SMS/call ingestion, transactional PostgreSQL idempotency (201/200/409), receipt recovery, standalone incident with unavailable analysis, ingestion audit | `backend` | complete (verified): GitHub Actions run 41698348162 on `4647f52`, both jobs passed (public GitHub API, 4 Nov 2026) | — |
 | M3.2 | Redis candidate index (D05 window/lateness), shared per-key submission limit (D08), invalid-Bearer throttle, ingestion deadline, fail-closed Redis handling, post-commit index recovery | `backend` | complete (verified): GitHub Actions run 41867501351 on `14e23d9`, both jobs passed (public GitHub API, 4 Nov 2026) | — |
 | M3.3 | Controlled synthetic simulator: versioned scenario catalog S01–S12 with validated expectations and simulation-only labels, admin-only `GET /simulator/scenarios`, loopback-only paced runner (`python -m kavach.simulator`) through the ordinary endpoints, audio manifest contract documented (not active) | `backend` | complete (verified): GitHub Actions run 41879325247 on `bf403a8`, both jobs passed (public GitHub API, 4 Nov 2026) | — |
-| M3.4 | Full M3 acceptance audit: findings M34-M1–M4 and L1–L6 (`M3_INGESTION_ACCEPTANCE.md`); fixed: stale candidate on late replay, deep-JSON 500, missing payload-key signal, TD-19 valid-key lockout; mitigated: proxy-header throttle evasion via the documented launch flag; 22 new integration tests | `backend` | in progress: verified locally on 4 Nov 2026; uncommitted; **not yet run on GitHub**. Verdict CONDITIONAL PASS | Owner review; decisions D05/D08/TD-19; user commit/push; both CI jobs green |
-| M4 | SMS detection and evaluation | `backend` | not started | M3; D04 data/licensing |
+| M3.4 | Full M3 acceptance audit: findings M34-M1–M4 and L1–L6 (`M3_INGESTION_ACCEPTANCE.md`); fixed: stale candidate on late replay, deep-JSON 500, missing payload-key signal, TD-19 valid-key lockout; mitigated: proxy-header throttle evasion via the documented launch flag; 22 new integration tests | `backend` | complete (verified): GitHub Actions run 41885380731 on `90c32b4`, both jobs passed (public GitHub API, 4 Nov 2026). Verdict CONDITIONAL PASS | — |
+| M4.1 | SMS dataset research and governance: four candidates verified on real files (IMC25, UCI, Mishra & Soni, Munoz & Islam), versioned manifest with validator and tests, reproducible audit script, label and privacy policy, M4.2–M4.4 plan (`DATASET_GOVERNANCE.md`, `M4_EVALUATION_PLAN.md`, `experiments/`). No model trained, no dependency added | `backend` | in progress: verified locally on 4–5 Nov 2026; uncommitted; **not yet run on GitHub**. Verdict CONDITIONAL (D04 awaits the owner) | Owner decisions D04-Q1–Q6; user commit/push; both CI jobs green |
+| M4 | SMS detection and evaluation | `backend` | in progress: M4.1 (governance) done locally; M4.2–M4.4 not started | M3; D04 data/licensing |
 | M5 | Voice transcription, intent, synthesis indication | `backend` | not started | M3; D04 data/licensing/hardware |
 | M6 | Correlation and continuous fusion | `backend` | not started | M4, M5; D05, D06; paired labeled data |
 | M7 | Analyst dashboard (M7a backend incident/review API, M7b frontend UI); M7a completion triggers the single `backend` → `dev` integration PR | `backend`, `frontend` | not started | M3 (M6 for pairs); D09; browser login depends on shared login throttling (C-06) |
@@ -88,9 +89,22 @@ The fresh environment was created in a temporary directory outside the repositor
 | typing-inspection | 0.4.4 | transitive |
 | uvicorn | 0.54.0 | direct |
 
+## M4.1 dataset governance verification (4–5 November 2026, historical once recorded)
+
+GitHub Actions has **not** run the M4.1 changes; everything below is local. Baseline: `90c32b4`, run 41885380731, both jobs passed.
+
+| Item | Value |
+| --- | --- |
+| Dependencies / migrations | none / none; `backend/pyproject.toml` gains only pytest `pythonpath` and Ruff `src` entries for `experiments/` |
+| Datasets | Four downloaded and measured (SHA-256, rows, classes, duplicates, overlap, near-duplicates); `experiments/audit/dataset_audit.py` reproduces all 51 recorded values and fails on a wrong file |
+| Default suite | 304 passed (37 new in `test_dataset_manifest.py`: shipped manifest valid and pending, no automatic phishing labels, spam stays spam, generated data never evaluates, 26 rejected policy breaks, fixture fingerprints) |
+| Integration suite | see the final report; unchanged by M4.1 |
+| Ruff / lock | `ruff check backend` and format check passed; `experiments/` linted with the backend config; `uv lock --check` unchanged |
+| Verdict | **CONDITIONAL**: D04 is not approved and no hard-negative source exists |
+
 ## M3.4 acceptance verification (4 November 2026, historical once recorded)
 
-GitHub Actions has **not** run the M3.4 changes; everything below is local. Full report: [M3_INGESTION_ACCEPTANCE.md](M3_INGESTION_ACCEPTANCE.md).
+Recorded before the push; GitHub Actions later passed both jobs on `90c32b4` (run 41885380731). Full report: [M3_INGESTION_ACCEPTANCE.md](M3_INGESTION_ACCEPTANCE.md).
 
 | Item | Value |
 | --- | --- |
@@ -227,7 +241,7 @@ The owner's conflict and Git decisions do not approve any item below marked pend
 | D01 | Scope | Approved for the backend foundation only; remaining use needs a recorded decision |
 | D02 | Stack and **package choices** | **Approved 31 Oct 2026** for M2: SQLAlchemy 2.0.55, Alembic 1.20.0, psycopg[binary] 3.3.6, argon2-cffi 25.1.0, redis 8.1.0, the digest-pinned PostgreSQL 17.11 and Redis 7.4.12 dev images. Frontend packages still pending |
 | D03 | Authentication | **Approved direction 31 Oct 2026**: provisioned accounts (viewer/analyst/admin), Argon2id with versioned parameters and rehash, database-backed opaque sessions (30 min idle, 8 h absolute), HttpOnly + SameSite=Lax cookies (Secure outside explicit local development), session-bound CSRF and exact Origin, source-scoped Bearer ingestion keys (90-day default, expiry, revocation), no public registration. Denied logins → sanitized security telemetry, not permanent audit rows; successful authentication and account/key lifecycle changes are audited |
-| D04 | Dataset and model provenance | **Pending explicit approval**; no datasets or artifacts approved |
+| D04 | Dataset and model provenance | **Pending explicit approval**; no datasets or artifacts approved. M4.1 (4 Nov 2026) researched the SMS candidates and proposes a scoped approval (IMC25 and UCI primary, Mishra & Soni audit reference, Munoz & Islam excluded) with six open questions D04-Q1–Q6 in `DATASET_GOVERNANCE.md`; voice data and models are still unresearched |
 | D05–D06, D08–D09 | Correlation window, tiers, limits, UI | Proposed, unapproved; each gates the milestone listed in the master plan |
 | D07 | Retention | **Approved 31 Oct 2026 for the synthetic-data local MVP only**: synthetic events/incidents 7 days; metadata-only audit 30 days; metadata-only application logs 14 days; deactivated users and referenced keys follow referential integrity and explicit cleanup rules; all configurable. Not authorization to ingest real user data |
 | D10 | Hosting | **Pending explicit approval**; local Compose is the working assumption only |
