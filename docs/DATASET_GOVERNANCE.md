@@ -1,6 +1,6 @@
 # KAVACH SMS Dataset Governance (M4.1)
 
-Dated research record, 4 November 2026, for D04 (SMS data). It states what was verified about four candidate datasets, what KAVACH may do with each, how labels map to the task, and what the owner still has to decide. **D04 is not approved by this document.** It proposes a scoped approval and lists the conditions. The machine-checkable counterpart is [experiments/manifests/sms_datasets.v1.json](../experiments/manifests/sms_datasets.v1.json); the training and evaluation procedure is in [M4_EVALUATION_PLAN.md](M4_EVALUATION_PLAN.md).
+Dated research record, 4 November 2026, for D04 (SMS data). It states what was verified about four candidate datasets, what KAVACH may do with each, how labels map to the task, and what the owner still has to decide. **Update, 5 November 2026:** the owner approved D04 for SMS data (decisions 1–7, recorded in `sms_datasets.v2.json`); the section "Open decisions" below keeps the M4.1 questions with their answers, and [M4_2_DATA_PREPARATION_REPORT.md](M4_2_DATA_PREPARATION_REPORT.md) holds what M4.2 did and found. As written in M4.1, this document proposed a scoped approval and listed the conditions. The machine-checkable counterpart is [experiments/manifests/sms_datasets.v2.json](../experiments/manifests/sms_datasets.v2.json) (v1, the pre-decision record, stays unchanged beside it); the training and evaluation procedure is in [M4_EVALUATION_PLAN.md](M4_EVALUATION_PLAN.md).
 
 ## How this was verified
 
@@ -37,8 +37,9 @@ Dated research record, 4 November 2026, for D04 (SMS data). It states what was v
 3. **Munoz & Islam is unsuitable for evaluation.** All 3,397 ham rows repeat Mishra texts. Its smishing class has 2,237 unique texts of which 336 match Mishra smishing exactly and 1,402 of its unique texts are near-duplicates of Mishra texts, which is consistent with LLM-generated variants of a small seed set. It carries 2,200 exact-duplicate rows. Its perfect 1:1:1 balance is an artifact. The record does not name the generator.
 4. **IMC25 is the only candidate with real, recent, varied phishing.** Its limits are: no benign class; labels from an LLM validated on 150 English texts; reports can be misjudged by reporters (the paper notes that forum reports are unverified); text is machine-read from screenshots; 157 English unique texts carry more than one scam type; the `others` bucket holds 6,922 rows of unknown composition.
 5. **IMC replaces URLs with a `<URL>` placeholder** in 9,401 of 22,078 English rows (43%), while no other source does. A model could learn the placeholder as a phishing marker. All sources must map URLs and placeholders to one token (the normalization in `fingerprints.py` and the plan do), and the plan tests for source shortcuts.
-6. **No candidate contains modern benign transactional SMS** (OTP codes, bank alerts, delivery updates). The only benign data is 2003-2011 personal conversation. Combined with positives from 2017-2024 forum reports, any classifier can separate the two by era and style. This gap (G1/G2) is the main threat to the validity of M4 results and is not solved by any listed dataset.
-7. **Licensing is permissive on paper but layered.** All four state CC BY 4.0; the UCI readme carries older, different terms; derived sets inherit upstream terms. Attribution and the citations in the manifest are mandatory. This is a compliance reading of public statements, not legal advice.
+6. **IMC is partly anonymized, a finding added in M4.2.** 27,902 of its 33,869 rows (82%) carry entity-recognizer placeholders (`<NAMED_ENTITY>`, `<DATE_TIME>`, `<LOCATION>`, `<PHONE_NUMBER>`, and others); no other source has them. Feature normalization removes the markers from every source, but names and places stay deleted in IMC only.
+7. **No candidate contains modern benign transactional SMS** (OTP codes, bank alerts, delivery updates). The only benign data is 2003-2011 personal conversation. Combined with positives from 2017-2024 forum reports, any classifier can separate the two by era and style. This gap (G1/G2) is the main threat to the validity of M4 results and is not solved by any listed dataset.
+8. **Licensing is permissive on paper but layered.** All four state CC BY 4.0; the UCI readme carries older, different terms; derived sets inherit upstream terms. Attribution and the citations in the manifest are mandatory. This is a compliance reading of public statements, not legal advice.
 
 ## Recommendation (for the owner to approve)
 
@@ -87,11 +88,11 @@ The validator enforces: no source label maps automatically to `phishing` (only a
 
 ## Manifest and governance
 
-The manifest (`experiments/manifests/sms_datasets.v1.json`, schema in `experiments/dataset_governance/manifest.py`) records for every dataset: title, creators, publication date, version, DOI, source and download URLs, citation, acquisition date, per-file name, SHA-256, size and rows, license (SPDX id, evidence URL, caveats), origin, label provenance, languages, observed source-label counts, the label-mapping rules, measured audit values, privacy assessment and required handling, status, permitted uses, limitations and approval state. It also records the task, the storage and reporting policy, the held-out rule, the simulator exclusion, the coverage gaps and the open decisions.
+The manifest (`experiments/manifests/sms_datasets.v2.json` since M4.2; schema in `experiments/dataset_governance/manifest.py`) records for every dataset: title, creators, publication date, version, DOI, source and download URLs, citation, acquisition date, per-file name, SHA-256, size and rows, license (SPDX id, evidence URL, caveats), origin, label provenance, languages, observed source-label counts, the label-mapping rules, measured audit values, privacy assessment and required handling, status, permitted uses, limitations and approval state. It also records the task, the storage and reporting policy, the held-out rule, the simulator exclusion, the coverage gaps and the open decisions.
 
 - **Versioning.** A change to a file hash, label rule, permitted use or status is a new manifest version (`sms_datasets.v2.json`), never an edit in place. Splits and results cite the manifest version they used.
 - **Acquisition procedure.** Download from `download_url` into an operator-controlled directory outside the repository (`data/` is ignored), verify SHA-256 against the manifest, then run `experiments/audit/dataset_audit.py`. A hash mismatch stops the work; the dataset's publisher may have changed it.
-- **Checks.** `backend/tests/test_dataset_manifest.py` validates the shipped manifest and proves the validator rejects 20+ ways of breaking the policy. CI runs it with the backend tests. CI does not lint `experiments/` yet (proposed for M4.2).
+- **Checks.** `experiments/tests/test_manifest.py` validates both manifests and proves the validator rejects over 20 ways of breaking the policy; the whole `experiments/` suite and its lint run in CI against the separately locked `experiments/uv.lock` (since M4.2).
 
 ## Privacy policy
 
@@ -111,16 +112,16 @@ The manifest (`experiments/manifests/sms_datasets.v1.json`, schema in `experimen
 | G4 English only | Hindi/Hinglish stay experimental with no candidate. |
 | G5 No deployment-like sample | State the limitation in every report; any later real data needs its own decision. |
 
-## Open decisions
+## Decisions (answered by the owner on 5 November 2026)
 
-| ID | Question | Recommendation |
+| ID | Question | Decision |
 | --- | --- | --- |
-| D04-Q1 | Approve IMC25 and UCI as primary, Mishra as audit reference, Munoz excluded? | Yes, as a scoped approval with the precision audit as a gate |
-| D04-Q2 | Which source of benign transactional hard negatives? | (a) an authored synthetic set, labeled synthetic and reported separately |
-| D04-Q3 | Are wrong-number and relative-impersonation scams "phishing"? | Keep them a distinct sub-label; include in the scored class only if the owner wants fraud-intent coverage |
-| D04-Q4 | Spam kept as its own class and scored as a non-phishing negative? | Yes |
-| D04-Q5 | Minimum audited precision for promoting a `needs_review` class | The owner sets it after seeing the audit; this work proposes a lower confidence bound reported with a Wilson interval and does not pick a number |
-| D04-Q6 | ML dependency set | See [M4_EVALUATION_PLAN.md](M4_EVALUATION_PLAN.md) |
+| D04-Q1 | Sources and uses | IMC25 provisional positives subject to manual audit; UCI primary benign, spam kept separate; Mishra audit reference only; Munoz excluded |
+| D04-Q2 | Benign hard negatives | Explicitly synthetic OTP, bank-alert and delivery messages, reported separately from real-world evaluation (generated in M4.2) |
+| D04-Q3 | Wrong-number and relative-impersonation scams | Not automatically phishing |
+| D04-Q4 | Spam | Kept as its own class (scored as a non-phishing negative) |
+| D04-Q5 | Promotion gate | An IMC class is promoted only if its independently reviewed positive-label precision has a 95% Wilson lower bound of at least 0.95; failing classes stay excluded or flagged for review |
+| D04-Q6 | ML dependencies | A separately locked training environment for compatible scikit-learn, NumPy and SciPy; kept out of the production API |
 
 ## Limits of this record
 

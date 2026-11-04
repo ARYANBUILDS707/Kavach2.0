@@ -1,21 +1,42 @@
 # experiments/
 
-Offline research and governance for KAVACH models. Nothing here is imported by the running API, and **no raw dataset, message text, trained model or credential is stored in this directory or in Git.**
+Offline dataset governance, preparation and (from M4.3) training for KAVACH models. Nothing here is imported by the running API, `experiments/` has its **own locked environment** (`pyproject.toml`, `uv.lock`) that is never part of the API image, and **no raw dataset, message text, trained model or credential is stored here or in Git.**
 
 | Path | Purpose |
 | --- | --- |
-| `manifests/sms_datasets.v1.json` | The versioned SMS dataset manifest (sources, licenses, checksums, label policy, permitted uses, decisions). Change it only by adding a new version. |
-| `dataset_governance/manifest.py` | Schema and validator for the manifest. `backend/.venv/bin/python experiments/dataset_governance/manifest.py` validates the shipped file. |
-| `dataset_governance/fingerprints.py` | Text normalization, fingerprints, near-duplicate measure and the simulator-fixture exclusion check. |
-| `audit/dataset_audit.py` | Recomputes the manifest's measured values from local copies of the datasets and verifies their SHA-256. Prints counts only. |
+| `manifests/sms_datasets.v2.json` | The current dataset manifest: sources, checksums, licenses, label policy, the owner's D04 decisions, the synthetic set, the promotion gate. `…v1.json` is the earlier, immutable record. |
+| `manifests/sms_split.v1.meta.json` | Frozen split metadata: seed, algorithm, input hashes, the SHA-256 of the full assignment file, counts. |
+| `reports/` | Aggregate data-quality report and label-audit status (counts and hashes only). |
+| `dataset_governance/` | Manifest schema and validator; matching normalization, fingerprints and the simulator-fixture exclusion. |
+| `sms_prep/` | The M4.2 pipeline: acquisition, feature normalization, clustering, records, synthetic hard negatives, label-audit bundle and evaluation, splits and the held-out guard, quality report, CLI. |
+| `audit/dataset_audit.py` | Recomputes the M4.1 manifest's measured values (checksums + counts) from local copies. |
+| `tests/` | 144 deterministic tests on small synthetic fixtures. |
 
-Read [docs/DATASET_GOVERNANCE.md](../docs/DATASET_GOVERNANCE.md) first, then [docs/M4_EVALUATION_PLAN.md](../docs/M4_EVALUATION_PLAN.md).
+Read [docs/DATASET_GOVERNANCE.md](../docs/DATASET_GOVERNANCE.md), [docs/M4_EVALUATION_PLAN.md](../docs/M4_EVALUATION_PLAN.md) and [docs/M4_2_DATA_PREPARATION_REPORT.md](../docs/M4_2_DATA_PREPARATION_REPORT.md) first.
+
+## Commands
+
+Run from `experiments/` (the locked environment is created on first use; add `--group train` for the M4.3 packages):
+
+```sh
+cd experiments
+uv sync --project . --locked
+uv run --project . --locked python -m dataset_governance.manifest   # validate the manifest
+uv run --project . --locked python -m sms_prep acquire    # download + verify into ../data/m4/raw/ (ignored)
+uv run --project . --locked python -m sms_prep verify     # offline checksum check
+uv run --project . --locked python -m sms_prep build      # records, clusters, review bundle, splits, reports
+uv run --project . --locked python -m sms_prep audit      # evaluate completed review sheets; exit 3 while BLOCKED
+uv run --project . --locked pytest tests
+uv run --project . --locked ruff check . && uv run --project . --locked ruff format --check .
+```
+
+`build` is deterministic: a second run reproduces the split metadata and report byte for byte, and it never overwrites review sheets that may hold annotations.
 
 ## Rules
 
-- Raw data lives in an operator-controlled directory outside the repository (the ignored `data/` directory or another path) and is verified against the manifest's SHA-256 before use. Never commit it, log it, or paste it into reports or issues.
-- Reports show counts, record identifiers and fingerprints, not message text.
+- Raw data lives under the ignored `data/m4/` and is verified against the manifest's SHA-256 before use. Never commit it, log it, or paste it into reports or issues. Downloads are limited to the manifest's host allow-list and never print URLs.
+- Reports show counts, record identifiers and fingerprints, not message text. Human review sheets are private (`data/m4/review/`) and the software never fills in a label.
 - The simulator scenarios (S01-S12) never enter training, validation or evaluation data.
-- D04 is **pending**. The manifest keeps every dataset `pending`; the validator refuses to mark anything approved without the owner's decision reference.
-- Tests: `backend/tests/test_dataset_manifest.py` (runs with the backend suite; `pytest` adds this directory to its path). CI does not lint this directory yet.
-- Lint and format with the backend configuration from the `backend/` directory so import grouping matches CI: `cd backend && .venv/bin/ruff check --config pyproject.toml . ../experiments`.
+- Synthetic hard negatives are reported separately and never join the real-world test set.
+- The test split is read only through `HeldOutGuard` for a logged final evaluation.
+- A change to a file hash, label rule, permitted use or status is a new manifest version, never an edit in place.

@@ -1,0 +1,59 @@
+{
+  "algorithm_version": 1,
+  "assignments_sha256": "ef452e8c219a20f3f02248d94e919b5454f0dd3a4418f7c8d7db879a6099ba0a",
+  "cluster_jaccard_threshold": 0.7,
+  "counts": {
+    "test": {
+      "clusters": 2977,
+      "records": 3577,
+      "records_collected": 3467,
+      "records_synthetic": 110,
+      "unique_texts": 3072
+    },
+    "train": {
+      "clusters": 9432,
+      "records": 20872,
+      "records_collected": 20372,
+      "records_synthetic": 500,
+      "unique_texts": 14348
+    },
+    "validation": {
+      "clusters": 2981,
+      "records": 3583,
+      "records_collected": 3473,
+      "records_synthetic": 110,
+      "unique_texts": 3077
+    }
+  },
+  "feature_normalization_version": 2,
+  "freeze_policy": "Assignment depends only on the seed and cluster IDs, not on label approval. A class that fails the label audit drops out of every split; no remaining cluster moves. The test split is read only through HeldOutGuard for a logged final evaluation.",
+  "frozen": true,
+  "inputs": {
+    "clusters_sha256": "1862a69d03176086508db6daf9ce546745a816599fe8c5169305be333001cde6",
+    "raw_files": {
+      "Dataset_5971.csv": "649844f1c62a6b27e145eaf17a65f7010c56c390e11a794ea8329993a05ba71e",
+      "SMSSpamCollection": "7d039a24a6083ed9ef0f806ebad56bbb976e3aeb8de05669173bfdc4996c239d",
+      "final_dataset_output.csv": "1bbd1e9e82c3ea023112207b80da268a5c4a07d2353c2b0898360ab037fa9a64",
+      "readme": "8753cd2d3cab68f80c8257851b8c2037778c267f55accb6fd1b5a2e32d36a84e"
+    },
+    "records_sha256": "90e1783e0b9da5f0156df58c6d89b829b4ac5de522dcd06c3ef6174ebe862b5d",
+    "synthetic_corpus_sha256": "27bb08ff7dd2b5ac9c225ec47b18b2f51bf3d1a57a030d951014bc928d4c1e26"
+  },
+  "label_audit_status": "BLOCKED",
+  "labels_approved": false,
+  "manifest": {
+    "sha256": "bda081aefecfff4b38ad13087bf6289d87cdde7e81eae5ee4b20722d53710c26",
+    "version": 2
+  },
+  "proportions": {
+    "test": 0.15,
+    "train": 0.7,
+    "validation": 0.15
+  },
+  "real_world_test_excludes_synthetic": true,
+  "seed": 20261105,
+  "split_version": 1,
+  "stratified_by": "source:label",
+  "synthetic_template_families_are_split_groups": true,
+  "unit": "cluster (exact + near-duplicate + synthetic template family)"
+}

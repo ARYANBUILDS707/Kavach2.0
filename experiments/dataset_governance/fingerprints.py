@@ -6,9 +6,11 @@ pipeline's feature preprocessing is a separate, documented step (docs/M4_EVALUAT
 """
 
 import hashlib
+import json
 import re
 import unicodedata
 from collections.abc import Iterable
+from pathlib import Path
 
 URL = re.compile(r"https?://\S+|www\.\S+|<url>", re.IGNORECASE)
 DIGITS = re.compile(r"\d+")
@@ -38,23 +40,35 @@ def jaccard(a: frozenset[str], b: frozenset[str]) -> float:
     return len(a & b) / len(a | b) if a | b else 1.0
 
 
-def simulator_fingerprints() -> frozenset[str]:
-    """Fingerprints of every SMS text in the packaged simulator catalog (S01-S12).
+REPO_ROOT = Path(__file__).parents[2]
+SIMULATOR_CATALOG = REPO_ROOT / "backend" / "src" / "kavach" / "simulator" / "scenarios_v1.json"
+
+
+def simulator_catalog(path: Path = SIMULATOR_CATALOG) -> dict:
+    """The packaged simulator catalog, read as plain JSON (no backend import needed)."""
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def simulator_texts(path: Path = SIMULATOR_CATALOG) -> set[str]:
+    """Every SMS text in the simulator catalog (S01-S12), including conflicting-replay texts."""
+    return {
+        step["text"]
+        for scenario in simulator_catalog(path)["scenarios"]
+        for step in scenario["steps"]
+        if step.get("text")
+    }
+
+
+def simulator_fingerprints(path: Path = SIMULATOR_CATALOG) -> frozenset[str]:
+    """Fingerprints of the simulator's SMS texts.
 
     Those texts are demonstration fixtures. They must never appear in training, validation
     or held-out data (docs/DATASET_GOVERNANCE.md), so the dataset pipeline checks against this.
     """
-    from kavach.simulator.catalog import ConflictStep, SubmitStep, load_catalog
-
-    fingerprints = set()
-    for scenario in load_catalog().scenarios:
-        for step in scenario.steps:
-            if isinstance(step, SubmitStep | ConflictStep) and step.text is not None:
-                fingerprints.add(text_fingerprint(step.text))
-    return frozenset(fingerprints)
+    return frozenset(text_fingerprint(text) for text in simulator_texts(path))
 
 
-def simulator_overlap(texts: Iterable[str]) -> int:
+def simulator_overlap(texts: Iterable[str], path: Path = SIMULATOR_CATALOG) -> int:
     """How many of `texts` equal a simulator fixture after normalization (must be 0)."""
-    fixtures = simulator_fingerprints()
+    fixtures = simulator_fingerprints(path)
     return sum(text_fingerprint(text) in fixtures for text in texts)

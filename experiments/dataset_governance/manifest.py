@@ -6,7 +6,7 @@ message text, no sample rows and no local paths. Validation enforces the policy 
 documenting it: for example, no source label may map automatically to `phishing`, and a
 dataset that is LLM-generated or of unknown origin cannot supply validation or held-out data.
 
-    backend/.venv/bin/python experiments/dataset_governance/manifest.py [manifest.json]
+    cd experiments && python -m dataset_governance.manifest [manifest.json]
 """
 
 import json
@@ -18,7 +18,9 @@ from typing import Annotated, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 MAX_MANIFEST_BYTES = 256 * 1024
-DEFAULT_MANIFEST = Path(__file__).parents[1] / "manifests" / "sms_datasets.v1.json"
+MANIFESTS = Path(__file__).parents[1] / "manifests"
+V1_MANIFEST = MANIFESTS / "sms_datasets.v1.json"
+DEFAULT_MANIFEST = MANIFESTS / "sms_datasets.v2.json"
 
 SHA256 = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 Slug = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{1,31}$")]
@@ -55,6 +57,12 @@ class FileRecord(Frozen):
     sha256: SHA256
     size_bytes: int = Field(gt=0)
     rows: int | None = Field(default=None, gt=0)
+    # Where the file sits inside the downloaded archive ("!" separates nested archives).
+    # Absent for a direct download. Required from manifest version 2.
+    path_in_download: Annotated[str, StringConstraints(max_length=300)] | None = None
+    # False for archive members that are verified in memory but never written to disk
+    # (scripts and documents that the pipeline does not use).
+    extract: bool = True
     note: Note | None = None
 
 
@@ -108,6 +116,8 @@ class Dataset(Frozen):
     doi: Annotated[str, StringConstraints(pattern=r"^10\.\d{4,9}/\S+$")]
     source_url: HttpsUrl
     download_url: HttpsUrl
+    # Exact hosts a download (and its redirects) may use. Required from manifest version 2.
+    allowed_download_hosts: list[Annotated[str, StringConstraints(pattern=r"^[a-z0-9.-]+$")]] = []
     citation: Note
     retrieved_on: date
     files: list[FileRecord] = Field(min_length=1)
@@ -154,6 +164,40 @@ class SimulatorExclusion(Frozen):
     rule: Note
 
 
+class PromotionGate(Frozen):
+    """An IMC class becomes `phishing` only when independently reviewed precision clears this."""
+
+    statistic: Literal["wilson_lower_bound"]
+    confidence: float = Field(gt=0.5, lt=1)
+    minimum: float = Field(gt=0, le=1)
+    reviewers_per_item: int = Field(ge=2)
+    target_sample_per_class: int = Field(ge=30)
+    status_when_incomplete: Literal["BLOCKED"]
+    note: Note
+
+
+SyntheticUse = Literal["training", "validation", "synthetic_stress_test"]
+
+
+class SyntheticSet(Frozen):
+    """Authored data, kept apart from collected data and from the real-world test set."""
+
+    id: Slug
+    title: Annotated[str, StringConstraints(min_length=1, max_length=200)]
+    generator: Note
+    generator_version: int = Field(ge=1)
+    seed: int
+    label: Literal["benign"]
+    corpus_sha256: SHA256
+    records: int = Field(gt=0)
+    template_families: int = Field(gt=0)
+    purpose: Note
+    rules: list[Note] = Field(min_length=1)
+    reporting: Note
+    permitted_use: list[SyntheticUse] = Field(min_length=1)
+    approval: Approval
+
+
 class Policy(Frozen):
     raw_data_in_git: Literal[False]
     raw_text_in_logs_or_reports: Literal[False]
@@ -161,6 +205,8 @@ class Policy(Frozen):
     reports: Note
     held_out_set: Note
     simulator_exclusion: SimulatorExclusion
+    promotion_gate: PromotionGate | None = None
+    real_world_test_excludes_synthetic: bool = False
 
 
 class Task(Frozen):
@@ -184,6 +230,7 @@ class Manifest(Frozen):
     task: Task
     policy: Policy
     datasets: list[Dataset] = Field(min_length=1)
+    synthetic_sets: list[SyntheticSet] = []
     coverage_gaps: list[Note]
     decisions: Decisions
 
@@ -203,7 +250,27 @@ class Manifest(Frozen):
                 raise ValueError(f"{dataset.id}: approved before D04")
         if "needs_review" not in self.task.target_labels:
             raise ValueError("the task must keep a needs_review label")
+        if self.manifest_version >= 2:
+            self.check_v2()
         return self
+
+    def check_v2(self) -> None:
+        if self.policy.promotion_gate is None:
+            raise ValueError("version 2 needs a promotion gate")
+        if not self.policy.real_world_test_excludes_synthetic:
+            raise ValueError("the real-world test set must exclude synthetic data")
+        if not self.synthetic_sets:
+            raise ValueError("version 2 needs the synthetic hard-negative set")
+        for synthetic in self.synthetic_sets:
+            if synthetic.approval.decision != "approved" and self.decisions.d04_sms == "approved":
+                raise ValueError(f"{synthetic.id}: D04 is approved only when every set is")
+        for dataset in self.datasets:
+            if dataset.status == "excluded":
+                continue
+            if not dataset.allowed_download_hosts:
+                raise ValueError(f"{dataset.id}: needs allowed download hosts")
+            if any(f.path_in_download is None for f in dataset.files):
+                raise ValueError(f"{dataset.id}: every file needs its path in the download")
 
 
 def load_manifest(path: Path = DEFAULT_MANIFEST) -> Manifest:
@@ -215,10 +282,10 @@ def load_manifest(path: Path = DEFAULT_MANIFEST) -> Manifest:
 
 def check_simulator_exclusion(manifest: Manifest) -> None:
     """The declared catalog version must be the packaged one, so a catalog change forces review."""
-    from kavach.simulator.catalog import load_catalog
+    from dataset_governance.fingerprints import simulator_catalog
 
     declared = manifest.policy.simulator_exclusion.catalog_version
-    actual = load_catalog().catalog_version
+    actual = simulator_catalog()["catalog_version"]
     if declared != actual:
         raise ValueError(f"manifest excludes simulator catalog v{declared}; packaged is v{actual}")
 

@@ -1,12 +1,12 @@
 # M4 Training and Evaluation Plan (M4.2 – M4.4)
 
-Prepared in M4.1 on 4 November 2026. This is a plan, not a result: **no model has been trained, no metric exists, and no dependency has been added.** It applies [DATASET_GOVERNANCE.md](DATASET_GOVERNANCE.md) and the manifest in `experiments/manifests/`. Steps marked *needs owner decision* wait for the D04 answers in that document. [MASTER_DEVELOPMENT_PLAN.md](MASTER_DEVELOPMENT_PLAN.md) M4 remains the contract: no accuracy target is claimed here; any target is set by the owner after seeing the report.
+Prepared in M4.1 on 4 November 2026; **M4.2 was executed on 5 November 2026** (see [M4_2_DATA_PREPARATION_REPORT.md](M4_2_DATA_PREPARATION_REPORT.md)). Where M4.2 differed from this plan: near-duplicate clusters use Jaccard **0.7** (0.8 left 819 pairs across splits), feature normalization version 2 also neutralizes the entity placeholders found in IMC, the test split is read only through `HeldOutGuard`, and the training environment is the separately locked `experiments/uv.lock`. **Label approval is BLOCKED pending human review, so M4.3 has not started.** This is a plan, not a result: **no model has been trained, no metric exists, and no dependency has been added.** It applies [DATASET_GOVERNANCE.md](DATASET_GOVERNANCE.md) and the manifest in `experiments/manifests/`. Steps marked *needs owner decision* wait for the D04 answers in that document. [MASTER_DEVELOPMENT_PLAN.md](MASTER_DEVELOPMENT_PLAN.md) M4 remains the contract: no accuracy target is claimed here; any target is set by the owner after seeing the report.
 
 ## Stages
 
 | Stage | Deliverable | Gate to start |
 | --- | --- | --- |
-| **M4.2** Data preparation and evaluation design | Verified local copies, cleaned record store, deduplicated clusters, contamination report, manual audit sample and result, frozen labels, grouped split with a frozen held-out test set, evaluation harness (no model) | D04 answers; package decision for the experiments environment |
+| **M4.2** Data preparation and evaluation design | Verified local copies, cleaned record store, deduplicated clusters, contamination report, manual audit sample and result, frozen labels, grouped split with a frozen held-out test set, evaluation harness (no model) | D04 answers (given 5 Nov 2026); package decision (given: separate locked environment) |
 | **M4.3** Baselines and comparison | TF-IDF + logistic regression, the comparison models, validation-based selection, one final held-out evaluation, reports | M4.2 accepted |
 | **M4.4** Runtime adapter and integration | Checksummed artifact + manifest, `backend/models/` adapter, ingestion integration, TD-18 admission control, missing-artifact behavior, privacy scan | M4.3 report reviewed by the owner |
 

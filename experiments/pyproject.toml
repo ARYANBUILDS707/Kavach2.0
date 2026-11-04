@@ -1,0 +1,46 @@
+# Separate, locked environment for offline dataset preparation and model training (M4.2).
+# It is never installed into the API image: the runtime depends only on backend/pyproject.toml.
+[project]
+name = "kavach-experiments"
+version = "0.1.0"
+description = "KAVACH offline dataset governance, preparation and training experiments"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "pydantic==2.14.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "ruff==0.17.2",
+]
+# Training stack for M4.3. Not installed by default: `uv sync --project experiments --group train`.
+train = [
+    "numpy==2.5.4",
+    "scikit-learn==1.9.1",
+    "scipy==1.18.1",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra --strict-markers"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["."]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# Message-template sentences are data; wrapping them would make them harder to review.
+"sms_prep/synthetic.py" = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

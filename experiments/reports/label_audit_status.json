@@ -1,0 +1,62 @@
+{
+  "classes": {
+    "banking": {
+      "min_correct_needed": 197,
+      "reason": "human review incomplete",
+      "sampled": 200,
+      "status": "BLOCKED"
+    },
+    "delivery": {
+      "min_correct_needed": 197,
+      "reason": "human review incomplete",
+      "sampled": 200,
+      "status": "BLOCKED"
+    },
+    "government": {
+      "min_correct_needed": 197,
+      "reason": "human review incomplete",
+      "sampled": 200,
+      "status": "BLOCKED"
+    },
+    "hey mum/dad": {
+      "min_correct_needed": null,
+      "reason": "human review incomplete",
+      "sampled": 45,
+      "status": "BLOCKED"
+    },
+    "others": {
+      "min_correct_needed": 197,
+      "reason": "human review incomplete",
+      "sampled": 200,
+      "status": "BLOCKED"
+    },
+    "telecom": {
+      "min_correct_needed": 197,
+      "reason": "human review incomplete",
+      "sampled": 200,
+      "status": "BLOCKED"
+    },
+    "wrong number": {
+      "min_correct_needed": 197,
+      "reason": "human review incomplete",
+      "sampled": 200,
+      "status": "BLOCKED"
+    }
+  },
+  "cohen_kappa_all_items": null,
+  "gate": {
+    "confidence": 0.95,
+    "minimum": 0.95,
+    "statistic": "wilson_lower_bound"
+  },
+  "label_approval": "BLOCKED",
+  "progress": {
+    "disagreements": 0,
+    "disagreements_unadjudicated": 0,
+    "items": 1485,
+    "reviewer_a_completed": 0,
+    "reviewer_b_completed": 0,
+    "reviewers_distinct_ids": false
+  },
+  "promoted_to_phishing": []
+}

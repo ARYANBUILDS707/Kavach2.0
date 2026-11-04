@@ -22,8 +22,9 @@ Status values: `not started`, `in progress`, `blocked`, `complete (verified)`, `
 | M3.2 | Redis candidate index (D05 window/lateness), shared per-key submission limit (D08), invalid-Bearer throttle, ingestion deadline, fail-closed Redis handling, post-commit index recovery | `backend` | complete (verified): GitHub Actions run 41867501351 on `14e23d9`, both jobs passed (public GitHub API, 4 Nov 2026) | — |
 | M3.3 | Controlled synthetic simulator: versioned scenario catalog S01–S12 with validated expectations and simulation-only labels, admin-only `GET /simulator/scenarios`, loopback-only paced runner (`python -m kavach.simulator`) through the ordinary endpoints, audio manifest contract documented (not active) | `backend` | complete (verified): GitHub Actions run 41879325247 on `bf403a8`, both jobs passed (public GitHub API, 4 Nov 2026) | — |
 | M3.4 | Full M3 acceptance audit: findings M34-M1–M4 and L1–L6 (`M3_INGESTION_ACCEPTANCE.md`); fixed: stale candidate on late replay, deep-JSON 500, missing payload-key signal, TD-19 valid-key lockout; mitigated: proxy-header throttle evasion via the documented launch flag; 22 new integration tests | `backend` | complete (verified): GitHub Actions run 41885380731 on `90c32b4`, both jobs passed (public GitHub API, 4 Nov 2026). Verdict CONDITIONAL PASS | — |
-| M4.1 | SMS dataset research and governance: four candidates verified on real files (IMC25, UCI, Mishra & Soni, Munoz & Islam), versioned manifest with validator and tests, reproducible audit script, label and privacy policy, M4.2–M4.4 plan (`DATASET_GOVERNANCE.md`, `M4_EVALUATION_PLAN.md`, `experiments/`). No model trained, no dependency added | `backend` | in progress: verified locally on 4–5 Nov 2026; uncommitted; **not yet run on GitHub**. Verdict CONDITIONAL (D04 awaits the owner) | Owner decisions D04-Q1–Q6; user commit/push; both CI jobs green |
-| M4 | SMS detection and evaluation | `backend` | in progress: M4.1 (governance) done locally; M4.2–M4.4 not started | M3; D04 data/licensing |
+| M4.1 | SMS dataset research and governance: four candidates verified on real files (IMC25, UCI, Mishra & Soni, Munoz & Islam), versioned manifest with validator and tests, reproducible audit script, label and privacy policy, M4.2–M4.4 plan (`DATASET_GOVERNANCE.md`, `M4_EVALUATION_PLAN.md`, `experiments/`). No model trained, no dependency added | `backend` | complete (verified): GitHub Actions run 41891028870 on `0845ed2`, both jobs passed (public GitHub API, 5 Nov 2026). The governance test file was left out of that commit (moved into `experiments/tests/` in M4.2). D04 was then decided by the owner | — |
+| M4.2 | SMS data preparation: verified acquisition (IMC25, UCI, Mishra), feature vs matching normalization, exact + near-duplicate clustering, blinded double-review bundle, synthetic hard negatives, frozen leakage-safe split, quality report, separately locked experiments environment, CI for `experiments/` (`M4_2_DATA_PREPARATION_REPORT.md`) | `backend` | in progress: verified locally on 5 Nov 2026; uncommitted; **not yet run on GitHub**. Verdict CONDITIONAL: **label approval BLOCKED**, 0 of 2,970 human reviews done | Human review (2 reviewers + adjudicator); owner decision if no class passes; user commit/push; both CI jobs green |
+| M4 | SMS detection and evaluation | `backend` | in progress: M4.1 verified on GitHub; M4.2 done locally with label approval BLOCKED; M4.3–M4.4 not started and blocked on the label audit | M3; D04 (approved 5 Nov 2026) |
 | M5 | Voice transcription, intent, synthesis indication | `backend` | not started | M3; D04 data/licensing/hardware |
 | M6 | Correlation and continuous fusion | `backend` | not started | M4, M5; D05, D06; paired labeled data |
 | M7 | Analyst dashboard (M7a backend incident/review API, M7b frontend UI); M7a completion triggers the single `backend` → `dev` integration PR | `backend`, `frontend` | not started | M3 (M6 for pairs); D09; browser login depends on shared login throttling (C-06) |
@@ -88,6 +89,22 @@ The fresh environment was created in a temporary directory outside the repositor
 | typing-extensions | 4.16.0 | transitive |
 | typing-inspection | 0.4.4 | transitive |
 | uvicorn | 0.54.0 | direct |
+
+## M4.2 data preparation verification (5 November 2026, historical once recorded)
+
+GitHub Actions has **not** run the M4.2 changes; everything below is local. Baseline: `0845ed2`, run 41891028870, both jobs passed. Full report: [M4_2_DATA_PREPARATION_REPORT.md](M4_2_DATA_PREPARATION_REPORT.md).
+
+| Item | Value |
+| --- | --- |
+| Dependencies / migrations | backend: none / none; `experiments/` has its own lockfile (20 packages; training group scikit-learn 1.9.1, numpy 2.5.4, scipy 1.18.1 not installed by default; OSV: no advisories) |
+| Acquisition | IMC25 (commit-pinned), UCI and Mishra verified against manifest v2 checksums; 0 unknown archive members; Munoz not fetched |
+| Data | 46,134 records; 15,891 clusters (Jaccard 0.7); 28,032 records assigned to splits; 0 clusters, 0 texts and 0 near-duplicate pairs (0.7/0.8) cross splits; 0 simulator matches |
+| Label audit | **BLOCKED**: 1,485 items in a blinded bundle, 0 of 2,970 reviews done |
+| Backend default suite | 267 passed (unchanged) |
+| Backend integration suite | 319 passed (unchanged) |
+| Experiments suite | 144 passed; four mutation probes each failed the suite |
+| Ruff / lock | backend 78 files and experiments 27 files formatted and clean; both `uv lock --check` passed; `alembic check` clean |
+| Verdict | **CONDITIONAL** |
 
 ## M4.1 dataset governance verification (4–5 November 2026, historical once recorded)
 
@@ -241,7 +258,7 @@ The owner's conflict and Git decisions do not approve any item below marked pend
 | D01 | Scope | Approved for the backend foundation only; remaining use needs a recorded decision |
 | D02 | Stack and **package choices** | **Approved 31 Oct 2026** for M2: SQLAlchemy 2.0.55, Alembic 1.20.0, psycopg[binary] 3.3.6, argon2-cffi 25.1.0, redis 8.1.0, the digest-pinned PostgreSQL 17.11 and Redis 7.4.12 dev images. Frontend packages still pending |
 | D03 | Authentication | **Approved direction 31 Oct 2026**: provisioned accounts (viewer/analyst/admin), Argon2id with versioned parameters and rehash, database-backed opaque sessions (30 min idle, 8 h absolute), HttpOnly + SameSite=Lax cookies (Secure outside explicit local development), session-bound CSRF and exact Origin, source-scoped Bearer ingestion keys (90-day default, expiry, revocation), no public registration. Denied logins → sanitized security telemetry, not permanent audit rows; successful authentication and account/key lifecycle changes are audited |
-| D04 | Dataset and model provenance | **Pending explicit approval**; no datasets or artifacts approved. M4.1 (4 Nov 2026) researched the SMS candidates and proposes a scoped approval (IMC25 and UCI primary, Mishra & Soni audit reference, Munoz & Islam excluded) with six open questions D04-Q1–Q6 in `DATASET_GOVERNANCE.md`; voice data and models are still unresearched |
+| D04 | Dataset and model provenance | **SMS data approved by the owner on 5 Nov 2026** (decisions 1–7, scoped to SMS): IMC25 provisional positives subject to audit, UCI primary benign, Mishra audit reference, Munoz excluded, synthetic hard negatives reported separately, class-promotion gate at a 95% Wilson lower bound of 0.95, separate training environment. Recorded in `sms_datasets.v2.json`. Voice data and models remain unresearched and unapproved |
 | D05–D06, D08–D09 | Correlation window, tiers, limits, UI | Proposed, unapproved; each gates the milestone listed in the master plan |
 | D07 | Retention | **Approved 31 Oct 2026 for the synthetic-data local MVP only**: synthetic events/incidents 7 days; metadata-only audit 30 days; metadata-only application logs 14 days; deactivated users and referenced keys follow referential integrity and explicit cleanup rules; all configurable. Not authorization to ingest real user data |
 | D10 | Hosting | **Pending explicit approval**; local Compose is the working assumption only |
@@ -265,6 +282,9 @@ The owner's conflict and Git decisions do not approve any item below marked pend
 | TD-20 | D05 window (30 min) and lateness (10 min) are adopted from the proposal for the candidate index; formal approval is still pending | M6 matching depends on them | Approve before M6 |
 | TD-21 | The 1,200-member per-subscriber candidate cap can evict in-horizon candidates (one key at full rate with future skew, or several sources for one subscriber); `near()` can return members past the horizon until the next write (M34-M3, M34-L3) | No impact until matching exists | M6: confirm candidates from PostgreSQL (`ix_events_candidates`) and re-check eligibility, or set a different cap |
 | TD-22 | Subscriber-key rotation gives the same token a new pseudonym and candidate set, so pairs spanning a rotation are not candidates (M34-L4) | Cross-rotation pairs missed | M6 design or a rotation procedure |
+| TD-23 | The IMC label audit needs 2 independent human reviewers plus an adjudicator for 1,485 items (2,970 reviews). Until it is done, no class is promoted and M4.3 cannot start | Blocks all SMS model work | Owner arranges the review; `python -m sms_prep audit` then decides |
+| TD-24 | IMC was anonymized (82% of rows carry entity placeholders). Feature normalization removes the markers, but IMC lost names and places that UCI and the synthetic data keep, and date-time token shares still differ by source | Possible residual source shortcut | M4.3 source-probe on spam; per-source reporting |
+| TD-25 | 870 near-duplicate pairs at Jaccard 0.6 cross splits (none at 0.7 or 0.8) | Low-similarity leakage not excluded | Owner decides before M4.3 whether to re-cluster at 0.6 (would create `sms_split.v2`) |
 | TD-05 | `docs/AGENTS.md` duplicates root `AGENTS.md` with relative paths | Rules can drift; root `AGENTS.md` is authoritative | Decide whether to keep or reduce to a pointer |
 | TD-06 | Stale Git/status statements: README and ARCHITECTURE.md line 7 corrected in M0; CONTRIBUTING.md branch rules added in M0. PRD document map now lists the six new documents | Reader confusion | Separate approved docs change |
 | TD-07 | ~~Development/test PostgreSQL and Redis not defined~~ Defined in M2.1: `deployment/compose.dev.yml` | — | Closes with M2.1 |

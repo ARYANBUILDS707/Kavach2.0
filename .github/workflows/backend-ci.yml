@@ -1,6 +1,8 @@
 # Backend CI: locked install, pytest and Ruff (M1.1), plus real PostgreSQL/Redis
-# integration tests (M2.1) and schema migrations (M2.2). Actions are pinned to full commit
-# SHAs; the comment names the tag.
+# integration tests (M2.1) and schema migrations (M2.2). Since M4.2 the offline `experiments/`
+# project (dataset governance and preparation) has its own lockfile, tests and Ruff checks in the
+# first job; it is a separate environment and never part of the API image. Actions are pinned to
+# full commit SHAs; the comment names the tag.
 name: Backend CI
 
 on:
@@ -34,10 +36,15 @@ jobs:
         with:
           version: "0.11.16"
           enable-cache: true
-          cache-dependency-glob: backend/uv.lock
+          cache-dependency-glob: |
+            backend/uv.lock
+            experiments/uv.lock
 
       - name: Verify lockfile matches pyproject.toml
         run: uv lock --check --project backend
+
+      - name: Verify experiments lockfile matches its pyproject.toml
+        run: uv lock --check --project experiments
 
       - name: Install locked dependencies
         id: install
@@ -54,6 +61,22 @@ jobs:
       - name: Run Ruff format check
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: uv run --project backend --locked ruff format --check backend
+
+      - name: Install locked experiments dependencies
+        id: experiments
+        run: uv sync --project experiments --locked
+
+      - name: Run experiments tests
+        if: ${{ !cancelled() && steps.experiments.outcome == 'success' }}
+        run: uv run --project experiments --locked pytest experiments/tests
+
+      - name: Run Ruff lint (experiments)
+        if: ${{ !cancelled() && steps.experiments.outcome == 'success' }}
+        run: uv run --project experiments --locked ruff check experiments --output-format=github
+
+      - name: Run Ruff format check (experiments)
+        if: ${{ !cancelled() && steps.experiments.outcome == 'success' }}
+        run: uv run --project experiments --locked ruff format --check experiments
 
   integration:
     name: Backend integration (PostgreSQL and Redis)

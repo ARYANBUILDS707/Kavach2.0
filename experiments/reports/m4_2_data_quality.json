@@ -1,0 +1,644 @@
+{
+  "cluster_threshold_sensitivity": {
+    "cluster_count_by_threshold": {
+      "0.6": 14816,
+      "0.7": 15891,
+      "0.8": 17126
+    }
+  },
+  "contamination": {
+    "assigned_records_in_clusters_with_mishra_reference": {
+      "test": 820,
+      "train": 4211,
+      "validation": 838
+    },
+    "clusters_spanning_more_than_one_split": 0,
+    "near_duplicate_pairs_by_threshold": {
+      "0.6": {
+        "pairs": 49381,
+        "pairs_across_splits": 870
+      },
+      "0.7": {
+        "pairs": 26425,
+        "pairs_across_splits": 0
+      },
+      "0.8": {
+        "pairs": 10202,
+        "pairs_across_splits": 0
+      }
+    },
+    "note_on_thresholds": "Clusters are built at the Jaccard threshold recorded in the split metadata, so pairs at or above it never cross splits; pairs below it can, and are reported rather than hidden.",
+    "simulator_fixture_matches_in_all_records": 0,
+    "simulator_fixture_matches_in_splits": 0,
+    "texts_in_more_than_one_split": 0,
+    "unique_texts_checked": 20497
+  },
+  "deduplication": {
+    "clusters": {
+      "largest": 1345,
+      "singletons": 8399,
+      "spanning_sources_or_reference": 4896,
+      "total": 15891
+    },
+    "per_dataset": {
+      "imc25_smishing_reports": {
+        "exact_duplicate_rows": 8540,
+        "normalized_duplicate_rows": 10302,
+        "rows": 33869,
+        "unique_normalized_texts": 23567
+      },
+      "kavach_synthetic_hard_negatives": {
+        "exact_duplicate_rows": 0,
+        "normalized_duplicate_rows": 11,
+        "rows": 720,
+        "unique_normalized_texts": 709
+      },
+      "mishra_soni_2022": {
+        "exact_duplicate_rows": 22,
+        "normalized_duplicate_rows": 267,
+        "rows": 5971,
+        "unique_normalized_texts": 5704
+      },
+      "uci_sms_spam_collection": {
+        "exact_duplicate_rows": 403,
+        "normalized_duplicate_rows": 475,
+        "rows": 5574,
+        "unique_normalized_texts": 5099
+      }
+    },
+    "shared_unique_texts_between_datasets": {
+      "imc25_smishing_reports & kavach_synthetic_hard_negatives": 0,
+      "imc25_smishing_reports & mishra_soni_2022": 1,
+      "imc25_smishing_reports & uci_sms_spam_collection": 0,
+      "kavach_synthetic_hard_negatives & mishra_soni_2022": 0,
+      "kavach_synthetic_hard_negatives & uci_sms_spam_collection": 0,
+      "mishra_soni_2022 & uci_sms_spam_collection": 4924
+    }
+  },
+  "inputs": {
+    "clusters_sha256": "1862a69d03176086508db6daf9ce546745a816599fe8c5169305be333001cde6",
+    "raw_files": {
+      "Dataset_5971.csv": "649844f1c62a6b27e145eaf17a65f7010c56c390e11a794ea8329993a05ba71e",
+      "SMSSpamCollection": "7d039a24a6083ed9ef0f806ebad56bbb976e3aeb8de05669173bfdc4996c239d",
+      "final_dataset_output.csv": "1bbd1e9e82c3ea023112207b80da268a5c4a07d2353c2b0898360ab037fa9a64",
+      "readme": "8753cd2d3cab68f80c8257851b8c2037778c267f55accb6fd1b5a2e32d36a84e"
+    },
+    "records_sha256": "90e1783e0b9da5f0156df58c6d89b829b4ac5de522dcd06c3ef6174ebe862b5d",
+    "synthetic_corpus_sha256": "27bb08ff7dd2b5ac9c225ec47b18b2f51bf3d1a57a030d951014bc928d4c1e26"
+  },
+  "label_audit": {
+    "bundle": {
+      "gated_clusters_available_by_class": {
+        "banking": 3517,
+        "delivery": 937,
+        "government": 828,
+        "hey mum/dad": 45,
+        "others": 2864,
+        "telecom": 1020,
+        "wrong number": 202
+      },
+      "gated_items_by_class": {
+        "banking": 200,
+        "delivery": 200,
+        "government": 200,
+        "hey mum/dad": 45,
+        "others": 200,
+        "telecom": 200,
+        "wrong number": 200
+      },
+      "items": 1485,
+      "min_correct_for_gate": {
+        "banking": 197,
+        "delivery": 197,
+        "government": 197,
+        "hey mum/dad": null,
+        "others": 197,
+        "telecom": 197,
+        "wrong number": 197
+      },
+      "reviews_required": 2970,
+      "smallest_sample_that_can_pass": 73
+    },
+    "progress": {
+      "disagreements": 0,
+      "disagreements_unadjudicated": 0,
+      "items": 1485,
+      "reviewer_a_completed": 0,
+      "reviewer_b_completed": 0,
+      "reviewers_distinct_ids": false
+    },
+    "status": "BLOCKED"
+  },
+  "labels": {
+    "cluster_status": {
+      "conflict_class": 67,
+      "ok": 15390,
+      "reference_only": 434
+    },
+    "conflict_class_clusters": 67,
+    "eligible_clusters_by_stratum": {
+      "imc:banking": 3517,
+      "imc:delivery": 937,
+      "imc:government": 828,
+      "imc:hey mum/dad": 45,
+      "imc:others": 2864,
+      "imc:spam": 963,
+      "imc:telecom": 1020,
+      "imc:wrong number": 202,
+      "synthetic:synthetic_benign": 72,
+      "uci:ham": 4470,
+      "uci:spam": 472
+    },
+    "mixed_label_key_clusters": 217
+  },
+  "limitations": [
+    "Grouped splitting prevents duplicate and template leakage; it does not solve source or era confounding (UCI 2003-2011 negatives vs IMC 2017-2024 positives).",
+    "No IMC class has completed human review, so no class is promoted to phishing.",
+    "Synthetic hard negatives are reported separately and are not real-world evidence."
+  ],
+  "manifest": {
+    "sha256": "bda081aefecfff4b38ad13087bf6289d87cdde7e81eae5ee4b20722d53710c26",
+    "version": 2
+  },
+  "records_by_dataset_and_role": {
+    "imc25_smishing_reports|candidate": 22077,
+    "imc25_smishing_reports|excluded_unlabeled": 81,
+    "imc25_smishing_reports|experimental_non_english": 11711,
+    "kavach_synthetic_hard_negatives|candidate": 720,
+    "mishra_soni_2022|reference": 5971,
+    "uci_sms_spam_collection|candidate": 5574
+  },
+  "report_version": 1,
+  "source_and_era": {
+    "descriptive_artifacts_by_stratum": {
+      "imc:banking": {
+        "median_chars": 130,
+        "records": 10575,
+        "share_mostly_uppercase": 0.0453,
+        "share_non_ascii": 0.0155,
+        "share_with_datetime_token": 0.4981,
+        "share_with_phone_token": 0.0993,
+        "share_with_raw_entity_placeholder": 0.8377,
+        "share_with_url": 0.4661
+      },
+      "imc:delivery": {
+        "median_chars": 123,
+        "records": 1665,
+        "share_mostly_uppercase": 0.027,
+        "share_non_ascii": 0.0619,
+        "share_with_datetime_token": 0.4108,
+        "share_with_phone_token": 0.0589,
+        "share_with_raw_entity_placeholder": 0.782,
+        "share_with_url": 0.5766
+      },
+      "imc:government": {
+        "median_chars": 140,
+        "records": 1873,
+        "share_mostly_uppercase": 0.0363,
+        "share_non_ascii": 0.0614,
+        "share_with_datetime_token": 0.2915,
+        "share_with_phone_token": 0.0507,
+        "share_with_raw_entity_placeholder": 0.7624,
+        "share_with_url": 0.4784
+      },
+      "imc:hey mum/dad": {
+        "median_chars": 141,
+        "records": 77,
+        "share_mostly_uppercase": 0.0,
+        "share_non_ascii": 0.0519,
+        "share_with_datetime_token": 0.2208,
+        "share_with_phone_token": 0.2987,
+        "share_with_raw_entity_placeholder": 0.7532,
+        "share_with_url": 0.013
+      },
+      "imc:others": {
+        "median_chars": 134.0,
+        "records": 4446,
+        "share_mostly_uppercase": 0.0801,
+        "share_non_ascii": 0.0506,
+        "share_with_datetime_token": 0.4175,
+        "share_with_phone_token": 0.1631,
+        "share_with_raw_entity_placeholder": 0.7634,
+        "share_with_url": 0.3205
+      },
+      "imc:spam": {
+        "median_chars": 127,
+        "records": 1243,
+        "share_mostly_uppercase": 0.1512,
+        "share_non_ascii": 0.0965,
+        "share_with_datetime_token": 0.3966,
+        "share_with_phone_token": 0.0909,
+        "share_with_raw_entity_placeholder": 0.8053,
+        "share_with_url": 0.4119
+      },
+      "imc:telecom": {
+        "median_chars": 156.0,
+        "records": 1562,
+        "share_mostly_uppercase": 0.0384,
+        "share_non_ascii": 0.0269,
+        "share_with_datetime_token": 0.6063,
+        "share_with_phone_token": 0.2324,
+        "share_with_raw_entity_placeholder": 0.888,
+        "share_with_url": 0.386
+      },
+      "imc:wrong number": {
+        "median_chars": 69,
+        "records": 297,
+        "share_mostly_uppercase": 0.0572,
+        "share_non_ascii": 0.0875,
+        "share_with_datetime_token": 0.1785,
+        "share_with_phone_token": 0.0067,
+        "share_with_raw_entity_placeholder": 0.5892,
+        "share_with_url": 0.0875
+      },
+      "synthetic:synthetic_benign": {
+        "median_chars": 138.0,
+        "records": 720,
+        "share_mostly_uppercase": 0.0,
+        "share_non_ascii": 0.1556,
+        "share_with_datetime_token": 0.6458,
+        "share_with_phone_token": 0.0,
+        "share_with_raw_entity_placeholder": 0.0,
+        "share_with_url": 0.25
+      },
+      "uci:ham": {
+        "median_chars": 52,
+        "records": 4827,
+        "share_mostly_uppercase": 0.0228,
+        "share_non_ascii": 0.0466,
+        "share_with_datetime_token": 0.0918,
+        "share_with_phone_token": 0.0006,
+        "share_with_raw_entity_placeholder": 0.0,
+        "share_with_url": 0.0029
+      },
+      "uci:spam": {
+        "median_chars": 149,
+        "records": 747,
+        "share_mostly_uppercase": 0.0268,
+        "share_non_ascii": 0.3454,
+        "share_with_datetime_token": 0.2758,
+        "share_with_phone_token": 0.5475,
+        "share_with_raw_entity_placeholder": 0.0013,
+        "share_with_url": 0.1821
+      }
+    },
+    "records_by_split_and_dataset": {
+      "test": {
+        "imc25_smishing_reports": 2640,
+        "kavach_synthetic_hard_negatives": 110,
+        "uci_sms_spam_collection": 827
+      },
+      "train": {
+        "imc25_smishing_reports": 16474,
+        "kavach_synthetic_hard_negatives": 500,
+        "uci_sms_spam_collection": 3898
+      },
+      "validation": {
+        "imc25_smishing_reports": 2624,
+        "kavach_synthetic_hard_negatives": 110,
+        "uci_sms_spam_collection": 849
+      }
+    },
+    "share_by_split_and_dataset": {
+      "test": {
+        "imc25_smishing_reports": 0.738,
+        "kavach_synthetic_hard_negatives": 0.0308,
+        "uci_sms_spam_collection": 0.2312
+      },
+      "train": {
+        "imc25_smishing_reports": 0.7893,
+        "kavach_synthetic_hard_negatives": 0.024,
+        "uci_sms_spam_collection": 0.1868
+      },
+      "validation": {
+        "imc25_smishing_reports": 0.7323,
+        "kavach_synthetic_hard_negatives": 0.0307,
+        "uci_sms_spam_collection": 0.237
+      }
+    }
+  },
+  "source_shortcut_feasibility": {
+    "by_provisional_label": {
+      "benign": {
+        "feasible": false,
+        "sources": {
+          "uci": {
+            "test": 675,
+            "train": 3151,
+            "validation": 675
+          }
+        },
+        "sources_with_enough_held_out_data": [
+          "uci"
+        ]
+      },
+      "needs_review": {
+        "feasible": false,
+        "sources": {
+          "imc": {
+            "test": 2041,
+            "train": 9537,
+            "validation": 2045
+          }
+        },
+        "sources_with_enough_held_out_data": [
+          "imc"
+        ]
+      },
+      "spam": {
+        "feasible": true,
+        "sources": {
+          "imc": {
+            "test": 160,
+            "train": 746,
+            "validation": 160
+          },
+          "uci": {
+            "test": 90,
+            "train": 418,
+            "validation": 90
+          }
+        },
+        "sources_with_enough_held_out_data": [
+          "imc",
+          "uci"
+        ]
+      }
+    },
+    "conclusion": "A within-label source probe is possible only where two collected sources share a label. In this data that is spam (UCI vs IMC). Benign comes from UCI alone (plus synthetic, which is not collected) and phishing candidates from IMC alone, so the decisive boundary cannot be probed: source and era are perfectly confounded with the label there. Grouped splitting does not change that.",
+    "minimum_cell": 30
+  },
+  "splits": {
+    "largest_stratum_deviation": 0.0037,
+    "strata": {
+      "imc:banking": {
+        "by_split": {
+          "test": {
+            "clusters": 920,
+            "unique_texts": 920
+          },
+          "train": {
+            "clusters": 1676,
+            "unique_texts": 4295
+          },
+          "validation": {
+            "clusters": 921,
+            "unique_texts": 921
+          }
+        },
+        "deviation_from_target": {
+          "test": -0.0001,
+          "train": -0.0,
+          "validation": 0.0001
+        },
+        "insufficient_test_cell": false,
+        "unique_texts": 6136
+      },
+      "imc:delivery": {
+        "by_split": {
+          "test": {
+            "clusters": 179,
+            "unique_texts": 179
+          },
+          "train": {
+            "clusters": 579,
+            "unique_texts": 837
+          },
+          "validation": {
+            "clusters": 179,
+            "unique_texts": 179
+          }
+        },
+        "deviation_from_target": {
+          "test": -0.0002,
+          "train": 0.0004,
+          "validation": -0.0002
+        },
+        "insufficient_test_cell": false,
+        "unique_texts": 1195
+      },
+      "imc:government": {
+        "by_split": {
+          "test": {
+            "clusters": 186,
+            "unique_texts": 186
+          },
+          "train": {
+            "clusters": 455,
+            "unique_texts": 870
+          },
+          "validation": {
+            "clusters": 187,
+            "unique_texts": 187
+          }
+        },
+        "deviation_from_target": {
+          "test": -0.0004,
+          "train": -0.0001,
+          "validation": 0.0004
+        },
+        "insufficient_test_cell": false,
+        "unique_texts": 1243
+      },
+      "imc:hey mum/dad": {
+        "by_split": {
+          "test": {
+            "clusters": 8,
+            "unique_texts": 8
+          },
+          "train": {
+            "clusters": 29,
+            "unique_texts": 38
+          },
+          "validation": {
+            "clusters": 8,
+            "unique_texts": 8
+          }
+        },
+        "deviation_from_target": {
+          "test": -0.0019,
+          "train": 0.0037,
+          "validation": -0.0019
+        },
+        "insufficient_test_cell": true,
+        "unique_texts": 54
+      },
+      "imc:others": {
+        "by_split": {
+          "test": {
+            "clusters": 523,
+            "unique_texts": 523
+          },
+          "train": {
+            "clusters": 1817,
+            "unique_texts": 2444
+          },
+          "validation": {
+            "clusters": 524,
+            "unique_texts": 524
+          }
+        },
+        "deviation_from_target": {
+          "test": -0.0002,
+          "train": 0.0001,
+          "validation": 0.0001
+        },
+        "insufficient_test_cell": false,
+        "unique_texts": 3491
+      },
+      "imc:spam": {
+        "by_split": {
+          "test": {
+            "clusters": 160,
+            "unique_texts": 160
+          },
+          "train": {
+            "clusters": 643,
+            "unique_texts": 746
+          },
+          "validation": {
+            "clusters": 160,
+            "unique_texts": 160
+          }
+        },
+        "deviation_from_target": {
+          "test": 0.0001,
+          "train": -0.0002,
+          "validation": 0.0001
+        },
+        "insufficient_test_cell": false,
+        "unique_texts": 1066
+      },
+      "imc:telecom": {
+        "by_split": {
+          "test": {
+            "clusters": 194,
+            "unique_texts": 194
+          },
+          "train": {
+            "clusters": 632,
+            "unique_texts": 906
+          },
+          "validation": {
+            "clusters": 194,
+            "unique_texts": 194
+          }
+        },
+        "deviation_from_target": {
+          "test": -0.0001,
+          "train": 0.0002,
+          "validation": -0.0001
+        },
+        "insufficient_test_cell": false,
+        "unique_texts": 1294
+      },
+      "imc:wrong number": {
+        "by_split": {
+          "test": {
+            "clusters": 31,
+            "unique_texts": 31
+          },
+          "train": {
+            "clusters": 139,
+            "unique_texts": 147
+          },
+          "validation": {
+            "clusters": 32,
+            "unique_texts": 32
+          }
+        },
+        "deviation_from_target": {
+          "test": -0.0024,
+          "train": 0.0,
+          "validation": 0.0024
+        },
+        "insufficient_test_cell": false,
+        "unique_texts": 210
+      },
+      "synthetic:synthetic_benign": {
+        "by_split": {
+          "test": {
+            "clusters": 11,
+            "unique_texts": 106
+          },
+          "train": {
+            "clusters": 50,
+            "unique_texts": 496
+          },
+          "validation": {
+            "clusters": 11,
+            "unique_texts": 107
+          }
+        },
+        "deviation_from_target": {
+          "test": -0.0005,
+          "train": -0.0004,
+          "validation": 0.0009
+        },
+        "insufficient_test_cell": false,
+        "unique_texts": 709
+      },
+      "uci:ham": {
+        "by_split": {
+          "test": {
+            "clusters": 675,
+            "unique_texts": 675
+          },
+          "train": {
+            "clusters": 3120,
+            "unique_texts": 3151
+          },
+          "validation": {
+            "clusters": 675,
+            "unique_texts": 675
+          }
+        },
+        "deviation_from_target": {
+          "test": -0.0,
+          "train": 0.0001,
+          "validation": -0.0
+        },
+        "insufficient_test_cell": false,
+        "unique_texts": 4501
+      },
+      "uci:spam": {
+        "by_split": {
+          "test": {
+            "clusters": 90,
+            "unique_texts": 90
+          },
+          "train": {
+            "clusters": 292,
+            "unique_texts": 418
+          },
+          "validation": {
+            "clusters": 90,
+            "unique_texts": 90
+          }
+        },
+        "deviation_from_target": {
+          "test": 0.0005,
+          "train": -0.001,
+          "validation": 0.0005
+        },
+        "insufficient_test_cell": false,
+        "unique_texts": 598
+      }
+    },
+    "strata_missing_from_a_split": [],
+    "totals": {
+      "test": {
+        "clusters": 2977,
+        "unique_texts": 3072
+      },
+      "train": {
+        "clusters": 9432,
+        "unique_texts": 14348
+      },
+      "validation": {
+        "clusters": 2981,
+        "unique_texts": 3077
+      }
+    }
+  }
+}
