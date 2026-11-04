@@ -13,6 +13,7 @@ from starlette.exceptions import HTTPException
 from kavach.api.routes.auth import router as auth_router
 from kavach.api.routes.events import router as events_router
 from kavach.api.routes.health import router as health_router
+from kavach.api.routes.simulator import router as simulator_router
 from kavach.auth.cookies import cookie_policy_for
 from kavach.auth.ingest_keys import IngestKeyService
 from kavach.auth.passwords import PasswordService
@@ -163,4 +164,5 @@ def create_app(settings: Settings | None = None, *, clock: Clock = utc_now) -> F
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(events_router)
+    app.include_router(simulator_router)
     return app

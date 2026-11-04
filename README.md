@@ -179,6 +179,53 @@ curl -sS -X POST http://127.0.0.1:8000/api/v1/events/sms \
 
 The first submission returns 201, an identical retry 200 (`replayed: true`), and a changed payload with the same `event_id` 409. `GET /api/v1/events/<receipt event_id>` recovers the receipt for the same source. No models are deployed, so every receipt reports `analysis_status: unavailable` with a warning per unavailable stage. Only synthetic data may be submitted.
 
+#### Controlled simulator (M3.3)
+
+`python -m kavach.simulator` runs the fixed synthetic scenario catalog (`backend/src/kavach/simulator/scenarios_v1.json`, version 1) against a **local** backend through the ordinary event endpoints. It is a test and demonstration tool for synthetic data only. Admins can read the same catalog from `GET /api/v1/simulator/scenarios` (browser session).
+
+| ID | Scenario | Expected result |
+| --- | --- | --- |
+| S01 | Legitimate SMS | 201, analysis unavailable, indexed |
+| S02 | Phishing SMS | 201; "phishing" is simulation-only ground truth |
+| S03 | Legitimate call (metadata only) | 201, all voice stages unavailable |
+| S04 | Scam-intent call (metadata only) | Same handling as S03: nothing tells them apart without audio and models |
+| S05 | Phishing SMS then scam call, same subscriber, 5 min apart | Two standalone incidents; candidate pair within the window; no pair incident, no conclusion (provisional D05) |
+| S06 | Unrelated events, different subscribers | Separate candidate sets; never linked (provisional D05) |
+| S07 | Out-of-order delivery (call first, SMS 8 min late) | Pair found by event time; within the 10-min lateness allowance (provisional D05) |
+| S08 | Identical duplicate replay | 201 then 200 `replayed: true` with the original receipt |
+| S09 | Conflicting replay with the same event ID | 201 then 409 `EVENT_ID_CONFLICT`; original unchanged |
+| S10 | Delayed events and window boundaries | 45-min-old SMS not indexed; 36-min-old SMS late but indexed; linked to a call 28 min later, not 32 min later (provisional D05) |
+| S11 | Forged source | 403 `FORBIDDEN`, nothing stored |
+| S12 | Unapproved audio reference | 422 `UNKNOWN_AUDIO_REFERENCE`, nothing stored |
+
+Provision a test-only key and run it (the key is read from the environment or stdin, never from an argument, and is never printed):
+
+```sh
+C="backend/.venv/bin/python -m kavach.cli"
+S="backend/.venv/bin/python -m kavach.simulator"
+$C key create --name "local simulator" --source simulator --expires-in-days 7 --actor root
+$S list
+$S run --all --dry-run --run-id demo1                          # the plan only; sends nothing
+read -rs KAVACH_SIMULATOR_API_KEY && export KAVACH_SIMULATOR_API_KEY   # paste the key; not echoed
+$S run --all --run-id demo1 --seed 7 --base-url http://127.0.0.1:8000
+$S run --scenario S05 --scenario S07 --json                    # machine-readable report
+unset KAVACH_SIMULATOR_API_KEY && $C key revoke --key-id <id> --actor root
+```
+
+A successful run ends with `Summary: 12/12 scenarios passed, 20 submissions`. Each step shows the external event ID, the HTTP status, the receipt ID, `replayed` and the warning codes. Exit codes: 0 all passed, 1 a scenario failed or the run aborted, 2 refused before sending.
+
+- **What it checks.** Status and error code per step; that a replay returns the original receipt; that every receipt says `analysis_status: unavailable` with a warning per stage (no model is deployed); and, via `GET /events/{id}`, that the stored receipt matches. It cannot see PostgreSQL or Redis. The integration tests (`backend/tests/integration/test_simulator.py`) check the stored rows, the standalone incidents (tier `unknown`, null scores), the absence of pair incidents, and the Redis candidate expectations for every scenario.
+- **Determinism.** Event IDs are `sim-<run_id>-<scenario>-<step>`, and subscriber tokens are derived from `--seed`, `--run-id`, scenario and alias. Event times are fresh: each scenario's offsets are applied when it starts. Reusing a run ID therefore conflicts (409), so use a new `--run-id` for each run. `--run-id` defaults to a random value.
+- **Safety limits.**
+  - Only `http(s)` on `127.0.0.1`, `::1` or `localhost`, with no credentials, path or query. There is no override.
+  - Redirects are never followed.
+  - Pacing: at most `--max-per-minute` submissions (default 20, maximum 30, the server's per-key limit). Room for a whole scenario is reserved before it starts. A 429 is retried at most twice, after `Retry-After`, with the identical payload.
+  - At most 60 submissions per run.
+  - The run stops at the first 401, unexpected 403, 5xx or lost connection, so a bad key costs one invalid-key attempt.
+  - Output has no key, subscriber token, SMS text or ground-truth label in any payload.
+- **Labels.** `truth` labels describe what the scenario author wrote. They are never sent to the API and are not model outputs. Scenario expectations marked *provisional: D05* depend on the unapproved 30-minute window and 10-minute lateness (TD-20).
+- **Audio.** No audio sample manifest is approved (TD-17), so calls are metadata-only and any `audio_reference` is rejected (S12). The intended manifest contract is in `docs/API.md`.
+
 #### Integration tests
 
 Integration tests are excluded from the default `pytest` run and selected with `-m integration`. They read four variables and **fail (not skip)** if any is missing. They rebuild the schema in the disposable `kavach_test` database from empty at the start of each session, so never point them at `kavach_dev`:
@@ -197,7 +244,9 @@ backend/.venv/bin/python -m pytest backend/tests -m integration
 
 ### Verification status
 
-**Current status (M3.2 local verification, 4 November 2026; point-in-time, re-run before relying on it):** default suite 197 passed; integration suite 283 passed (17 new resilience tests); both environments; Ruff clean (67 files); `uv lock --check` passed with no dependency changes; no migrations. Real containers: Redis paused (hung) → 503 in 0.51 s and stopped → 503, nothing stored in either case; after a Redis restart the candidate index was empty and `rebuild` restored it from PostgreSQL; PostgreSQL stopped → 503, restored → 201. GitHub Actions has **not** run M3.2 yet; M3.1 passed on GitHub (run 41698348162, commit `4647f52`).
+**Current status (M3.3 local verification, 4 November 2026; point-in-time, re-run before relying on it):** default suite 267 passed (70 new); integration suite 297 passed (14 new simulator tests); both environments; Ruff clean (76 files); `uv lock --check` passed with no dependency changes; no migrations (`alembic check` clean). A real Uvicorn server on a disposable Compose stack ran all 12 scenarios over loopback HTTP: 12/12 passed, 20 submissions, 16 events stored, all standalone with tier `unknown`, and every Redis candidate expectation held. With Redis paused or PostgreSQL stopped, the run aborted after one 503 with nothing stored. GitHub Actions has **not** run M3.3; M3.2 passed on GitHub (run 41867501351, commit `14e23d9`).
+
+**Historical record — M3.2 local verification, 4 November 2026:** default suite 197 passed; integration suite 283 passed (17 new resilience tests); both environments; Ruff clean (67 files); `uv lock --check` passed with no dependency changes; no migrations. Real containers: Redis paused (hung) → 503 in 0.51 s and stopped → 503, nothing stored in either case; after a Redis restart the candidate index was empty and `rebuild` restored it from PostgreSQL; PostgreSQL stopped → 503, restored → 201. GitHub Actions has **not** run M3.2 yet; M3.1 passed on GitHub (run 41698348162, commit `4647f52`).
 
 **Historical record — M3.1 local verification, 4 November 2026:** default suite 187 passed; integration suite 266 passed (29 new ingestion tests); both environments; Ruff clean (63 files); `uv lock --check` passed with no dependency changes. A real PostgreSQL container stop returned 503 for new events with nothing stored; after restart the stored event replayed (200) and the failed one was created on retry (201). GitHub Actions has **not** run M3.1 yet; M2.5 passed on GitHub (run 41695959367, commit `a4a5578`).
 

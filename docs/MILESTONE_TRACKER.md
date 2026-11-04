@@ -17,9 +17,10 @@ Status values: `not started`, `in progress`, `blocked`, `complete (verified)`, `
 | M2.3 | Login/session/logout, Argon2id, opaque DB sessions, CSRF, Origin, shared Redis throttling (fail closed), audited minimal provisioning | `backend` | complete (verified): GitHub Actions run 41186469837 on `24e6538`, both jobs passed (public GitHub API, 3 Nov 2026) | — |
 | M2.4 | Source-scoped ingestion keys and `require_ingest_key`/`require_source`; operator CLI (bootstrap, provision, deactivate, reset, role change, key create/rotate/revoke/list, retention); admin-actor authorization; operator-triggered retention | `backend` | complete (verified): GitHub Actions run 41693476877 on `0db68fb`, both jobs passed (public GitHub API, 4 Nov 2026) | — |
 | M2.5 | Full M2 security acceptance: findings M-1–M-3 and L-1–L-3 fixed (migration `0002_retention_procedure`, write-ahead retention audit, final revocation), report in `M2_SECURITY_ACCEPTANCE.md` | `backend` | complete (verified): GitHub Actions run 41695959367 on `a4a5578`, both jobs passed (public GitHub API, 4 Nov 2026). **M2 acceptance: PASS** | — |
-| M3 | Authenticated ingestion, PG idempotency, Redis state, scenario catalog + submission script | `backend` | not started | M2; D08 |
+| M3 | Authenticated ingestion, PG idempotency, Redis state, scenario catalog + submission script | `backend` | in progress: M3.1 and M3.2 verified on GitHub; M3.3 verified locally; M3 acceptance pending | M2; D08 (provisional) |
 | M3.1 | Key-authenticated SMS/call ingestion, transactional PostgreSQL idempotency (201/200/409), receipt recovery, standalone incident with unavailable analysis, ingestion audit | `backend` | complete (verified): GitHub Actions run 41698348162 on `4647f52`, both jobs passed (public GitHub API, 4 Nov 2026) | — |
-| M3.2 | Redis candidate index (D05 window/lateness), shared per-key submission limit (D08), invalid-Bearer throttle, ingestion deadline, fail-closed Redis handling, post-commit index recovery | `backend` | in progress: verified locally on 4 Nov 2026; uncommitted; **not yet run on GitHub** | Owner review; user commit/push; exit requires both CI jobs green |
+| M3.2 | Redis candidate index (D05 window/lateness), shared per-key submission limit (D08), invalid-Bearer throttle, ingestion deadline, fail-closed Redis handling, post-commit index recovery | `backend` | complete (verified): GitHub Actions run 41867501351 on `14e23d9`, both jobs passed (public GitHub API, 4 Nov 2026) | — |
+| M3.3 | Controlled synthetic simulator: versioned scenario catalog S01–S12 with validated expectations and simulation-only labels, admin-only `GET /simulator/scenarios`, loopback-only paced runner (`python -m kavach.simulator`) through the ordinary endpoints, audio manifest contract documented (not active) | `backend` | in progress: verified locally on 4 Nov 2026; uncommitted; **not yet run on GitHub** | Owner review; user commit/push; exit requires both CI jobs green |
 | M4 | SMS detection and evaluation | `backend` | not started | M3; D04 data/licensing |
 | M5 | Voice transcription, intent, synthesis indication | `backend` | not started | M3; D04 data/licensing/hardware |
 | M6 | Correlation and continuous fusion | `backend` | not started | M4, M5; D05, D06; paired labeled data |
@@ -86,9 +87,21 @@ The fresh environment was created in a temporary directory outside the repositor
 | typing-inspection | 0.4.4 | transitive |
 | uvicorn | 0.54.0 | direct |
 
+## M3.3 local verification (4 November 2026, historical once recorded)
+
+GitHub Actions has **not** run the M3.3 changes; everything below is local.
+
+| Item | Value |
+| --- | --- |
+| Dependencies / migrations | none / none (`alembic check` clean) |
+| Default suite | 267 passed (70 new: catalog validity and 17 invalid-catalog cases, D05 boundary margins, deterministic planning, payloads valid without labels, run-ID and loopback-target restrictions, pacing under the per-key limit, 429 Retry-After with identical resend and capped retries, stop on 401/403/5xx/unreachable, submission cap, local key checks, key only from environment or stdin, redacted text and JSON output, dry run sends nothing, catalog endpoint fails closed) |
+| Integration suite | 297 passed (14 new: whole catalog against real services with stored rows, standalone incidents, tier `unknown`, null scores, no pair incidents, unchanged conflict original and Redis candidate expectations; privacy scan of runner output, logs, Redis and database; same seed and run ID replays identically; wrong-source key and revoked key stop after one submission; real 429 handling; PostgreSQL and Redis outages; CLI over real loopback HTTP; admin-only catalog with viewer/analyst/anonymous/API-key/mixed/deactivated denials) |
+| Demonstration | Uvicorn on a disposable Compose stack: 12/12 scenarios, 20 submissions, 16 events (all standalone, tier `unknown`, no scores), 0 candidate-expectation mismatches; rerun of the same run ID reported as 409; external target refused (exit 2); Redis paused and PostgreSQL stopped each aborted after one 503 with nothing stored; recovery run passed |
+| Ruff / lock | check passed, 76 files formatted / `uv lock --check` passed |
+
 ## M3.2 local verification (4 November 2026, historical once recorded)
 
-GitHub Actions has **not** run the M3.2 changes; everything below is local.
+Recorded before the push; GitHub Actions later passed on `14e23d9` (run 41867501351).
 
 | Item | Value |
 | --- | --- |
@@ -216,8 +229,8 @@ The owner's conflict and Git decisions do not approve any item below marked pend
 | TD-13 | Retention runs are operator-triggered and destructive only on `*_test` databases; no schedule exists. Since M2.5 the retention role is limited to the expiry procedure and runs are audited before deleting | Synthetic dev data is not yet cleaned automatically | Scheduling and the dev/pilot policy with the deployment milestone (M11) |
 | TD-14 | Login throttling uses fixed 15-minute windows keyed by HMAC(username, client IP); `X-Forwarded-For` is ignored, so behind a proxy every client shares one IP and its 30-failure ceiling | Proxy deployments need explicit trusted-proxy handling first | Before any proxied deployment (M11) |
 | TD-15 | ~~No operator commands for deactivation, reset or role change~~ Implemented in M2.4 (`python -m kavach.cli`) | — | Closes with M2.4 |
-| TD-16 | The documented admin session path for event submission (`simulator` source + CSRF) and admin receipt reads is not implemented; M3.1 is key-only | Browser simulator cannot submit yet | With the simulator UI (M8) or on approval |
-| TD-17 | No approved audio sample manifest (`AUDIO_SAMPLE_MANIFEST_PATH`): every non-null `audio_reference` is rejected | Calls are metadata-only | Before voice analysis (M5) |
+| TD-16 | The documented admin session path for event submission (`simulator` source + CSRF) and admin receipt reads is not implemented; M3.1–M3.3 are key-only, and the M3.3 runner uses an ingestion key scoped to `simulator`, the same source name the admin path would use (shared idempotency namespace) | Browser simulator cannot submit yet | With the simulator UI (M8) or on approval |
+| TD-17 | No approved audio sample manifest (`AUDIO_SAMPLE_MANIFEST_PATH`): every non-null `audio_reference` is rejected; the manifest contract is documented in API.md (M3.3) but not read | Calls are metadata-only; the PRD's "benign synthetic IVR" journey cannot run; catalog `samples` is empty | Approve the sample list (D04 provenance) before voice analysis (M5) |
 | TD-18 | D08: the 30/minute/key submission limit and the 30-second deadline are enforced (M3.2); `MAX_INFLIGHT_ANALYSES` (2 concurrent analyses) is not, because it bounds model inference and no models exist | Admission control arrives with the first model | M4/M5 |
 | TD-19 | The invalid-Bearer ceiling (30 per IP per 15 min, blocking every Bearer request from that IP while exceeded) mirrors the login IP ceiling; no value was specified for keys | Needs owner confirmation; shares the proxy limitation of TD-14 | Confirm before M3.3 |
 | TD-20 | D05 window (30 min) and lateness (10 min) are adopted from the proposal for the candidate index; formal approval is still pending | M6 matching depends on them | Approve before M6 |

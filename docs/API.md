@@ -33,6 +33,20 @@ The user authorized a backend-only foundation after the initial specification. T
 - Deadline: `INFERENCE_TIMEOUT_SECONDS` (default 30, D08) bounds each submission from arrival to commit. The remaining time is applied as the transaction's `statement_timeout`; if it runs out before commit, nothing is stored and the response is 503 `PROCESSING_TIMEOUT` (retry with the same event ID). A committed event is never reported as timed out. `MAX_INFLIGHT_ANALYSES` is not implemented: it bounds model inference, which does not exist yet.
 - After commit the event is added to the Redis candidate index (DATABASE.md "Redis keys"). If that fails the submission still succeeds (PostgreSQL is authoritative), an `operational_event candidate.index_deferred` is logged, and the index is repaired by an identical retry or by `python -m kavach.cli candidates rebuild`.
 
+**Controlled simulator (M3.3, implemented; C-03).**
+
+- `GET /api/v1/simulator/scenarios`: admin session only (viewer/analyst 403 `FORBIDDEN`; no or expired session 401 `SESSION_EXPIRED`; API keys cannot use it; cookie plus Bearer 401 `MIXED_CREDENTIALS`; 503 without the authentication configuration). Read-only; it creates no events or scores. `data` is `{catalog_version, synthetic: true, source, scenarios, samples}`. Each scenario has `id`, `version`, `name`, `description`, `expected_summary`, simulation-only `truth`, `provisional` (decisions its expectations depend on, such as `D05`), ordered `steps` and `candidate_pairs`. `samples` is always `[]` until an audio sample manifest is approved (TD-17). Reads are not yet rate-limited (the D08 read limit is not implemented for any route).
+- The catalog is the packaged, versioned file `backend/src/kavach/simulator/scenarios_v1.json`, validated strictly on load. Every step's expected HTTP outcome, Redis `indexed` state and D05 `late` flag are recomputed by the validator from the contract and the provisional D05 constants, so the catalog cannot silently drift from the code.
+- The runner (`python -m kavach.simulator`) is an ordinary API client. It submits with an ingestion key for source `simulator` through `POST /events/sms|call`, reads receipts with `GET /events/{id}`, and never touches PostgreSQL or Redis. It replaces scenario offsets with fresh timestamps (event time = scenario start + offset) and generates stable run-specific event IDs (`sim-<run_id>-<scenario>-<step>`) and subscriber tokens (derived from seed, run ID, scenario and alias). The scenario's `truth` labels are never sent to the API. They are simulation-only ground truth, not model outputs. Usage and safety limits are in the README ("Controlled simulator").
+
+**Audio sample manifest (proposed contract, not active; TD-17).** `AUDIO_SAMPLE_MANIFEST_PATH` is not read yet, and every non-null `audio_reference` is rejected with 422 `UNKNOWN_AUDIO_REFERENCE`. Activation needs an approved list of licensed synthetic samples (D04 provenance) and voice analysis (M5). The intended contract is an operator-controlled JSON file: `{"manifest_version": 1, "samples": [{"id", "label", "file", "sha256", "duration_seconds", "speech_origin", "license", "provenance"}]}`.
+- `id` uses the `audio_reference` syntax.
+- `file` is a bare WAV file name resolved only inside the manifest's own directory: no separators, `..`, URLs or absolute paths.
+- `sha256` is verified at startup, and limits are ≤10 MiB and ≤60 s.
+- `speech_origin` is `synthetic_tts` or `human_recorded_with_consent`.
+- The API exposes only `id` and `label` (as catalog `samples`). Any ID that is not listed stays 422.
+- An approved reference without a deployed voice model would still record every voice stage as unavailable. It never yields a score.
+
 Test-only HTTP handlers still verify DTO validation separately. No client-provided model scores or arbitrary feature objects are accepted. Endpoint contracts below that are not identified as implemented above describe later work. See the root README and [MILESTONE_TRACKER.md](MILESTONE_TRACKER.md).
 
 ## Status and conventions
@@ -153,7 +167,8 @@ Required services are local PostgreSQL, Redis and model artifacts. Runtime audio
 | PAYLOAD_HMAC_KEYS / PAYLOAD_HMAC_ACTIVE_VERSION | Secret server config | Versioned idempotency digest keys |
 | AUDIT_HMAC_KEYS / AUDIT_HMAC_ACTIVE_VERSION | Secret server/job config | Versioned audit signing/verification keys; JSON object `{"<version>": "<32+ character secret>"}` (M2.3) |
 | MODEL_DIR / MODEL_MANIFEST_PATH | Server | Trusted local model assets |
-| AUDIO_SAMPLE_MANIFEST_PATH | Server | Allowlisted controlled samples |
+| AUDIO_SAMPLE_MANIFEST_PATH | Server | Allowlisted controlled samples (contract above; not read until TD-17 is approved) |
+| KAVACH_SIMULATOR_API_KEY | Operator shell (simulator client only) | Ingestion key for `python -m kavach.simulator`; alternatively piped with `--key-stdin`; never stored in a file or passed as an argument |
 | POLICY_PATH | Server | Approved versioned thresholds/window configuration |
 | INFERENCE_DEVICE | Server | Explicit CPU/GPU selection |
 | MAX_INFLIGHT_ANALYSES / INFERENCE_TIMEOUT_SECONDS | Server | Bounded admission/deadline; `INFERENCE_TIMEOUT_SECONDS` (default 30) is the ingestion deadline since M3.2, `MAX_INFLIGHT_ANALYSES` arrives with inference |
