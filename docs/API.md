@@ -23,7 +23,15 @@ The user authorized a backend-only foundation after the initial specification. T
 - Idempotency: the canonical payload (validated fields, timestamp normalized to UTC microseconds, absent optionals as null, text kept exactly) is fingerprinted with HMAC-SHA256 under `PAYLOAD_HMAC_KEYS[PAYLOAD_HMAC_ACTIVE_VERSION]`; the stored version is used when comparing, so retired versions must stay configured. First commit → 201 with `Location`; same fingerprint → 200 with the original receipt and `replayed: true`; different fingerprint → 409 `EVENT_ID_CONFLICT`. PostgreSQL's unique `(source, external_event_id)` arbitrates concurrent requests.
 - Receipts: `event_id`, `external_event_id`, `source`, `kind`, `analysis_status`, `received_at`, `processing_ms`, `replayed`, `warnings`. No subscriber, incident or content field is ever returned to an ingestor. `GET /events/{id}` returns `replayed: false` and the same 404 for a missing event, another source's event or a malformed ID.
 - No models are deployed: every stage is stored as unavailable with a reason, all scores are null, `analysis_status` is `unavailable`, warnings name each unavailable stage (for example `SMS_CLASSIFIER_UNAVAILABLE`), and the standalone incident's assessment has tier `unknown` with a null final score.
-- A database failure returns 503 `DEPENDENCY_UNAVAILABLE` with nothing stored; an unexpected failure (for example an audit write) returns 500 with nothing stored. Either can be retried with the same event ID.
+- A database failure returns 503 `DEPENDENCY_UNAVAILABLE` with nothing stored; an unexpected failure (for example an audit write) returns 500 with nothing stored. Either can be retried with the same event ID. If the connection is lost *while committing*, the 503 is ambiguous: retry with the same event ID (200 replay if it was committed) or read the receipt.
+
+**Limits, deadline and Redis (M3.2, implemented).**
+
+- Submission limit (D08 proposal, adopted): **30 submissions per minute per ingestion key**, an exact sliding window on Redis server time shared by every backend process. It is checked after the key and before the body is read, so every authenticated submission counts, including identical replays and rejected bodies. Excess → 429 `RATE_LIMITED` with `Retry-After` (seconds). Receipt reads are not counted (D08 has no key read limit).
+- Invalid credentials: per client IP, at most **30 rejected Bearer credentials per 15 minutes** (mirrors the D08 login IP ceiling; no separate value is specified). Each presented key reserves an attempt before it is checked and a valid key refunds it. Beyond the ceiling every Bearer request from that IP gets 429 `RATE_LIMITED` with `Retry-After`, valid key or not, as with the login ceiling. Requests without a credential get 401 and are not counted. Keys are HMAC'd; no key material reaches Redis.
+- Redis is required for these limits: if it cannot confirm them (refused, timed out after 0.5 s, no retries), key-authenticated requests fail closed with 503 `DEPENDENCY_UNAVAILABLE` before anything is stored.
+- Deadline: `INFERENCE_TIMEOUT_SECONDS` (default 30, D08) bounds each submission from arrival to commit. The remaining time is applied as the transaction's `statement_timeout`; if it runs out before commit, nothing is stored and the response is 503 `PROCESSING_TIMEOUT` (retry with the same event ID). A committed event is never reported as timed out. `MAX_INFLIGHT_ANALYSES` is not implemented: it bounds model inference, which does not exist yet.
+- After commit the event is added to the Redis candidate index (DATABASE.md "Redis keys"). If that fails the submission still succeeds (PostgreSQL is authoritative), an `operational_event candidate.index_deferred` is logged, and the index is repaired by an identical retry or by `python -m kavach.cli candidates rebuild`.
 
 Test-only HTTP handlers still verify DTO validation separately. No client-provided model scores or arbitrary feature objects are accepted. Endpoint contracts below that are not identified as implemented above describe later work. See the root README and [MILESTONE_TRACKER.md](MILESTONE_TRACKER.md).
 
@@ -148,7 +156,7 @@ Required services are local PostgreSQL, Redis and model artifacts. Runtime audio
 | AUDIO_SAMPLE_MANIFEST_PATH | Server | Allowlisted controlled samples |
 | POLICY_PATH | Server | Approved versioned thresholds/window configuration |
 | INFERENCE_DEVICE | Server | Explicit CPU/GPU selection |
-| MAX_INFLIGHT_ANALYSES / INFERENCE_TIMEOUT_SECONDS | Server | Bounded admission/deadline |
+| MAX_INFLIGHT_ANALYSES / INFERENCE_TIMEOUT_SECONDS | Server | Bounded admission/deadline; `INFERENCE_TIMEOUT_SECONDS` (default 30) is the ingestion deadline since M3.2, `MAX_INFLIGHT_ANALYSES` arrives with inference |
 | EVENT_RETENTION_DAYS / AUDIT_RETENTION_DAYS | Server/job | Approved expiry policies |
 | SESSION_IDLE_MINUTES / SESSION_MAX_HOURS | Server | Approved session limits; defaults 30 and 8 (M2.3) |
 | LOG_LEVEL | Server | Structured safe logging verbosity |

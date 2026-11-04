@@ -12,14 +12,21 @@ from pydantic import BaseModel, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from kavach.api.schemas.events import CallEvent, EventReceipt, ReceiptResponse, SMSEvent
-from kavach.auth.dependencies import IngestPrincipalDep, require_source, unavailable
+from kavach.auth.dependencies import (
+    IngestPrincipalDep,
+    rate_limited,
+    require_source,
+    unavailable,
+)
 from kavach.auth.ingest_keys import IngestPrincipal
+from kavach.auth.throttle import SubmissionQuota, ThrottleUnavailable
 from kavach.core.errors import ApiError
 from kavach.core.telemetry import security_event
 from kavach.services.ingestion import (
     EventIdConflict,
     IngestionService,
     IngestionUnavailable,
+    ProcessingTimeout,
     Receipt,
     UnknownAudioReference,
 )
@@ -37,6 +44,27 @@ def ingestion_service(request: Request) -> IngestionService:
 
 
 IngestionServiceDep = Annotated[IngestionService, Depends(ingestion_service)]
+
+
+def require_submission_quota(request: Request, principal: IngestPrincipalDep) -> IngestPrincipal:
+    """D08: 30 submissions per minute per key, checked before the body is read.
+
+    Every authenticated submission counts, including idempotent replays and rejected bodies.
+    If Redis cannot enforce the limit the submission is refused (503), never let through.
+    """
+    quota: SubmissionQuota = request.app.state.submission_quota
+    try:
+        reservation = quota.acquire(str(principal.key_id), str(request.state.request_id))
+    except ThrottleUnavailable:
+        security_event("ingest.quota", "throttle_unavailable", request.state.request_id)
+        raise unavailable("Event ingestion is temporarily unavailable") from None
+    if not reservation.allowed:
+        security_event("ingest.quota", "rate_limited", request.state.request_id)
+        raise rate_limited(reservation.retry_after_seconds, "Too many event submissions")
+    return principal
+
+
+SubmittingPrincipal = Annotated[IngestPrincipal, Depends(require_submission_quota)]
 
 
 def not_found() -> ApiError:
@@ -113,6 +141,12 @@ async def submit(
         ) from None
     except IngestionUnavailable:
         raise unavailable("Event ingestion is temporarily unavailable") from None
+    except ProcessingTimeout:
+        raise ApiError(
+            503,
+            "PROCESSING_TIMEOUT",
+            "Processing did not finish in time; retry with the same event ID",
+        ) from None
     if receipt.replayed:
         response.status_code = 200
     else:
@@ -136,7 +170,7 @@ def request_body(model: type[BaseModel]) -> dict[str, Any]:
 async def ingest_sms(
     request: Request,
     response: Response,
-    principal: IngestPrincipalDep,
+    principal: SubmittingPrincipal,
     service: IngestionServiceDep,
 ) -> ReceiptResponse:
     return await submit(request, response, principal, service, SMSEvent)
@@ -148,7 +182,7 @@ async def ingest_sms(
 async def ingest_call(
     request: Request,
     response: Response,
-    principal: IngestPrincipalDep,
+    principal: SubmittingPrincipal,
     service: IngestionServiceDep,
 ) -> ReceiptResponse:
     return await submit(request, response, principal, service, CallEvent)

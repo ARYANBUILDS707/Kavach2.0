@@ -220,6 +220,17 @@ These record how the tables above are enforced in PostgreSQL. They do not change
 
 Candidate key `candidate:{identity_key_version}:{subscriber_digest}` stores only event IDs, kinds and event times with TTL 40 minutes, refreshed on write. Candidate validation always uses event time and durable records. Login/read/ingest counters have policy-defined TTLs. Never store raw text/audio/transcripts or secrets in Redis. Disable persistence for candidate state; separate namespaces for test/development. Loss of cache does not lose reviews or authoritative idempotency.
 
+Implemented layout (M3.2; every key is prefixed `kavach:{APP_ENV}:`):
+
+| Key | Type | Contents | Expiry |
+| --- | --- | --- | --- |
+| `candidate:{identity_key_version}:{subscriber_digest hex}` | sorted set | member `{kind}:{event UUID}`, score = event time (epoch ms) | 40 min, refreshed on write; members older than arrival − 40 min pruned on write; at most 1,200 members (D08 rate × 40 min), oldest evicted with an `operational_event` |
+| `ratelimit:login:acct:{HMAC}` / `ratelimit:login:ip:{HMAC}` | counter | failed-login reservations (M2.3) | 15 min |
+| `ratelimit:bearer:ip:{HMAC}` | counter | rejected Bearer credentials per client IP | 15 min |
+| `ratelimit:ingest:key:{HMAC}` | sorted set | accepted submissions per key (request IDs, Redis-time scores) | 60 s sliding |
+
+HMACs use `RATE_LIMIT_HMAC_KEY`; no username, IP, key material, subscriber token or content appears in a key or value. D05 (proposed, adopted for M3.2): a pair needs |Δ event time| ≤ 30 min and an arriving event may start a pair only if it is at most 10 min late, so no candidate older than 40 min can ever match. Events already older than that at arrival are not indexed. The index is only an accelerator: it creates no incidents, a candidate match is not a trusted correlation, and `python -m kavach.cli candidates rebuild` restores it from PostgreSQL (events inside the 40-minute horizon).
+
 ## Retention, migration and recovery
 
 Proposed D07 retention: events and linked incidents/assessments/reviews expire after seven days; audit records after 30 days; expired/revoked sessions are removed promptly. A daily job first deletes expired incidents and their cascading links/assessments/reviews, then unreferenced expired events, then expired audits/sessions. Circular deferred FKs must be tested in cleanup transactions. Remove cache references opportunistically; stale IDs are ignored. Logs use bounded retention and exclude communications. Account/key records are retained while audit/history references exist; deactivation/revocation is immediate.

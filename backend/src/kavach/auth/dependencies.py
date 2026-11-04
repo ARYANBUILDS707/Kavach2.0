@@ -15,8 +15,10 @@ from kavach.auth.ingest_keys import (
     InvalidIngestKey,
 )
 from kavach.auth.service import ActiveSession, AuthService, DependencyUnavailable, SessionInvalid
+from kavach.auth.throttle import BearerAttemptThrottle, ThrottleUnavailable
 from kavach.auth.tokens import presented_token_matches
 from kavach.core.errors import ApiError
+from kavach.core.telemetry import security_event
 
 SESSION_COOKIE_NAMES = (SECURE_COOKIE.name, LOCAL_DEVELOPMENT_COOKIE.name)
 
@@ -117,8 +119,17 @@ def ingest_key_service(request: Request) -> IngestKeyService:
 IngestKeyServiceDep = Annotated[IngestKeyService, Depends(ingest_key_service)]
 
 
+def rate_limited(retry_after_seconds: int, message: str) -> ApiError:
+    return ApiError(429, "RATE_LIMITED", message, {"Retry-After": str(retry_after_seconds)})
+
+
 def require_ingest_key(request: Request, keys: IngestKeyServiceDep) -> IngestPrincipal:
-    """Machine authentication: exactly `Authorization: Bearer kvk_...` and no session cookie."""
+    """Machine authentication: exactly `Authorization: Bearer kvk_...` and no session cookie.
+
+    Presented credentials are throttled per client IP (M3.2): each attempt is reserved in
+    Redis before the key is checked and refunded if the key is valid, so only rejected
+    credentials accumulate. If Redis cannot confirm the reservation the request fails closed.
+    """
     if has_session_cookie(request):
         raise ApiError(401, "MIXED_CREDENTIALS", "Use exactly one authentication mechanism")
     scheme, _, token = request.headers.get("authorization", "").partition(" ")
@@ -127,12 +138,25 @@ def require_ingest_key(request: Request, keys: IngestKeyServiceDep) -> IngestPri
     )
     if scheme.lower() != "bearer" or not token.strip():
         raise rejected
+    throttle: BearerAttemptThrottle = request.app.state.bearer_throttle
+    client_ip = request.client.host if request.client else "unknown"
     try:
-        return keys.authenticate(token.strip(), request.state.request_id)
+        reservation = throttle.reserve(client_ip)
+    except ThrottleUnavailable:
+        security_event("ingest.key_rejected", "throttle_unavailable", request.state.request_id)
+        raise unavailable("API key validation is temporarily unavailable") from None
+    if not reservation.allowed:
+        security_event("ingest.key_rejected", "throttled", request.state.request_id)
+        raise rate_limited(reservation.retry_after_seconds, "Too many invalid API key attempts")
+    try:
+        principal = keys.authenticate(token.strip(), request.state.request_id)
     except InvalidIngestKey:
         raise rejected from None
     except IngestKeysUnavailable:
+        throttle.release(client_ip)
         raise unavailable("API key validation is temporarily unavailable") from None
+    throttle.release(client_ip)
+    return principal
 
 
 IngestPrincipalDep = Annotated[IngestPrincipal, Depends(require_ingest_key)]

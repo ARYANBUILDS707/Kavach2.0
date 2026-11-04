@@ -10,6 +10,7 @@
     python -m kavach.cli key revoke --key-id ID --actor ADMIN
     python -m kavach.cli key list --actor ADMIN
     python -m kavach.cli retention run --database DB [--dry-run] [--as-of ISO] --actor ADMIN
+    python -m kavach.cli candidates rebuild --actor ADMIN
 
 Every state-changing command authenticates `--actor` as an active admin first; the only
 exception is `user create --bootstrap`, which creates the first admin and is refused once an
@@ -38,9 +39,12 @@ from kavach.auth.ingest_keys import IngestKeyService
 from kavach.auth.passwords import PasswordService
 from kavach.core.clock import Clock, utc_now
 from kavach.core.config import Settings, parse_audit_keys
+from kavach.core.redis_client import create_redis_client
+from kavach.correlation.candidates import CandidateIndex, CandidateIndexUnavailable
 from kavach.db.engine import create_db_engine, create_session_factory
 from kavach.db.retention import DEFAULT_BATCH_SIZE, RetentionRefused, run_audited_retention
 from kavach.privacy.audit import AuditWriter
+from kavach.services.ingestion import rebuild_candidate_index
 
 
 class SecretInput:
@@ -99,6 +103,9 @@ def build_parser() -> argparse.ArgumentParser:
     key_rotate.add_argument("--expires-in-days", type=int, default=90)
     command(keys, "revoke").add_argument("--key-id", required=True, type=UUID)
     command(keys, "list")
+
+    candidates = groups.add_parser("candidates").add_subparsers(dest="action", required=True)
+    command(candidates, "rebuild")
 
     retention = groups.add_parser("retention").add_subparsers(dest="action", required=True)
     run = command(retention, "run")
@@ -248,6 +255,24 @@ class Operator:
             print(f"  {table}: {mode} {count}", file=self.out)
         if not report.dry_run:
             print(f"Audited as retention run {report.run_id}", file=self.out)
+
+    def candidates_rebuild(
+        self, args: argparse.Namespace, actor: UUID, secrets: SecretInput
+    ) -> None:
+        """Restore the Redis candidate index from PostgreSQL after a Redis outage or restart."""
+        if self.settings.redis_url is None:
+            raise AccountError("REDIS_URL is required to rebuild the candidate index")
+        redis = create_redis_client(self.settings.redis_url)
+        try:
+            index = CandidateIndex(redis, namespace=self.settings.app_env)
+            indexed = rebuild_candidate_index(self.sessions, index, self.clock)
+        except CandidateIndexUnavailable:
+            raise AccountError(
+                "Redis is unavailable; the candidate index was not rebuilt"
+            ) from None
+        finally:
+            redis.close()
+        print(f"Re-indexed {indexed} events inside the 40-minute candidate horizon", file=self.out)
 
     def _print_key(self, key_id: UUID, source: str, expires_at: datetime, plaintext: str) -> None:
         print(

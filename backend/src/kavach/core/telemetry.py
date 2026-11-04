@@ -13,3 +13,13 @@ def security_event(event: str, reason: str, request_id: UUID | None) -> None:
     security_log.warning(
         "security_event event=%s reason=%s request_id=%s", event, reason, request_id
     )
+
+
+operations_log = logging.getLogger("kavach.operations")
+
+
+def operational_event(event: str, reason: str, request_id: UUID | None) -> None:
+    """Degraded-but-safe conditions operators should notice; same content rules as above."""
+    operations_log.warning(
+        "operational_event event=%s reason=%s request_id=%s", event, reason, request_id
+    )

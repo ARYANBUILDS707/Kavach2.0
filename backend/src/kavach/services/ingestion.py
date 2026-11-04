@@ -24,12 +24,19 @@ from sqlalchemy.orm import Session, sessionmaker
 from kavach.api.schemas.events import CallEvent, SMSEvent
 from kavach.auth.ingest_keys import IngestPrincipal
 from kavach.core.clock import Clock
-from kavach.core.telemetry import security_event
+from kavach.core.telemetry import operational_event, security_event
+from kavach.correlation.candidates import (
+    CANDIDATE_HORIZON,
+    CandidateIndex,
+    CandidateIndexUnavailable,
+)
 from kavach.db import event_repository as repo
 from kavach.privacy.audit import AuditWriter
 from kavach.privacy.digests import KeyedDigester
 
 UNREACHABLE = (OperationalError, InterfaceError)
+QUERY_CANCELED = "57014"  # statement_timeout fired: the request deadline was reached
+DEFAULT_DEADLINE_SECONDS = 30.0
 POLICY_VERSION = "kavach-m3.1-no-models"
 SIGNALS_SCHEMA_VERSION = 1
 # No controlled audio sample manifest is approved yet, so every non-null reference is unknown.
@@ -48,6 +55,17 @@ class UnknownAudioReference(Exception):
 
 class IngestionUnavailable(Exception):
     """PostgreSQL could not be reached; nothing was stored."""
+
+
+class ProcessingTimeout(Exception):
+    """The request deadline passed before commit; nothing was stored (retry is safe)."""
+
+
+def remaining_ms(deadline: float) -> int:
+    remaining = int((deadline - time.monotonic()) * 1000)
+    if remaining <= 0:
+        raise ProcessingTimeout
+    return remaining
 
 
 @dataclass(frozen=True)
@@ -118,6 +136,8 @@ class IngestionService:
         audit: AuditWriter,
         clock: Clock,
         retention: timedelta,
+        deadline: float = DEFAULT_DEADLINE_SECONDS,
+        candidates: CandidateIndex | None = None,
     ) -> None:
         self.sessions = sessions
         self.subscriber_digests = subscriber_digests
@@ -125,16 +145,27 @@ class IngestionService:
         self.audit = audit
         self.clock = clock
         self.retention = retention
+        # Total request deadline in seconds (INFERENCE_TIMEOUT_SECONDS, D08: 30).
+        self.deadline = deadline
+        self.candidates = candidates
 
     def ingest(
         self, event: Event, principal: IngestPrincipal, request_id: UUID, started: float
     ) -> Receipt:
+        """`started` is the request's time.monotonic(); past the deadline nothing is committed.
+
+        A connection lost while committing is reported as 503 although the commit may have
+        succeeded; the client resolves that by retrying the same event ID (200 replay) or by
+        reading the receipt, as API.md specifies.
+        """
+        deadline = started + self.deadline
         if isinstance(event, CallEvent) and event.audio_reference is not None:
             if event.audio_reference not in APPROVED_AUDIO_REFERENCES:
                 raise UnknownAudioReference
         canonical = canonical_payload(event)
         try:
             with self.sessions.begin() as db:
+                repo.set_local_statement_timeout(db, remaining_ms(deadline))
                 existing = repo.find_event(db, event.source, event.event_id)
             if existing is not None:
                 return self._replay(existing, canonical, request_id)
@@ -146,6 +177,7 @@ class IngestionService:
             # Analysis would run here, outside any transaction; no models are deployed yet.
             processing_ms = max(0, int((time.monotonic() - started) * 1000))
             with self.sessions.begin() as db:
+                repo.set_local_statement_timeout(db, remaining_ms(deadline))
                 repo.lock_subscriber(db, subscriber)
                 event_id = repo.insert_event_if_absent(
                     db,
@@ -197,19 +229,54 @@ class IngestionService:
                         now=now,
                     )
                 stored = repo.find_event(db, event.source, event.event_id)
-        except UNREACHABLE:
+                if time.monotonic() >= deadline:
+                    # Roll back rather than commit after the deadline (API.md: 503, no result).
+                    raise ProcessingTimeout
+        except OperationalError as error:
+            if getattr(error.orig, "sqlstate", None) == QUERY_CANCELED:
+                raise ProcessingTimeout from None
+            raise IngestionUnavailable from None
+        except InterfaceError:
             raise IngestionUnavailable from None
         if stored is None:
             raise RuntimeError("An event row vanished while it was being ingested")
         if event_id is None:
             # Another request committed this event ID first: replay or conflict against it.
             return self._replay(stored, canonical, request_id)
+        # Committed: from here on the outcome is success, whatever Redis does.
+        self._index(stored, request_id)
         return receipt_from(stored, replayed=False)
+
+    def _index(self, record: repo.EventRecord, request_id: UUID) -> None:
+        """Best effort after commit; PostgreSQL stays authoritative and `rebuild` recovers."""
+        if self.candidates is None:
+            return
+        try:
+            evicted = self.candidates.add(
+                identity_key_version=record.identity_key_version,
+                subscriber_digest=record.subscriber_digest,
+                event_id=record.id,
+                kind=record.kind,
+                event_time=record.event_time,
+                received_at=record.received_at,
+            )
+        except CandidateIndexUnavailable:
+            operational_event("candidate.index_deferred", "redis_unavailable", request_id)
+            return
+        if evicted:
+            operational_event("candidate.index_capped", "per_subscriber_cap", request_id)
+
+    def rebuild_candidates(self) -> int:
+        if self.candidates is None:
+            raise RuntimeError("No candidate index is configured")
+        return rebuild_candidate_index(self.sessions, self.candidates, self.clock)
 
     def _replay(self, existing: repo.EventRecord, canonical: bytes, request_id: UUID) -> Receipt:
         if self.payload_digests.matches(
             canonical, existing.payload_digest, existing.payload_key_version
         ):
+            # Re-indexing is idempotent; it repairs an earlier deferred index write.
+            self._index(existing, request_id)
             return receipt_from(existing, replayed=True)
         security_event("ingest.event_conflict", "payload_mismatch", request_id)
         raise EventIdConflict
@@ -222,3 +289,25 @@ class IngestionService:
         except UNREACHABLE:
             raise IngestionUnavailable from None
         return receipt_from(record, replayed=False) if record else None
+
+
+def rebuild_candidate_index(
+    sessions: sessionmaker[Session], candidates: CandidateIndex, clock: Clock
+) -> int:
+    """Re-add every event still inside the candidate horizon from PostgreSQL (idempotent).
+
+    Recovers index writes deferred by a Redis outage; returns how many events were indexed.
+    """
+    now = clock()
+    with sessions.begin() as db:
+        records = repo.events_since(db, now - CANDIDATE_HORIZON)
+    for record in records:
+        candidates.add(
+            identity_key_version=record.identity_key_version,
+            subscriber_digest=record.subscriber_digest,
+            event_id=record.id,
+            kind=record.kind,
+            event_time=record.event_time,
+            received_at=now,
+        )
+    return len(records)

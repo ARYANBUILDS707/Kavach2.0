@@ -102,3 +102,16 @@ def failed_logins_in_process(
     app = create_app(auth_settings(rate_limit_key, audit_keys))
     with TestClient(app, base_url=ORIGIN) as client:
         return [login(client, username, "wrong password!").status_code for _ in range(attempts)]
+
+
+def submissions_in_process(
+    key: str, bodies: list[dict[str, Any]], rate_limit_key: str, audit_keys: str
+) -> list[int]:
+    """Runs in a separate OS process: own app, connection pools and Redis client."""
+    app = create_app(auth_settings(rate_limit_key, audit_keys))
+    headers = {"Authorization": f"Bearer {key}"}
+    with TestClient(app, base_url=ORIGIN) as client:
+        return [
+            client.post("/api/v1/events/sms", json=body, headers=headers).status_code
+            for body in bodies
+        ]

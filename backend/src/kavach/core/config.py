@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     payload_hmac_keys: SecretStr | None = None
     payload_hmac_active_version: str | None = None
     event_retention_days: int = Field(default=7, ge=1, le=3650)
+    # Total ingestion deadline in seconds (API.md INFERENCE_TIMEOUT_SECONDS; D08: 30).
+    inference_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
 
     @field_validator("database_url", "retention_database_url")
     @classmethod

@@ -24,6 +24,10 @@ class EventRecord:
     received_at: datetime
     processing_ms: int
     signals: dict[str, Any]
+    # Used to (re)index candidates; never returned to clients.
+    subscriber_digest: bytes
+    identity_key_version: str
+    event_time: datetime
 
 
 RECEIPT_COLUMNS = (
@@ -37,6 +41,9 @@ RECEIPT_COLUMNS = (
     Event.received_at,
     Event.processing_ms,
     Event.signals,
+    Event.subscriber_digest,
+    Event.identity_key_version,
+    Event.event_time,
 )
 
 
@@ -53,6 +60,21 @@ def find_event(db: Session, source: str, external_event_id: str) -> EventRecord 
         )
     ).one_or_none()
     return EventRecord(*row) if row else None
+
+
+def events_since(db: Session, earliest_event_time: datetime) -> list[EventRecord]:
+    """Events still inside the candidate horizon, for rebuilding the Redis index."""
+    rows = db.execute(
+        select(*RECEIPT_COLUMNS)
+        .where(Event.event_time >= earliest_event_time)
+        .order_by(Event.event_time, Event.id)
+    )
+    return [EventRecord(*row) for row in rows]
+
+
+def set_local_statement_timeout(db: Session, milliseconds: int) -> None:
+    """Bound every statement in this transaction by the request's remaining deadline."""
+    db.execute(select(func.set_config("statement_timeout", str(max(1, milliseconds)), True)))
 
 
 def find_event_for_source(db: Session, event_id: UUID, source: str) -> EventRecord | None:

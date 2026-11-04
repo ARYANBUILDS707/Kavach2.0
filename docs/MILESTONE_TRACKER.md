@@ -18,7 +18,8 @@ Status values: `not started`, `in progress`, `blocked`, `complete (verified)`, `
 | M2.4 | Source-scoped ingestion keys and `require_ingest_key`/`require_source`; operator CLI (bootstrap, provision, deactivate, reset, role change, key create/rotate/revoke/list, retention); admin-actor authorization; operator-triggered retention | `backend` | complete (verified): GitHub Actions run 41693476877 on `0db68fb`, both jobs passed (public GitHub API, 4 Nov 2026) | — |
 | M2.5 | Full M2 security acceptance: findings M-1–M-3 and L-1–L-3 fixed (migration `0002_retention_procedure`, write-ahead retention audit, final revocation), report in `M2_SECURITY_ACCEPTANCE.md` | `backend` | complete (verified): GitHub Actions run 41695959367 on `a4a5578`, both jobs passed (public GitHub API, 4 Nov 2026). **M2 acceptance: PASS** | — |
 | M3 | Authenticated ingestion, PG idempotency, Redis state, scenario catalog + submission script | `backend` | not started | M2; D08 |
-| M3.1 | Key-authenticated SMS/call ingestion, transactional PostgreSQL idempotency (201/200/409), receipt recovery, standalone incident with unavailable analysis, ingestion audit | `backend` | in progress: verified locally on 4 Nov 2026; uncommitted; **not yet run on GitHub** | Owner review; user commit/push; exit requires both CI jobs green |
+| M3.1 | Key-authenticated SMS/call ingestion, transactional PostgreSQL idempotency (201/200/409), receipt recovery, standalone incident with unavailable analysis, ingestion audit | `backend` | complete (verified): GitHub Actions run 41698348162 on `4647f52`, both jobs passed (public GitHub API, 4 Nov 2026) | — |
+| M3.2 | Redis candidate index (D05 window/lateness), shared per-key submission limit (D08), invalid-Bearer throttle, ingestion deadline, fail-closed Redis handling, post-commit index recovery | `backend` | in progress: verified locally on 4 Nov 2026; uncommitted; **not yet run on GitHub** | Owner review; user commit/push; exit requires both CI jobs green |
 | M4 | SMS detection and evaluation | `backend` | not started | M3; D04 data/licensing |
 | M5 | Voice transcription, intent, synthesis indication | `backend` | not started | M3; D04 data/licensing/hardware |
 | M6 | Correlation and continuous fusion | `backend` | not started | M4, M5; D05, D06; paired labeled data |
@@ -84,6 +85,18 @@ The fresh environment was created in a temporary directory outside the repositor
 | typing-extensions | 4.16.0 | transitive |
 | typing-inspection | 0.4.4 | transitive |
 | uvicorn | 0.54.0 | direct |
+
+## M3.2 local verification (4 November 2026, historical once recorded)
+
+GitHub Actions has **not** run the M3.2 changes; everything below is local.
+
+| Item | Value |
+| --- | --- |
+| Dependencies / migrations | none / none |
+| Default suite | 197 passed (10 new: D05 boundaries, Redis key privacy, Retry-After, closed and hung Redis fail closed), 283 deselected |
+| Integration suite | 283 passed (17 new: index contents/TTL, replay without duplicates, out-of-order arrival, inclusive 30-minute window, 40-minute horizon and pruning, per-subscriber cap, no pair incidents, two processes sharing one index, 30/minute limit with replays counted, per-key limits, sliding recovery, two processes capped at exactly 30, invalid-Bearer ceiling with refunds, deadline abort and retry, Redis outage before storage, Redis failure after commit and both recovery paths, CLI rebuild, Redis privacy scan) |
+| Real outages | Redis paused → 503 in 0.51 s; stopped → 503; nothing stored either time; restart emptied the index, `rebuild` restored it; PostgreSQL stopped → 503, restored → 201 |
+| Ruff / lock | check passed, 67 files formatted / `uv lock --check` passed |
 
 ## M3.1 local verification (4 November 2026, historical once recorded)
 
@@ -205,7 +218,9 @@ The owner's conflict and Git decisions do not approve any item below marked pend
 | TD-15 | ~~No operator commands for deactivation, reset or role change~~ Implemented in M2.4 (`python -m kavach.cli`) | — | Closes with M2.4 |
 | TD-16 | The documented admin session path for event submission (`simulator` source + CSRF) and admin receipt reads is not implemented; M3.1 is key-only | Browser simulator cannot submit yet | With the simulator UI (M8) or on approval |
 | TD-17 | No approved audio sample manifest (`AUDIO_SAMPLE_MANIFEST_PATH`): every non-null `audio_reference` is rejected | Calls are metadata-only | Before voice analysis (M5) |
-| TD-18 | D08 ingestion limits (30/minute/key, admission and deadline) are not enforced | No per-key ingestion throttle yet | M3.2+ once D08 is approved |
+| TD-18 | D08: the 30/minute/key submission limit and the 30-second deadline are enforced (M3.2); `MAX_INFLIGHT_ANALYSES` (2 concurrent analyses) is not, because it bounds model inference and no models exist | Admission control arrives with the first model | M4/M5 |
+| TD-19 | The invalid-Bearer ceiling (30 per IP per 15 min, blocking every Bearer request from that IP while exceeded) mirrors the login IP ceiling; no value was specified for keys | Needs owner confirmation; shares the proxy limitation of TD-14 | Confirm before M3.3 |
+| TD-20 | D05 window (30 min) and lateness (10 min) are adopted from the proposal for the candidate index; formal approval is still pending | M6 matching depends on them | Approve before M6 |
 | TD-05 | `docs/AGENTS.md` duplicates root `AGENTS.md` with relative paths | Rules can drift; root `AGENTS.md` is authoritative | Decide whether to keep or reduce to a pointer |
 | TD-06 | Stale Git/status statements: README and ARCHITECTURE.md line 7 corrected in M0; CONTRIBUTING.md branch rules added in M0. PRD document map now lists the six new documents | Reader confusion | Separate approved docs change |
 | TD-07 | ~~Development/test PostgreSQL and Redis not defined~~ Defined in M2.1: `deployment/compose.dev.yml` | — | Closes with M2.1 |

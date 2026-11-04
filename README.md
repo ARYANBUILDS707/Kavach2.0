@@ -158,6 +158,7 @@ $C key rotate --key-id <id> --actor root                  # new key, old key rev
 $C key revoke --key-id <id> --actor root
 $C key list --actor root                                  # never shows key material
 $C retention run --database kavach_test --dry-run --actor root
+$C candidates rebuild --actor root                       # restore the Redis candidate index
 ```
 
 - **Actor.** Every command except `--bootstrap` authenticates `--actor` (password prompt) as an *active admin*, re-checked in the same transaction as the change. Operators cannot deactivate themselves, and the last active admin cannot be deactivated or demoted. The password check gives attribution and policy; the real boundary is custody of the database credentials the CLI runs with.
@@ -196,7 +197,9 @@ backend/.venv/bin/python -m pytest backend/tests -m integration
 
 ### Verification status
 
-**Current status (M3.1 local verification, 4 November 2026; point-in-time, re-run before relying on it):** default suite 187 passed; integration suite 266 passed (29 new ingestion tests); both environments; Ruff clean (63 files); `uv lock --check` passed with no dependency changes. A real PostgreSQL container stop returned 503 for new events with nothing stored; after restart the stored event replayed (200) and the failed one was created on retry (201). GitHub Actions has **not** run M3.1 yet; M2.5 passed on GitHub (run 41695959367, commit `a4a5578`).
+**Current status (M3.2 local verification, 4 November 2026; point-in-time, re-run before relying on it):** default suite 197 passed; integration suite 283 passed (17 new resilience tests); both environments; Ruff clean (67 files); `uv lock --check` passed with no dependency changes; no migrations. Real containers: Redis paused (hung) → 503 in 0.51 s and stopped → 503, nothing stored in either case; after a Redis restart the candidate index was empty and `rebuild` restored it from PostgreSQL; PostgreSQL stopped → 503, restored → 201. GitHub Actions has **not** run M3.2 yet; M3.1 passed on GitHub (run 41698348162, commit `4647f52`).
+
+**Historical record — M3.1 local verification, 4 November 2026:** default suite 187 passed; integration suite 266 passed (29 new ingestion tests); both environments; Ruff clean (63 files); `uv lock --check` passed with no dependency changes. A real PostgreSQL container stop returned 503 for new events with nothing stored; after restart the stored event replayed (200) and the failed one was created on retry (201). GitHub Actions has **not** run M3.1 yet; M2.5 passed on GitHub (run 41695959367, commit `a4a5578`).
 
 **Historical record — M2.5 security acceptance, 3–4 November 2026:** see `docs/M2_SECURITY_ACCEPTANCE.md` for findings and evidence. Default suite 162 passed; integration suite 237 passed (both environments); Ruff clean (56 files); `uv lock --check` passed; migrations `0001` → `0002` verified from empty and on existing data, `alembic check` clean. GitHub Actions has **not** run the M2.5 changes yet; M2.4 passed on GitHub (run 41693476877, commit `0db68fb`).
 

@@ -17,11 +17,12 @@ from kavach.auth.cookies import cookie_policy_for
 from kavach.auth.ingest_keys import IngestKeyService
 from kavach.auth.passwords import PasswordService
 from kavach.auth.service import AuthService, SessionPolicy
-from kavach.auth.throttle import LoginThrottle
+from kavach.auth.throttle import BearerAttemptThrottle, LoginThrottle, SubmissionQuota
 from kavach.core.clock import Clock, utc_now
 from kavach.core.config import Settings, parse_audit_keys, parse_key_map
 from kavach.core.errors import ApiError, api_error, http_error, unexpected_error, validation_error
 from kavach.core.redis_client import create_redis_client
+from kavach.correlation.candidates import CandidateIndex
 from kavach.db.engine import create_db_engine, create_session_factory
 from kavach.privacy.audit import AuditWriter
 from kavach.privacy.digests import KeyedDigester
@@ -91,6 +92,8 @@ def build_ingestion_service(settings: Settings, app: FastAPI, clock: Clock) -> I
         audit=app.state.auth.audit,
         clock=clock,
         retention=timedelta(days=settings.event_retention_days),
+        deadline=settings.inference_timeout_seconds,
+        candidates=CandidateIndex(app.state.redis, namespace=settings.app_env),
     )
 
 
@@ -124,6 +127,21 @@ def create_app(settings: Settings | None = None, *, clock: Clock = utc_now) -> F
         else None
     )
     app.state.clock = clock
+    rate_key = (
+        settings.rate_limit_hmac_key.get_secret_value().encode()
+        if settings.rate_limit_hmac_key is not None
+        else None
+    )
+    app.state.bearer_throttle = (
+        BearerAttemptThrottle(app.state.redis, rate_key, namespace=settings.app_env)
+        if app.state.auth is not None and rate_key is not None
+        else None
+    )
+    app.state.submission_quota = (
+        SubmissionQuota(app.state.redis, rate_key, namespace=settings.app_env)
+        if app.state.auth is not None and rate_key is not None
+        else None
+    )
     app.state.ingestion = (
         build_ingestion_service(settings, app, clock) if settings.ingestion_configured else None
     )

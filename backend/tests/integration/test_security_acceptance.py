@@ -94,7 +94,10 @@ def test_retention_role_cannot_delete_unexpired_audit_records(
     with pytest.raises(ProgrammingError, match="permission denied"):
         with retention_engine.begin() as connection:
             connection.execute(text("DELETE FROM audit_records WHERE id = :id"), {"id": live})
-    purge(retention_engine, "audit_records", datetime.now(UTC) - timedelta(seconds=1))
+    # The database clock decides what is "future"; the host clock may run ahead of it.
+    with retention_engine.connect() as connection:
+        database_now = connection.execute(text("SELECT now()")).scalar_one()
+    purge(retention_engine, "audit_records", database_now)
     with migration_engine.connect() as connection:
         assert (
             connection.execute(
