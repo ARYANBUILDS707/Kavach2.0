@@ -61,6 +61,11 @@ def new_ingest_key() -> str:
     return KEY_PREFIX + secrets.token_urlsafe(KEY_BYTES)
 
 
+def well_formed_key(presented: str) -> bool:
+    """Shape only (no lookup); anything else can never authenticate."""
+    return presented.startswith(KEY_PREFIX) and len(presented) <= MAX_PRESENTED_KEY_LENGTH
+
+
 class IngestKeyService:
     def __init__(
         self, *, sessions: sessionmaker[Session], audit: AuditWriter, clock: Clock
@@ -72,7 +77,7 @@ class IngestKeyService:
     # --- request authentication -------------------------------------------------------------
 
     def authenticate(self, presented: str, request_id: UUID | None) -> IngestPrincipal:
-        if not presented.startswith(KEY_PREFIX) or len(presented) > MAX_PRESENTED_KEY_LENGTH:
+        if not well_formed_key(presented):
             security_event("ingest.key_rejected", "malformed", request_id)
             raise InvalidIngestKey
         digest = token_digest(presented)

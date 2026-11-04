@@ -90,7 +90,8 @@ async def bounded_json(request: Request) -> Any:
             raise too_large
     try:
         return json.loads(body)
-    except (ValueError, UnicodeDecodeError):
+    except (ValueError, UnicodeDecodeError, RecursionError):
+        # RecursionError: pathologically deep nesting fits easily inside 32 KiB.
         raise invalid() from None
 
 

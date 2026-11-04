@@ -32,7 +32,7 @@ from kavach.correlation.candidates import (
 )
 from kavach.db import event_repository as repo
 from kavach.privacy.audit import AuditWriter
-from kavach.privacy.digests import KeyedDigester
+from kavach.privacy.digests import KeyedDigester, UnknownKeyVersion
 
 UNREACHABLE = (OperationalError, InterfaceError)
 QUERY_CANCELED = "57014"  # statement_timeout fired: the request deadline was reached
@@ -244,11 +244,15 @@ class IngestionService:
             # Another request committed this event ID first: replay or conflict against it.
             return self._replay(stored, canonical, request_id)
         # Committed: from here on the outcome is success, whatever Redis does.
-        self._index(stored, request_id)
+        self._index(stored, request_id, now)
         return receipt_from(stored, replayed=False)
 
-    def _index(self, record: repo.EventRecord, request_id: UUID) -> None:
-        """Best effort after commit; PostgreSQL stays authoritative and `rebuild` recovers."""
+    def _index(self, record: repo.EventRecord, request_id: UUID, now: datetime) -> None:
+        """Best effort after commit; PostgreSQL stays authoritative and `rebuild` recovers.
+
+        `now` (not the original arrival) decides indexability, so a late replay never brings
+        back a candidate that is already outside the 40-minute horizon.
+        """
         if self.candidates is None:
             return
         try:
@@ -258,7 +262,7 @@ class IngestionService:
                 event_id=record.id,
                 kind=record.kind,
                 event_time=record.event_time,
-                received_at=record.received_at,
+                received_at=now,
             )
         except CandidateIndexUnavailable:
             operational_event("candidate.index_deferred", "redis_unavailable", request_id)
@@ -272,11 +276,20 @@ class IngestionService:
         return rebuild_candidate_index(self.sessions, self.candidates, self.clock)
 
     def _replay(self, existing: repo.EventRecord, canonical: bytes, request_id: UUID) -> Receipt:
-        if self.payload_digests.matches(
-            canonical, existing.payload_digest, existing.payload_key_version
-        ):
+        try:
+            same = self.payload_digests.matches(
+                canonical, existing.payload_digest, existing.payload_key_version
+            )
+        except UnknownKeyVersion:
+            # Retired PAYLOAD_HMAC_KEYS versions must stay configured for the retention window;
+            # without it neither replay nor conflict can be decided (500, nothing changes).
+            operational_event(
+                "ingest.payload_key_missing", "key_version_not_configured", request_id
+            )
+            raise
+        if same:
             # Re-indexing is idempotent; it repairs an earlier deferred index write.
-            self._index(existing, request_id)
+            self._index(existing, request_id, self.clock())
             return receipt_from(existing, replayed=True)
         security_event("ingest.event_conflict", "payload_mismatch", request_id)
         raise EventIdConflict

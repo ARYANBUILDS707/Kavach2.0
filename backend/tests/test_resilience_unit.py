@@ -59,6 +59,11 @@ def test_redis_keys_reveal_no_identifiers() -> None:
     assert candidate == "kavach:test:candidate:v1:" + "01" * 32
     other = SubmissionQuota(redis, b"j" * 32, "test")._redis_key("6f1c0d4e-key-id")
     assert other != quota
+    presented = "kvk_" + "S" * 43
+    lookup = BearerAttemptThrottle(redis, b"k" * 32, "test")._lookup_key("203.0.113.9")
+    valid = BearerAttemptThrottle(redis, b"k" * 32, "test")._valid_key(presented)
+    assert lookup.startswith("kavach:test:ratelimit:bearer:lookup:") and "203.0.113" not in lookup
+    assert valid.startswith("kavach:test:ratelimit:bearer:valid:") and "S" * 8 not in valid
 
 
 def test_retry_after_is_whole_seconds_and_at_least_one() -> None:

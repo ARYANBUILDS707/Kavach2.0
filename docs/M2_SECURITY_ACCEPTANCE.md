@@ -34,6 +34,8 @@ Each finding was reproduced against real PostgreSQL before fixing and re-tested 
 
 No critical or high findings were identified.
 
+**Correction (4 November 2026, M3.4):** L-4's premise holds for the application alone, not for the server as launched. Uvicorn trusts `X-Forwarded-For` from loopback by default, so a local process could rotate its apparent IP past the login throttle. See finding M34-M1 in [M3_INGESTION_ACCEPTANCE.md](M3_INGESTION_ACCEPTANCE.md); the README launch now requires `--no-proxy-headers`.
+
 ## Acceptance results (after fixes)
 
 | Area | Result |

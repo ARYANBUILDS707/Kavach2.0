@@ -90,6 +90,12 @@ class LoginThrottle:
 # mirrors the only documented one of the same kind, the D08 login IP ceiling.
 BEARER_FAILURE_LIMIT = 30
 BEARER_FAILURE_WINDOW_SECONDS = 15 * 60
+# While an IP is over that ceiling (TD-19, M3.4), its clients' keys are still checked, so other
+# clients' failures cannot lock out a valid key. Checks are bounded: a key that authenticated
+# within the last day is always checked; any other key only within a small per-IP budget.
+BLOCKED_IP_LOOKUPS = 10
+BLOCKED_IP_LOOKUP_WINDOW_SECONDS = 60
+VALID_KEY_MEMORY_SECONDS = 24 * 60 * 60
 # D08 (proposed, adopted for M3.2): 30 event submissions per minute per ingestion key.
 SUBMISSIONS_PER_KEY = 30
 SUBMISSION_WINDOW_SECONDS = 60
@@ -106,6 +112,17 @@ return {1, 0}
 RELEASE_ONE_SCRIPT = """
 if tonumber(redis.call('GET', KEYS[1]) or '0') > 0 then redis.call('DECR', KEYS[1]) end
 return 1
+"""
+# KEYS: recently-valid marker for the presented key, blocked-IP lookup counter.
+# ARGV: lookup limit, window in ms. A marker admits without spending the budget.
+ADMIT_BLOCKED_SCRIPT = """
+if redis.call('EXISTS', KEYS[1]) == 1 then return {1, 0} end
+local used = tonumber(redis.call('GET', KEYS[2]) or '0')
+if used >= tonumber(ARGV[1]) then
+    return {0, math.max(redis.call('PTTL', KEYS[2]), 1000)}
+end
+if redis.call('INCR', KEYS[2]) == 1 then redis.call('PEXPIRE', KEYS[2], ARGV[2]) end
+return {1, 0}
 """
 # Exact sliding window on Redis server time, so every process uses the same clock.
 # KEYS: sorted set of accepted submissions. ARGV: limit, window in ms, unique member.
@@ -129,17 +146,60 @@ def blocked_for(wait_ms: int) -> Reservation:
 
 
 class BearerAttemptThrottle:
-    """Bounds invalid Bearer credentials per client IP, keyed by HMAC; never stores the key."""
+    """Bounds invalid Bearer credentials per client IP, keyed by HMAC; never stores the key.
+
+    The recently-valid marker is an HMAC of the presented key under RATE_LIMIT_HMAC_KEY. It
+    never grants access: it only lets the key be checked against PostgreSQL (which enforces
+    revocation and expiry) from a blocked IP, and a failed check deletes it.
+    """
 
     def __init__(self, redis: Redis, hmac_key: bytes, namespace: str) -> None:
+        self._redis = redis
         self._key = hmac_key
-        self._prefix = f"kavach:{namespace}:ratelimit:bearer:ip"
+        self._root = f"kavach:{namespace}:ratelimit:bearer"
+        self._prefix = f"{self._root}:ip"
         self._reserve = redis.register_script(RESERVE_ONE_SCRIPT)
         self._release = redis.register_script(RELEASE_ONE_SCRIPT)
+        self._admit = redis.register_script(ADMIT_BLOCKED_SCRIPT)
 
     def _redis_key(self, client_ip: str) -> str:
         digest = hmac.new(self._key, f"bearer-ip\0{client_ip}".encode(), hashlib.sha256)
         return f"{self._prefix}:{digest.hexdigest()}"
+
+    def _lookup_key(self, client_ip: str) -> str:
+        digest = hmac.new(self._key, f"bearer-lookup\0{client_ip}".encode(), hashlib.sha256)
+        return f"{self._root}:lookup:{digest.hexdigest()}"
+
+    def _valid_key(self, presented: str) -> str:
+        digest = hmac.new(self._key, f"bearer-valid\0{presented}".encode(), hashlib.sha256)
+        return f"{self._root}:valid:{digest.hexdigest()}"
+
+    def admit_blocked(self, client_ip: str, presented: str) -> Reservation:
+        """May this key be checked although its IP is over the failure ceiling?"""
+        try:
+            allowed, wait_ms = self._admit(
+                keys=[self._valid_key(presented), self._lookup_key(client_ip)],
+                args=[BLOCKED_IP_LOOKUPS, BLOCKED_IP_LOOKUP_WINDOW_SECONDS * 1000],
+            )
+        except RedisError as error:
+            raise ThrottleUnavailable from error
+        return Reservation(allowed=True) if allowed == 1 else blocked_for(wait_ms)
+
+    def remember_valid(self, presented: str) -> bool:
+        """Best effort after a successful check; a failure only makes the key 'cold'."""
+        try:
+            self._redis.set(self._valid_key(presented), b"1", ex=VALID_KEY_MEMORY_SECONDS)
+        except RedisError:
+            return False
+        return True
+
+    def forget_valid(self, presented: str) -> bool:
+        """Best effort after a failed check (revoked, expired or never valid)."""
+        try:
+            self._redis.delete(self._valid_key(presented))
+        except RedisError:
+            return False
+        return True
 
     def reserve(self, client_ip: str) -> Reservation:
         try:

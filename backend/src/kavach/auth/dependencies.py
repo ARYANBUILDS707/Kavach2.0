@@ -13,6 +13,7 @@ from kavach.auth.ingest_keys import (
     IngestKeysUnavailable,
     IngestPrincipal,
     InvalidIngestKey,
+    well_formed_key,
 )
 from kavach.auth.service import ActiveSession, AuthService, DependencyUnavailable, SessionInvalid
 from kavach.auth.throttle import BearerAttemptThrottle, ThrottleUnavailable
@@ -129,33 +130,48 @@ def require_ingest_key(request: Request, keys: IngestKeyServiceDep) -> IngestPri
     Presented credentials are throttled per client IP (M3.2): each attempt is reserved in
     Redis before the key is checked and refunded if the key is valid, so only rejected
     credentials accumulate. If Redis cannot confirm the reservation the request fails closed.
+
+    Once an IP is over the ceiling (TD-19, M3.4), a well-formed key from it is still checked
+    if it authenticated recently or the IP's small lookup budget allows, so a valid key is not
+    locked out by other clients sharing the address; everything else gets 429 without a
+    database lookup.
     """
     if has_session_cookie(request):
         raise ApiError(401, "MIXED_CREDENTIALS", "Use exactly one authentication mechanism")
     scheme, _, token = request.headers.get("authorization", "").partition(" ")
+    token = token.strip()
     rejected = ApiError(
         401, "INVALID_CREDENTIALS", "Invalid or expired API key", {"WWW-Authenticate": "Bearer"}
     )
-    if scheme.lower() != "bearer" or not token.strip():
+    if scheme.lower() != "bearer" or not token:
         raise rejected
     throttle: BearerAttemptThrottle = request.app.state.bearer_throttle
     client_ip = request.client.host if request.client else "unknown"
     try:
         reservation = throttle.reserve(client_ip)
+        admission = reservation
+        if not reservation.allowed and well_formed_key(token):
+            admission = throttle.admit_blocked(client_ip, token)
     except ThrottleUnavailable:
         security_event("ingest.key_rejected", "throttle_unavailable", request.state.request_id)
         raise unavailable("API key validation is temporarily unavailable") from None
-    if not reservation.allowed:
+    if not admission.allowed:
         security_event("ingest.key_rejected", "throttled", request.state.request_id)
-        raise rate_limited(reservation.retry_after_seconds, "Too many invalid API key attempts")
+        retry_after = admission.retry_after_seconds or reservation.retry_after_seconds
+        raise rate_limited(retry_after, "Too many invalid API key attempts")
     try:
-        principal = keys.authenticate(token.strip(), request.state.request_id)
+        principal = keys.authenticate(token, request.state.request_id)
     except InvalidIngestKey:
+        throttle.forget_valid(token)
         raise rejected from None
     except IngestKeysUnavailable:
-        throttle.release(client_ip)
+        if reservation.allowed:
+            throttle.release(client_ip)
         raise unavailable("API key validation is temporarily unavailable") from None
-    throttle.release(client_ip)
+    # Only a reservation that was actually taken is refunded; a blocked IP stays blocked.
+    if reservation.allowed:
+        throttle.release(client_ip)
+    throttle.remember_valid(token)
     return principal
 
 

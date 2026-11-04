@@ -294,12 +294,19 @@ def test_repeated_invalid_keys_are_throttled_and_valid_keys_do_not_count(
         client.post("/api/v1/events/sms", json={}, headers=bad).status_code for _ in range(30)
     ]
     assert statuses == [401] * 30
+    # Over the ceiling only a small per-IP lookup budget remains (TD-19, M3.4).
+    budget = [
+        client.post("/api/v1/events/sms", json={}, headers=bad).status_code
+        for _ in range(throttle.BLOCKED_IP_LOOKUPS)
+    ]
+    assert budget == [401] * throttle.BLOCKED_IP_LOOKUPS
     blocked = client.post("/api/v1/events/sms", json={}, headers=bad)
     assert (blocked.status_code, blocked.json()["error"]["code"]) == (429, "RATE_LIMITED")
     assert 1 <= int(blocked.headers["Retry-After"]) <= 900
-    # While blocked, the IP cannot try any key, valid or not (same rule as the login ceiling).
-    assert post(client, key, body(clock.now)).status_code == 429
+    # TD-19 (M3.4): other clients' failures do not lock out a valid key on the same IP.
+    assert post(client, key, body(clock.now)).status_code == 201
     (counter,) = list(redis_client.scan_iter("kavach:test:ratelimit:bearer:ip:*"))
+    assert int(redis_client.get(counter) or 0) == 30
     assert b"testclient" not in counter and b"kvk_" not in counter
 
 
