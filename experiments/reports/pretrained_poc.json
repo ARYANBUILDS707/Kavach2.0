@@ -1,0 +1,218 @@
+{
+  "batch_matches_single": true,
+  "candidate": {
+    "key": "horizon-phishing-scam-base",
+    "license": "Apache-2.0 (weights and tokenizer derive from MIT-licensed mmBERT-base; NOTICE kept)",
+    "repo": "Horizon-Labs/phishing-scam-detector-base",
+    "revision": "fa686fc0d6a3634092ada93a7c6b89ab0746b8f8",
+    "weights_sha256": "1f056ed61f8c0f6bfb11616e9c2f640762dcbbaff92bdb71657723f1d84125af"
+  },
+  "disclaimer": "Third-party pretrained weights run locally; not a KAVACH-trained model. Scores are uncalibrated softmax outputs. Agreement with the authors' intent on 14 fictional messages is a pipeline smoke test, not an accuracy measurement.",
+  "environment": {
+    "device": "cpu",
+    "platform": "Darwin arm64",
+    "python": "3.12.13",
+    "tokenizers": "0.23.3",
+    "torch": "2.14.1",
+    "torch_threads": 4,
+    "transformers": "5.20.2"
+  },
+  "inputs": "pretrained/demo.py (fictional, explicitly labeled)",
+  "latency_ms_batch_of_14": 193.7,
+  "latency_ms_single_message": {
+    "max": 68.4,
+    "median": 38.3,
+    "p95": 47.8,
+    "samples": 70
+  },
+  "load_seconds": 9.47,
+  "max_tokens": 256,
+  "messages": [
+    {
+      "description": "bank account block with link",
+      "fraud_score": 0.995776,
+      "id": "demo-01",
+      "intent": "phishing",
+      "label": "fraud",
+      "probabilities": {
+        "fraud": 0.995776,
+        "legitimate": 0.001652,
+        "spam": 0.002572
+      },
+      "unwanted_score": 0.998348
+    },
+    {
+      "description": "parcel customs fee with link",
+      "fraud_score": 0.997547,
+      "id": "demo-02",
+      "intent": "phishing",
+      "label": "fraud",
+      "probabilities": {
+        "fraud": 0.997547,
+        "legitimate": 0.000723,
+        "spam": 0.00173
+      },
+      "unwanted_score": 0.999277
+    },
+    {
+      "description": "one-time code theft",
+      "fraud_score": 0.982892,
+      "id": "demo-03",
+      "intent": "phishing",
+      "label": "fraud",
+      "probabilities": {
+        "fraud": 0.982892,
+        "legitimate": 0.00584,
+        "spam": 0.011268
+      },
+      "unwanted_score": 0.99416
+    },
+    {
+      "description": "tax refund lure",
+      "fraud_score": 0.993971,
+      "id": "demo-04",
+      "intent": "phishing",
+      "label": "fraud",
+      "probabilities": {
+        "fraud": 0.993971,
+        "legitimate": 0.003013,
+        "spam": 0.003016
+      },
+      "unwanted_score": 0.996987
+    },
+    {
+      "description": "electricity disconnection threat",
+      "fraud_score": 0.263805,
+      "id": "demo-05",
+      "intent": "phishing",
+      "label": "legitimate",
+      "probabilities": {
+        "fraud": 0.263805,
+        "legitimate": 0.681641,
+        "spam": 0.054554
+      },
+      "unwanted_score": 0.318359
+    },
+    {
+      "description": "family impersonation, new number",
+      "fraud_score": 0.929079,
+      "id": "demo-06",
+      "intent": "scam",
+      "label": "fraud",
+      "probabilities": {
+        "fraud": 0.929079,
+        "legitimate": 0.05621,
+        "spam": 0.014711
+      },
+      "unwanted_score": 0.94379
+    },
+    {
+      "description": "part-time job advance fee",
+      "fraud_score": 0.948093,
+      "id": "demo-07",
+      "intent": "scam",
+      "label": "fraud",
+      "probabilities": {
+        "fraud": 0.948093,
+        "legitimate": 0.006564,
+        "spam": 0.045342
+      },
+      "unwanted_score": 0.993436
+    },
+    {
+      "description": "Hinglish account suspension",
+      "fraud_score": 0.989171,
+      "id": "demo-08",
+      "intent": "phishing",
+      "label": "fraud",
+      "probabilities": {
+        "fraud": 0.989171,
+        "legitimate": 0.005101,
+        "spam": 0.005728
+      },
+      "unwanted_score": 0.994899
+    },
+    {
+      "description": "retail promotion",
+      "fraud_score": 0.001072,
+      "id": "demo-09",
+      "intent": "spam",
+      "label": "spam",
+      "probabilities": {
+        "fraud": 0.001072,
+        "legitimate": 0.003989,
+        "spam": 0.99494
+      },
+      "unwanted_score": 0.996011
+    },
+    {
+      "description": "prize text",
+      "fraud_score": 0.720862,
+      "id": "demo-10",
+      "intent": "spam",
+      "label": "fraud",
+      "probabilities": {
+        "fraud": 0.720862,
+        "legitimate": 0.047248,
+        "spam": 0.23189
+      },
+      "unwanted_score": 0.952752
+    },
+    {
+      "description": "genuine-looking one-time code",
+      "fraud_score": 0.012948,
+      "id": "demo-11",
+      "intent": "legitimate",
+      "label": "legitimate",
+      "probabilities": {
+        "fraud": 0.012948,
+        "legitimate": 0.977688,
+        "spam": 0.009364
+      },
+      "unwanted_score": 0.022312
+    },
+    {
+      "description": "delivery update without payment",
+      "fraud_score": 0.121617,
+      "id": "demo-12",
+      "intent": "legitimate",
+      "label": "legitimate",
+      "probabilities": {
+        "fraud": 0.121617,
+        "legitimate": 0.752365,
+        "spam": 0.126018
+      },
+      "unwanted_score": 0.247635
+    },
+    {
+      "description": "debit alert",
+      "fraud_score": 0.387268,
+      "id": "demo-13",
+      "intent": "legitimate",
+      "label": "legitimate",
+      "probabilities": {
+        "fraud": 0.387268,
+        "legitimate": 0.427223,
+        "spam": 0.185509
+      },
+      "unwanted_score": 0.572777
+    },
+    {
+      "description": "personal chat",
+      "fraud_score": 0.017995,
+      "id": "demo-14",
+      "intent": "legitimate",
+      "label": "legitimate",
+      "probabilities": {
+        "fraud": 0.017995,
+        "legitimate": 0.876254,
+        "spam": 0.105751
+      },
+      "unwanted_score": 0.123746
+    }
+  ],
+  "peak_rss_mb_after_inference": 933.1,
+  "peak_rss_mb_after_load": 665.3,
+  "peak_rss_mb_before_load": 35.5,
+  "status": "ok"
+}

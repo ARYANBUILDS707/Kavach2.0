@@ -10,8 +10,9 @@ Offline dataset governance, preparation and (from M4.3) training for KAVACH mode
 | `reports/` | Aggregate data-quality, split-v2, pair-review, label-audit and pilot status reports (counts and hashes only). |
 | `dataset_governance/` | Manifest schema and validator; matching normalization, fingerprints and the simulator-fixture exclusion. |
 | `sms_prep/` | The M4.2 pipeline: acquisition, feature normalization, clustering, records, synthetic hard negatives, label-audit bundle and evaluation, splits and the held-out guard, quality report, CLI. |
+| `pretrained/` | Separate pretrained-classifier track ([docs/M4_PRETRAINED_EVALUATION.md](../docs/M4_PRETRAINED_EVALUATION.md)): audited candidates pinned by revision and hash, verified fetch, offline safetensors-only CPU inference on 14 fictional demo messages. Third-party weights, not a KAVACH-trained model. |
 | `audit/dataset_audit.py` | Recomputes the M4.1 manifest's measured values (checksums + counts) from local copies. |
-| `tests/` | 195 deterministic tests on small synthetic fixtures. |
+| `tests/` | 221 deterministic tests on small synthetic fixtures (no network, no torch, no real weights). |
 
 Read [docs/DATASET_GOVERNANCE.md](../docs/DATASET_GOVERNANCE.md), [docs/M4_EVALUATION_PLAN.md](../docs/M4_EVALUATION_PLAN.md) and [docs/M4_2_DATA_PREPARATION_REPORT.md](../docs/M4_2_DATA_PREPARATION_REPORT.md) first.
 
@@ -31,6 +32,10 @@ uv run --project . --locked python -m sms_prep pairs --sample 9   # review pairs
 uv run --project . --locked python -m sms_prep split --version 2  # build the proposed split v2 beside v1; exit 4 if a check fails
 uv run --project . --locked python -m sms_prep pilot      # blank calibration-pilot sheets in ../data/m4/review_pilot/
 uv run --project . --locked python -m sms_prep pilot-audit   # pilot agreement and controls; exit 3 while INCOMPLETE; never gates
+uv sync --project . --locked --group pretrained               # opt-in: torch + transformers (~1 GB installed)
+uv run --project . --locked --group pretrained python -m pretrained candidates
+uv run --project . --locked --group pretrained python -m pretrained fetch    # ~1.3 GB into ../data/models/ (ignored)
+uv run --project . --locked --group pretrained python -m pretrained run      # fictional demo set only; exit 3 if unavailable
 uv run --project . --locked pytest tests
 uv run --project . --locked ruff check . && uv run --project . --locked ruff format --check .
 ```
