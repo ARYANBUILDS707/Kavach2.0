@@ -196,3 +196,36 @@ def test_cli_output_never_contains_message_text(tmp_path, capsys) -> None:
     out = capsys.readouterr().out
     assert not any(r.text[:25] in out for r in records) and "BLOCKED" in out
     assert review.GATE_MINIMUM == 0.95
+
+
+def test_a_new_rubric_replaces_the_old_one_only_before_any_annotation(
+    tmp_path, monkeypatch
+) -> None:
+    records, _, infos = fixture_clusters()
+    directory = tmp_path / "review"
+    cli.ensure_bundle(directory, records, infos, 5, 100)
+    (directory / "RUBRIC.md").write_text("an outdated rubric")
+    meta = json.loads((directory / "bundle_meta.json").read_text())
+    meta["rubric_version"] = 1
+    (directory / "bundle_meta.json").write_text(json.dumps(meta))
+    refreshed = cli.ensure_bundle(directory, records, infos, 5, 100)
+    assert refreshed["rubric_version"] == review.RUBRIC_VERSION
+    assert (directory / "RUBRIC.md").read_text() == review.RUBRIC
+    # Once a reviewer has started, the rubric they are following must not change under them.
+    sheet = directory / "review_A.csv"
+    rows = sheet.read_text().splitlines()
+    sheet.write_text("\n".join([rows[0], rows[1][:-3] + "phishing,,alice", *rows[2:]]) + "\n")
+    (directory / "RUBRIC.md").write_text("an outdated rubric")
+    with pytest.raises(cli.BuildError, match="rubric changed after review began"):
+        cli.ensure_bundle(directory, records, infos, 5, 100)
+    assert (directory / "RUBRIC.md").read_text() == "an outdated rubric"
+
+
+def test_the_rubric_has_a_decision_order_examples_and_independence_rules() -> None:
+    text = review.RUBRIC
+    assert review.RUBRIC_VERSION >= 2 and "Decide in this order" in text
+    for label in review.LABELS:
+        assert f"`{label}`" in text
+    for rule in ("Work alone", "neither reviewer", "one ID per sheet", "language model"):
+        assert rule in text
+    assert text.count("->") >= 7  # fictional worked examples

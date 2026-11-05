@@ -120,7 +120,7 @@ The manifest (`experiments/manifests/sms_datasets.v2.json` since M4.2; schema in
 | D04-Q2 | Benign hard negatives | Explicitly synthetic OTP, bank-alert and delivery messages, reported separately from real-world evaluation (generated in M4.2) |
 | D04-Q3 | Wrong-number and relative-impersonation scams | Not automatically phishing |
 | D04-Q4 | Spam | Kept as its own class (scored as a non-phishing negative) |
-| D04-Q5 | Promotion gate | An IMC class is promoted only if its independently reviewed positive-label precision has a 95% Wilson lower bound of at least 0.95; failing classes stay excluded or flagged for review |
+| D04-Q5 | Promotion gate | An IMC class is promoted only if its independently reviewed positive-label precision has a 95% Wilson lower bound of at least 0.95; failing classes stay excluded or flagged for review. Precision is **cluster-weighted** (one reviewed item per cluster; owner decision 5 Nov 2026); record-weighted precision is reported separately and never gates |
 | D04-Q6 | ML dependencies | A separately locked training environment for compatible scikit-learn, NumPy and SciPy; kept out of the production API |
 
 ## Limits of this record

@@ -38,30 +38,69 @@ URL_HINT = re.compile(r"https?://|www\.|\b\w+\.(?:com|net|org|info|xyz|top|ly)\b
 LONG_DIGITS = re.compile(r"\d{6,}")
 REVIEWER_COLUMNS = ("item_id", "display_text", "label", "notes", "reviewer")
 ADJUDICATION_COLUMNS = ("item_id", "final_label", "adjudicator", "notes")
+ADJUDICATION_QUEUE_COLUMNS = ("item_id", "display_text", "label_reviewer_a", "label_reviewer_b")
 
-RUBRIC = """# Label rubric for the KAVACH SMS review
+RUBRIC_VERSION = 2
+RUBRIC = """# Label rubric for the KAVACH SMS review (version 2)
 
-You will see short text messages, one per row, in a random order. Judge each message on its
-own, as the recipient would. You are not told where it came from. Digit runs, emails and
-phone numbers are masked.
+You will see short text messages, one per row, in a random order. You are not told where a
+message came from or how it was filed. The text was machine-prepared: URLs, emails, phone
+numbers and dates appear as `<url>`, `<email>`, `<phone>` and `<datetime>`; names, places and
+long digit runs are removed or masked; some messages are truncated or garbled. Judge what is
+left, as the recipient would.
 
-Choose exactly one label:
+## Decide in this order
 
-- `phishing`: the message tries to make the recipient click a link, call or reply to a
-  number, pay, or reveal credentials or personal or financial data, while posing as a bank,
-  carrier, delivery company, government body, employer or other trusted party.
-- `other_scam`: a fraud attempt that does NOT fit the phishing definition above, for example
-  a wrong-number opener that asks for nothing yet, or someone posing as a relative asking for
-  money with no link or credentials requested. Do not use it for phishing.
-- `spam`: unsolicited promotion, a prize or competition offer, a marketing message or a
-  nuisance message with no impersonation or credential request.
-- `benign`: a legitimate message: personal conversation, a genuine notification or alert.
-- `unclear`: you cannot tell. Use sparingly; it counts as "not phishing" in the precision.
+1. Does the message try to get the recipient to *act*: click a link, call or text a number,
+   reply, pay, install something, or hand over credentials or personal or financial data? Or
+   does it announce an account, delivery, refund, prize or service problem that such an action
+   would "fix"?
+   - No: it is `benign` (a genuine alert, receipt, reminder or personal conversation) or
+     `spam` (unsolicited promotion, marketing, quiz or nuisance with no account or payment
+     pretext). Stop.
+   - Yes: go to 2.
+2. Does it pose as, or pretend to come from, an organisation or person the recipient may
+   trust (bank, card issuer, carrier, courier, government body, utility, employer, platform,
+   retailer) to get that action?
+   - Yes: `phishing`. A real brand name is not needed and a real brand does not make it safe:
+     judge the content. A message that states a problem and pushes an urgent action through a
+     link or number is `phishing`.
+   - No: go to 3.
+3. Is it a fraud attempt anyway, such as a wrong-number opener, a romance or investment
+   opener, someone claiming to be a relative with no organisation involved, an advance-fee or
+   job scam?
+   - Yes: `other_scam`.
+   - No: `spam`.
 
-Rules: work alone and do not compare answers with the other reviewer; do not look messages
-up or open links; do not use any automatic classifier or language model to decide; leave
-`label` empty rather than guess. Put your reviewer ID in the `reviewer` column of every row.
-Disagreements are resolved afterwards by an adjudicator who records `final_label`.
+`unclear` is only for text too short, garbled or cut off to apply the steps. It counts as
+"not phishing" in the precision, so do not use it to avoid a hard call; guess only if you can
+state a reason, otherwise leave `label` empty.
+
+## Edge cases
+
+- Prize, lottery or reward offers: `phishing` if they name or imitate an organisation AND ask
+  you to call, click or give details; otherwise `spam`.
+- A message that only delivers a one-time code and tells you not to share it is `benign`.
+- A near-duplicate of an earlier row is still judged on its own text.
+- Messages in a language you cannot read: leave `label` empty and say so in `notes`.
+
+## Fictional examples (not from the data)
+
+- "Your Arvelle Bank card is locked. Verify at <url> within <datetime>." -> `phishing`
+- "Arvelle Bank: your statement is ready in the app." -> `benign`
+- "Win a holiday! Text WIN to 80000 to enter. T&C apply." -> `spam`
+- "Hi, is this Mark? We met at the conference." -> `other_scam` (a typical opener; asks nothing yet)
+- "Mum, I lost my phone, send money to this account." -> `other_scam`
+- "Parcel ref ZX41 held. Pay the fee at <url> to release it." -> `phishing`
+- "See you at 7?" -> `benign`
+
+## Rules of work
+
+Work alone: do not discuss items or compare answers with the other reviewer. Do not look
+messages up, open links, or use any automatic classifier or language model to decide. Put your
+own reviewer ID in the `reviewer` column of every row you complete (one ID per sheet). Leave a
+row blank rather than guess. Disagreements are resolved afterwards by an adjudicator who is
+neither reviewer and who records `final_label`.
 """
 
 
@@ -229,6 +268,7 @@ def build_bundle(
         "composition_and_control_items": len(items) - sum(counts.values()),
         "smallest_sample_that_can_pass": smallest_passable_sample(),
         "min_correct_for_gate": {k: min_correct_for_gate(v) for k, v in counts.items()},
+        "rubric_version": RUBRIC_VERSION,
         "answer_key_sha256": hashlib.sha256(
             (directory / "answer_key.json").read_bytes()
         ).hexdigest(),
@@ -240,68 +280,239 @@ def build_bundle(
 # --- evaluating completed annotations ------------------------------------------------------
 
 
-def read_sheet(path: Path) -> list[dict[str, str]]:
+REQUIRED_REVIEW_COLUMNS = {"item_id", "label", "reviewer"}
+REQUIRED_ADJUDICATION_COLUMNS = {"item_id", "final_label", "adjudicator"}
+# A UCI ham message must be called benign. A UCI spam message may be spam, phishing (if it names an
+# organisation, which the rubric allows) or another scam, but never benign.
+CONTROL_EXPECTED = {
+    "control_uci_ham": {"benign"},
+    "control_uci_spam": {"spam", "phishing", "other_scam", "unclear"},
+}
+CONTROL_ACCURACY_WARNING = 0.90
+
+
+def read_sheet(path: Path) -> tuple[list[dict[str, str]], set[str]] | None:
+    """Rows and column names, or None if the file is absent. Tolerates a spreadsheet BOM."""
     if not path.exists():
-        return []
-    with path.open(encoding="utf-8", newline="") as handle:
-        return list(csv.DictReader(handle))
+        return None
+    with path.open(encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        rows = list(reader)
+        return rows, {c.strip() for c in (reader.fieldnames or [])}
 
 
-def labels_by_item(rows: list[dict[str, str]]) -> tuple[dict[str, str], set[str]]:
-    """item_id -> label for valid completed rows, plus the reviewer IDs seen."""
-    labels, reviewers = {}, set()
+def has_annotations(directory: Path) -> bool:
+    """True if any review or adjudication cell has been filled in (never overwrite then)."""
+    for name in ("review_A.csv", "review_B.csv"):
+        sheet = read_sheet(directory / name)
+        for row in sheet[0] if sheet else []:
+            if any((row.get(c) or "").strip() for c in ("label", "reviewer", "notes")):
+                return True
+    adjudication = read_sheet(directory / "adjudication.csv")
+    return bool(adjudication and adjudication[0])
+
+
+@dataclass
+class ParsedSheet:
+    labels: dict[str, str]
+    reviewers: set[str]
+    duplicate_rows: int = 0
+    unknown_rows: int = 0
+    missing: bool = False
+    missing_columns: bool = False
+
+
+def parse_review_sheet(path: Path, key_ids: set[str]) -> ParsedSheet:
+    sheet = read_sheet(path)
+    if sheet is None:
+        return ParsedSheet({}, set(), missing=True)
+    rows, columns = sheet
+    if not REQUIRED_REVIEW_COLUMNS <= columns:
+        return ParsedSheet({}, set(), missing_columns=True)
+    parsed = ParsedSheet({}, set())
+    seen: set[str] = set()
+    ambiguous: set[str] = set()
     for row in rows:
+        item = (row.get("item_id") or "").strip()
+        if item not in key_ids:
+            parsed.unknown_rows += bool(item)
+            continue
+        if item in seen:
+            parsed.duplicate_rows += 1
+            ambiguous.add(item)
+        seen.add(item)
         label = (row.get("label") or "").strip().lower()
-        if label in LABELS and (row.get("reviewer") or "").strip():
-            labels[row["item_id"]] = label
-            reviewers.add(row["reviewer"].strip())
-    return labels, reviewers
+        reviewer = (row.get("reviewer") or "").strip()
+        if label in LABELS and reviewer:
+            parsed.labels[item] = label
+            parsed.reviewers.add(reviewer)
+    for item in ambiguous:  # a repeated item has no single answer
+        parsed.labels.pop(item, None)
+    return parsed
 
 
-def evaluate_audit(directory: Path, minimum: float = GATE_MINIMUM) -> dict:
-    """Class decisions from completed annotations. BLOCKED unless every gated item has two
-    independent reviews and every disagreement has an adjudicated final label."""
-    key = json.loads((directory / "answer_key.json").read_text())
-    a_labels, a_ids = labels_by_item(read_sheet(directory / "review_A.csv"))
-    b_labels, b_ids = labels_by_item(read_sheet(directory / "review_B.csv"))
-    adjudicated = {}
-    for row in read_sheet(directory / "adjudication.csv"):
+def parse_adjudication(path: Path, key_ids: set[str]) -> tuple[dict[str, tuple[str, str]], int]:
+    """item -> (final label, adjudicator) for valid rows, and the number of unusable rows."""
+    sheet = read_sheet(path)
+    if sheet is None:
+        return {}, 0
+    rows, columns = sheet
+    if not REQUIRED_ADJUDICATION_COLUMNS <= columns:
+        return {}, max(1, len(rows))
+    decided: dict[str, tuple[str, str]] = {}
+    unusable = 0
+    for row in rows:
+        item = (row.get("item_id") or "").strip()
         final = (row.get("final_label") or "").strip().lower()
-        if final in LABELS and (row.get("adjudicator") or "").strip():
-            adjudicated[row["item_id"]] = final
+        who = (row.get("adjudicator") or "").strip()
+        if item in key_ids and final in LABELS and who and item not in decided:
+            decided[item] = (final, who)
+        else:
+            unusable += 1
+    return decided, unusable
+
+
+def reviewer_quality(key: dict, sheets: dict[str, ParsedSheet]) -> dict:
+    """How each reviewer treated the known-provenance controls. Informational; not the gate."""
+    quality: dict = {"warnings": []}
+    for name, parsed in sheets.items():
+        scored = [
+            (item, CONTROL_EXPECTED[v["kind"]])
+            for item, v in key.items()
+            if v["kind"] in CONTROL_EXPECTED and item in parsed.labels
+        ]
+        correct = sum(parsed.labels[item] in expected for item, expected in scored)
+        composition = Counter(
+            parsed.labels[item]
+            for item, v in key.items()
+            if v["kind"].startswith("composition") and item in parsed.labels
+        )
+        accuracy = correct / len(scored) if scored else None
+        quality[name] = {
+            "controls_answered": len(scored),
+            "control_accuracy": accuracy,
+            "composition_label_counts": dict(composition),
+        }
+        if accuracy is not None and len(scored) >= 10 and accuracy < CONTROL_ACCURACY_WARNING:
+            quality["warnings"].append(
+                f"{name}: control accuracy {accuracy:.0%} is below {CONTROL_ACCURACY_WARNING:.0%}"
+            )
+    return quality
+
+
+def answer_key_intact(directory: Path) -> bool:
+    meta = directory / "bundle_meta.json"
+    if not meta.exists():
+        return False
+    recorded = json.loads(meta.read_text()).get("answer_key_sha256")
+    return recorded == hashlib.sha256((directory / "answer_key.json").read_bytes()).hexdigest()
+
+
+def write_adjudication_queue(directory: Path) -> int:
+    """List the items the two reviewers disagree on, for the adjudicator to resolve.
+
+    The queue shows the (masked) text and the two labels, not who gave them, and is rewritten
+    from the sheets each time. It decides nothing: `adjudication.csv` holds the final labels.
+    """
+    key_ids = set(json.loads((directory / "answer_key.json").read_text()))
+    a = parse_review_sheet(directory / "review_A.csv", key_ids)
+    b = parse_review_sheet(directory / "review_B.csv", key_ids)
+    sheet = read_sheet(directory / "review_A.csv")
+    text = {r["item_id"].strip(): r.get("display_text", "") for r in sheet[0]} if sheet else {}
+    rows = [
+        {"item_id": i, "display_text": text.get(i, ""), "label_reviewer_a": a.labels[i],
+         "label_reviewer_b": b.labels[i]}
+        for i in sorted(key_ids & set(a.labels) & set(b.labels))
+        if a.labels[i] != b.labels[i]
+    ]  # fmt: skip
+    write_csv(directory / "adjudication_queue.csv", ADJUDICATION_QUEUE_COLUMNS, rows)
+    return len(rows)
+
+
+def evaluate_audit(
+    directory: Path, minimum: float = GATE_MINIMUM, cluster_sizes: dict[str, int] | None = None
+) -> dict:
+    """Class decisions from completed annotations.
+
+    BLOCKED unless: the answer key is intact; both sheets are well formed, each with one distinct
+    reviewer ID and no duplicate or unknown rows; every item has two reviews; and every
+    disagreement has a final label from an adjudicator who is neither reviewer. The gate itself
+    (a Wilson lower bound on adjudicated precision) is unaffected by those checks.
+    `cluster_sizes` only adds a record-weighted precision as a sensitivity figure.
+    """
+    key = json.loads((directory / "answer_key.json").read_text())
+    key_ids = set(key)
+    intact = answer_key_intact(directory)
+    names = ("review_A.csv", "review_B.csv")
+    sheets = {n: parse_review_sheet(directory / n, key_ids) for n in names}
+    a, b = sheets["review_A.csv"], sheets["review_B.csv"]
+    decided, unusable_adjudication = parse_adjudication(directory / "adjudication.csv", key_ids)
     gated = {i: v for i, v in key.items() if v["kind"] == "gated"}
-    missing_a = sorted(set(key) - set(a_labels))
-    missing_b = sorted(set(key) - set(b_labels))
+    missing_a, missing_b = sorted(key_ids - set(a.labels)), sorted(key_ids - set(b.labels))
     disagreements = sorted(
-        i for i in key if i in a_labels and i in b_labels and a_labels[i] != b_labels[i]
+        i for i in key if i in a.labels and i in b.labels and a.labels[i] != b.labels[i]
     )
-    unadjudicated = [i for i in disagreements if i not in adjudicated]
-    independent = bool(a_ids) and bool(b_ids) and not (a_ids & b_ids)
-    complete = not missing_a and not missing_b and not unadjudicated and independent and bool(key)
+    unadjudicated = [i for i in disagreements if i not in decided]
+    reviewer_ids = a.reviewers | b.reviewers
+    independent = (
+        len(a.reviewers) == 1 and len(b.reviewers) == 1 and not (a.reviewers & b.reviewers)
+    )
+    adjudicators_ok = all(decided[i][1] not in reviewer_ids for i in disagreements if i in decided)
+    problems = {
+        "duplicate_item_rows": a.duplicate_rows + b.duplicate_rows,
+        "unknown_item_rows": a.unknown_rows + b.unknown_rows,
+        "sheets_with_several_reviewer_ids": sorted(
+            n for n in names if len(sheets[n].reviewers) > 1
+        ),
+        "sheets_missing_columns": sorted(n for n in names if sheets[n].missing_columns),
+        "sheets_missing": sorted(n for n in names if sheets[n].missing),
+        "unusable_adjudication_rows": unusable_adjudication,
+    }
+    sheet_ok = not (
+        problems["duplicate_item_rows"]
+        or problems["unknown_item_rows"]
+        or problems["sheets_with_several_reviewer_ids"]
+        or problems["sheets_missing_columns"]
+        or problems["sheets_missing"]
+        or problems["unusable_adjudication_rows"]
+    )
+    complete = (
+        intact
+        and sheet_ok
+        and independent
+        and adjudicators_ok
+        and not missing_a
+        and not missing_b
+        and not unadjudicated
+        and bool(key)
+    )
     progress = {
         "items": len(key),
-        "reviewer_a_completed": len(a_labels),
-        "reviewer_b_completed": len(b_labels),
+        "reviewer_a_completed": len(a.labels),
+        "reviewer_b_completed": len(b.labels),
         "disagreements": len(disagreements),
         "disagreements_unadjudicated": len(unadjudicated),
         "reviewers_distinct_ids": independent,
+        "adjudicators_independent": adjudicators_ok,
+        "answer_key_intact": intact,
+        "sheet_problems": problems,
     }
     final_labels = {
-        i: adjudicated.get(i, a_labels.get(i))
-        if a_labels.get(i) != b_labels.get(i)
-        else a_labels.get(i)
+        i: decided[i][0] if i in decided and a.labels.get(i) != b.labels.get(i) else a.labels.get(i)
         for i in key
     }
-    kappa = cohen_kappa(
-        [(a_labels[i], b_labels[i]) for i in key if i in a_labels and i in b_labels]
-    )
+
+    def kappa_for(ids: list[str]) -> float | None:
+        pairs = [(a.labels[i], b.labels[i]) for i in ids if i in a.labels and i in b.labels]
+        return cohen_kappa(pairs)
+
     classes = {}
     for klass in GATED_CLASSES:
         ids = [i for i, v in gated.items() if v["class"] == klass]
         needed = min_correct_for_gate(len(ids), minimum) if ids else None
-        entry = {"sampled": len(ids), "min_correct_needed": needed}
+        entry: dict = {"sampled": len(ids), "min_correct_needed": needed}
         if not complete:
-            entry |= {"status": "BLOCKED", "reason": "human review incomplete"}
+            entry |= {"status": "BLOCKED", "reason": "human review incomplete or not valid"}
         else:
             correct = sum(final_labels[i] == "phishing" for i in ids)
             low, high = wilson_interval(correct, len(ids)) if ids else (0.0, 0.0)
@@ -313,23 +524,35 @@ def evaluate_audit(directory: Path, minimum: float = GATE_MINIMUM) -> dict:
                 "wilson_95_high": high,
                 "label_counts": dict(Counter(final_labels[i] for i in ids)),
             }
+            if cluster_sizes and ids:
+                weights = {i: cluster_sizes.get(gated[i]["cluster_id"], 1) for i in ids}
+                good = sum(weights[i] for i in ids if final_labels[i] == "phishing")
+                entry["record_weighted_precision"] = good / sum(weights.values())
             if entry["status"] == "FAIL" and needed is None:
                 entry["reason"] = "sample too small to reach the gate"
         classes[klass] = entry
-    approval = (
-        "BLOCKED"
-        if not complete
-        else (
-            "APPROVED_CLASSES"
-            if any(c["status"] == "PASS" for c in classes.values())
-            else "NO_CLASS_PASSED"
-        )
-    )
+    if not complete:
+        approval = "BLOCKED"
+    elif any(c["status"] == "PASS" for c in classes.values()):
+        approval = "APPROVED_CLASSES"
+    else:
+        approval = "NO_CLASS_PASSED"
     return {
         "label_approval": approval,
-        "gate": {"statistic": "wilson_lower_bound", "confidence": 0.95, "minimum": minimum},
+        "gate": {
+            "statistic": "wilson_lower_bound",
+            "confidence": 0.95,
+            "minimum": minimum,
+            # Owner decision, 5 November 2026: the gate uses cluster-weighted precision (one
+            # reviewed representative per near-duplicate cluster). Record-weighted precision is
+            # reported beside it as a sensitivity figure and never decides a class.
+            "precision_basis": "cluster_weighted",
+            "record_weighted_precision": "reported_separately_not_gating",
+        },
         "progress": progress,
-        "cohen_kappa_all_items": kappa if complete else None,
+        "cohen_kappa_all_items": kappa_for(list(key)) if complete else None,
+        "cohen_kappa_gated_items": kappa_for(list(gated)) if complete else None,
+        "reviewer_quality": reviewer_quality(key, sheets),
         "classes": classes,
         "promoted_to_phishing": sorted(k for k, v in classes.items() if v["status"] == "PASS"),
     }

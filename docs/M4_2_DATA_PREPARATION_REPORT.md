@@ -140,6 +140,8 @@ Added: `experiments/sms_prep/` (acquisition, feature normalization, clustering, 
 
 Four mutation probes (relax reviewer independence, allow unknown archive members, let `test` be read for training, lower the gate to 0.80) each made the suite fail.
 
+> **Follow-up (5 November 2026):** the remaining 870 cross-split pairs, the review workflow and the rubric were examined in [M4_2_DATA_QUALITY_REVIEW.md](M4_2_DATA_QUALITY_REVIEW.md). Short version: the pairs are mostly templated campaign variants and the report recommends `sms_split.v2` at 0.4 before any model sees the data; eight evaluator gaps and the rubric were fixed. Section 10's point 4 is superseded by that report.
+
 ## 10. What M4.3 needs first
 
 1. **Completed human review** (section 4), the audit run, and at least one IMC class passing the gate. Otherwise there are no approved positives.

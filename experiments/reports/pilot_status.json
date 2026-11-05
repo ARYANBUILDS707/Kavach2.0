@@ -1,0 +1,57 @@
+{
+  "agreement": {
+    "agreements": 0,
+    "by_kind": {
+      "composition_imc_spam": {
+        "compared": 0,
+        "disagreements": 0
+      },
+      "control_uci_ham": {
+        "compared": 0,
+        "disagreements": 0
+      },
+      "control_uci_spam": {
+        "compared": 0,
+        "disagreements": 0
+      },
+      "gated": {
+        "compared": 0,
+        "disagreements": 0
+      },
+      "synthetic_benign": {
+        "compared": 0,
+        "disagreements": 0
+      }
+    },
+    "cohen_kappa": null,
+    "disagreements": 0,
+    "items_compared": 0
+  },
+  "progress": {
+    "answer_key_intact": true,
+    "items": 42,
+    "reviewer_a_completed": 0,
+    "reviewer_b_completed": 0,
+    "reviewers_distinct_ids": false,
+    "sheets_valid": true
+  },
+  "reviewer_quality": {
+    "pilot_A.csv": {
+      "composition_label_counts": {},
+      "control_accuracy": null,
+      "controls_answered": 0
+    },
+    "pilot_B.csv": {
+      "composition_label_counts": {},
+      "control_accuracy": null,
+      "controls_answered": 0
+    },
+    "warnings": []
+  },
+  "status": "INCOMPLETE",
+  "suggested_bar": {
+    "min_control_accuracy": 0.9,
+    "min_kappa": 0.6
+  },
+  "used_by_gate": false
+}

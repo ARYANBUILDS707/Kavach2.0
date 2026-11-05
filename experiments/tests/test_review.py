@@ -254,3 +254,173 @@ def test_the_audit_module_cannot_call_a_model_or_the_network() -> None:
     imports = set(re.findall(r"^(?:from|import)\s+([\w.]+)", source, flags=re.MULTILINE))
     forbidden = {"urllib", "requests", "http", "socket", "openai", "anthropic", "sklearn", "numpy"}
     assert not {i.split(".")[0] for i in imports} & forbidden
+
+
+# --- workflow integrity (M4.2 review) ---------------------------------------------------------
+
+
+def adjudicate(directory: Path, items: dict[str, str], adjudicator: str = "carol") -> None:
+    rows = [
+        {"item_id": i, "final_label": label, "adjudicator": adjudicator, "notes": ""}
+        for i, label in items.items()
+    ]
+    review.write_csv(directory / "adjudication.csv", review.ADJUDICATION_COLUMNS, rows)
+
+
+def disagreement_setup(directory: Path) -> str:
+    labels = truth(directory, always({"banking": "phishing"}))
+    annotate(directory, labels, "review_A.csv", "alice")
+    first = sorted(k for k, v in labels.items() if v == "phishing")[0]
+    annotate(directory, {**labels, first: "spam"}, "review_B.csv", "bob")
+    return first
+
+
+def test_an_adjudicator_must_be_independent_of_both_reviewers(bundle) -> None:
+    _, _, directory, _ = bundle
+    item = disagreement_setup(directory)
+    for adjudicator in ("alice", "bob"):
+        adjudicate(directory, {item: "phishing"}, adjudicator)
+        status = evaluate_audit(directory)
+        assert status["label_approval"] == "BLOCKED"
+        assert status["progress"]["adjudicators_independent"] is False
+    adjudicate(directory, {item: "phishing"}, "carol")
+    assert evaluate_audit(directory)["progress"]["adjudicators_independent"] is True
+
+
+def test_the_adjudication_queue_lists_only_disagreements_without_naming_reviewers(bundle) -> None:
+    _, _, directory, _ = bundle
+    item = disagreement_setup(directory)
+    assert review.write_adjudication_queue(directory) == 1
+    (row,) = read(directory, "adjudication_queue.csv")
+    assert row["item_id"] == item and {row["label_reviewer_a"], row["label_reviewer_b"]} == {
+        "phishing",
+        "spam",
+    }
+    assert row["display_text"]
+    assert "alice" not in (directory / "adjudication_queue.csv").read_text()
+    assert "bob" not in (directory / "adjudication_queue.csv").read_text()
+    assert (
+        evaluate_audit(directory)["progress"]["disagreements_unadjudicated"] == 1
+    )  # decides nothing
+
+
+def test_a_duplicated_item_row_blocks_instead_of_last_one_wins(bundle) -> None:
+    _, _, directory, _ = bundle
+    labels = truth(directory, always({"banking": "phishing"}))
+    annotate(directory, labels, "review_A.csv", "alice")
+    annotate(directory, labels, "review_B.csv", "bob")
+    rows = read(directory, "review_A.csv")
+    twin = dict(rows[0], label="spam")
+    review.write_csv(directory / "review_A.csv", review.REVIEWER_COLUMNS, [*rows, twin])
+    status = evaluate_audit(directory)
+    assert status["label_approval"] == "BLOCKED"
+    assert status["progress"]["sheet_problems"]["duplicate_item_rows"] >= 1
+
+
+def test_one_reviewer_id_per_sheet_and_unknown_items_are_flagged(bundle) -> None:
+    _, _, directory, _ = bundle
+    labels = truth(directory, always({"banking": "phishing"}))
+    half = len(labels) // 2
+    first, second = dict(list(labels.items())[:half]), dict(list(labels.items())[half:])
+    annotate(directory, first, "review_A.csv", "alice")
+    annotate(directory, second, "review_A.csv", "dave")  # a second person on sheet A
+    annotate(directory, labels, "review_B.csv", "bob")
+    rows = read(directory, "review_B.csv")
+    review.write_csv(
+        directory / "review_B.csv", review.REVIEWER_COLUMNS,
+        [*rows, {"item_id": "Rnotanitem", "display_text": "", "label": "benign", "notes": "",
+                 "reviewer": "bob"}],
+    )  # fmt: skip
+    status = evaluate_audit(directory)
+    problems = status["progress"]["sheet_problems"]
+    assert status["label_approval"] == "BLOCKED"
+    assert problems["sheets_with_several_reviewer_ids"] == ["review_A.csv"]
+    assert problems["unknown_item_rows"] == 1
+
+
+def test_a_modified_answer_key_is_detected(bundle) -> None:
+    _, _, directory, _ = bundle
+    complete(directory, always({"banking": "phishing"}))
+    key = json.loads((directory / "answer_key.json").read_text())
+    first = sorted(k for k, v in key.items() if v["class"] == "delivery")[0]
+    key[first]["class"] = "banking"
+    (directory / "answer_key.json").write_text(json.dumps(key, indent=1, sort_keys=True) + "\n")
+    status = evaluate_audit(directory)
+    assert (
+        status["label_approval"] == "BLOCKED" and status["progress"]["answer_key_intact"] is False
+    )
+
+
+def test_spreadsheet_exports_with_a_byte_order_mark_are_read(bundle) -> None:
+    _, _, directory, _ = bundle
+    labels = truth(directory, always({"banking": "phishing"}))
+    annotate(directory, labels, "review_A.csv", "alice")
+    annotate(directory, labels, "review_B.csv", "bob")
+    for sheet in ("review_A.csv", "review_B.csv"):
+        path = directory / sheet
+        path.write_bytes(b"\xef\xbb\xbf" + path.read_bytes())
+    assert evaluate_audit(directory)["progress"]["reviewer_a_completed"] == len(labels)
+
+
+def test_a_sheet_without_the_required_columns_blocks_instead_of_crashing(bundle) -> None:
+    _, _, directory, _ = bundle
+    (directory / "review_A.csv").write_text("id;answer\nR1;phishing\n")
+    status = evaluate_audit(directory)
+    assert status["label_approval"] == "BLOCKED"
+    assert "review_A.csv" in status["progress"]["sheet_problems"]["sheets_missing_columns"]
+
+
+def test_reviewer_quality_is_reported_from_the_controls_without_changing_the_gate(bundle) -> None:
+    _, _, directory, _ = bundle
+    careless = always({"banking": "phishing"}, default="phishing")  # calls everything phishing
+    careful_a = lambda e: {"uci_ham": "benign", "uci_spam": "spam"}.get(e["class"], careless(e))  # noqa: E731
+    annotate(directory, truth(directory, careful_a), "review_A.csv", "alice")
+    annotate(directory, truth(directory, careless), "review_B.csv", "bob")
+    adjudicate(directory, {i: "phishing" for i in truth(directory, careless)}, "carol")
+    status = evaluate_audit(directory)
+    quality = status["reviewer_quality"]
+    assert quality["review_A.csv"]["control_accuracy"] == 1.0
+    # The careless reviewer calls every UCI ham message phishing (all wrong) and every UCI spam
+    # message phishing (acceptable), so only the spam controls are "right".
+    assert quality["review_B.csv"]["controls_answered"] == 60
+    assert quality["review_B.csv"]["control_accuracy"] == pytest.approx(20 / 60)
+    assert quality["warnings"] and "review_B.csv" in quality["warnings"][0]
+    assert status["label_approval"] in {"APPROVED_CLASSES", "NO_CLASS_PASSED"}  # gate unchanged
+
+
+def test_record_weighted_precision_is_reported_as_a_sensitivity_not_the_gate(bundle) -> None:
+    directory = bundle[2]
+    key = json.loads((directory / "answer_key.json").read_text())
+    banking = sorted(i for i, v in key.items() if v["class"] == "banking")
+    labels = truth(directory, always({"banking": "phishing"}))
+    for i in banking[:10]:
+        labels[i] = "spam"
+    annotate(directory, labels, "review_A.csv", "alice")
+    annotate(directory, labels, "review_B.csv", "bob")
+    sizes = {key[i]["cluster_id"]: (100 if n < 10 else 1) for n, i in enumerate(banking)}
+    status = evaluate_audit(directory, cluster_sizes=sizes)
+    entry = status["classes"]["banking"]
+    assert entry["precision"] == pytest.approx(0.9)
+    assert entry["record_weighted_precision"] == pytest.approx(
+        90 / (10 * 100 + 90)
+    )  # bad ones are big
+    assert entry["status"] == "FAIL"  # decided by the Wilson bound on the sample, not the weights
+
+
+def test_the_gate_is_cluster_weighted_and_record_weights_cannot_lift_a_class(bundle) -> None:
+    _, _, directory, _ = bundle
+    key = json.loads((directory / "answer_key.json").read_text())
+    banking = sorted(i for i, v in key.items() if v["class"] == "banking")
+    labels = truth(directory, always({"banking": "phishing"}))
+    for i in banking[:3]:
+        labels[i] = "spam"  # 97/100 cluster-weighted: below the gate
+    annotate(directory, labels, "review_A.csv", "alice")
+    annotate(directory, labels, "review_B.csv", "bob")
+    # The three wrong ones are tiny clusters, the right ones huge: record-weighted ~0.9999.
+    sizes = {key[i]["cluster_id"]: (1 if n < 3 else 1000) for n, i in enumerate(banking)}
+    status = evaluate_audit(directory, cluster_sizes=sizes)
+    entry = status["classes"]["banking"]
+    assert entry["precision"] == pytest.approx(0.97) and entry["record_weighted_precision"] > 0.999
+    assert entry["status"] == "FAIL" and "banking" not in status["promoted_to_phishing"]
+    assert status["gate"]["precision_basis"] == "cluster_weighted"
+    assert status["gate"]["record_weighted_precision"] == "reported_separately_not_gating"

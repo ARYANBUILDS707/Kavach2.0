@@ -1,0 +1,49 @@
+{
+  "algorithm_version": 1,
+  "assignments_sha256": "b5b5d9e958aee7589b3dadf731b826e3f7109a58567b8555285975b50ec4966b",
+  "checks_passed": true,
+  "cluster_jaccard_threshold": 0.4,
+  "counts": {
+    "test": {
+      "records": 3449
+    },
+    "train": {
+      "records": 20641
+    },
+    "validation": {
+      "records": 3464
+    }
+  },
+  "evaluation_boundary": "The threshold was chosen from label-free similarity statistics and hand checks of train/validation pairs only. No model exists, no score was computed, and no test text was displayed. The test split is read only through HeldOutGuard for a logged final evaluation.",
+  "grouping": "campaign-level: texts linked at character 5-gram Jaccard >= 0.4 (the level at which hand checks still found reworded variants of one campaign) + synthetic template families",
+  "inputs": {
+    "clusters_sha256": "be16e4be0dfad7a0186766f597855cb35754defd2e3df473deb2bfb907d4f7a8",
+    "raw_files": {
+      "Dataset_5971.csv": "649844f1c62a6b27e145eaf17a65f7010c56c390e11a794ea8329993a05ba71e",
+      "SMSSpamCollection": "7d039a24a6083ed9ef0f806ebad56bbb976e3aeb8de05669173bfdc4996c239d",
+      "final_dataset_output.csv": "1bbd1e9e82c3ea023112207b80da268a5c4a07d2353c2b0898360ab037fa9a64",
+      "readme": "8753cd2d3cab68f80c8257851b8c2037778c267f55accb6fd1b5a2e32d36a84e"
+    },
+    "records_sha256": "90e1783e0b9da5f0156df58c6d89b829b4ac5de522dcd06c3ef6174ebe862b5d",
+    "synthetic_corpus_sha256": "27bb08ff7dd2b5ac9c225ec47b18b2f51bf3d1a57a030d951014bc928d4c1e26"
+  },
+  "manifest": {
+    "sha256": "bda081aefecfff4b38ad13087bf6289d87cdde7e81eae5ee4b20722d53710c26",
+    "version": 2
+  },
+  "owner_decision": "5 November 2026: creating a proposed sms_split.v2 at similarity threshold 0.4 is approved, subject to final distribution and leakage checks; v1 and its metadata are preserved. Adoption for M4.3 awaits the owner's manual review.",
+  "proportions": {
+    "test": 0.15,
+    "train": 0.7,
+    "validation": 0.15
+  },
+  "real_world_test_excludes_synthetic": true,
+  "seed": 20261105,
+  "split_version": 2,
+  "status": "proposed",
+  "supersedes_for_evaluation_if_adopted": 1,
+  "v1_preserved": {
+    "assignments_sha256": "ef452e8c219a20f3f02248d94e919b5454f0dd3a4418f7c8d7db879a6099ba0a",
+    "meta": "sms_split.v1.meta.json"
+  }
+}

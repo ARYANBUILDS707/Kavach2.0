@@ -31,6 +31,10 @@ Prepared in M4.1 on 4 November 2026; **M4.2 was executed on 5 November 2026** (s
 - **Proportions and seed.** Proposed 70 / 15 / 15 train / validation / test with a recorded seed; counts per cell are reported. A cell with fewer than 30 test records is reported as "insufficient" in subgroup tables.
 - **Time.** IMC `time` holds a full date for only about 354 of 33,869 rows (the rest are times of day or free text), so a temporal split is not available; the report states this limit.
 - **Freeze.** The split is written once as `sms_split.v1` (record fingerprints only, with its SHA-256). The held-out set is not used for training, feature work, hyper-parameters, thresholds or model choice. It is evaluated once per final candidate, and every use is logged. Any change to the data, labels or split creates `sms_split.v2`; v1 results stay attached to v1.
+- **v2 (proposed, 5 November 2026).** A campaign-level `sms_split.v2` at Jaccard 0.4 exists beside v1 and awaits the owner's adoption ([M4_2_DATA_QUALITY_REVIEW.md](M4_2_DATA_QUALITY_REVIEW.md) section 7). If it is adopted, M4.3 must:
+  - report per-class results by each record's own audited class, not by its cluster's stratum, because 5.6% of IMC records sit in another class's stratum;
+  - state that the largest banking campaign is entirely in train;
+  - report a novel-campaign slice using the 0.3 and 0.35 neighbour levels in the split report.
 - **Leave-one-source-out view.** In addition to the pooled test, report performance on IMC-only positives against held-out negatives from each source, to expose source dependence.
 
 ## M4.3 – models and evaluation

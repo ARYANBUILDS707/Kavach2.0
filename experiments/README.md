@@ -6,11 +6,12 @@ Offline dataset governance, preparation and (from M4.3) training for KAVACH mode
 | --- | --- |
 | `manifests/sms_datasets.v2.json` | The current dataset manifest: sources, checksums, licenses, label policy, the owner's D04 decisions, the synthetic set, the promotion gate. `…v1.json` is the earlier, immutable record. |
 | `manifests/sms_split.v1.meta.json` | Frozen split metadata: seed, algorithm, input hashes, the SHA-256 of the full assignment file, counts. |
-| `reports/` | Aggregate data-quality report and label-audit status (counts and hashes only). |
+| `manifests/sms_split.v2.meta.json`, `manifests/sms_splits.json` | The *proposed* campaign-level split v2 (Jaccard 0.4) and the index of split versions. v1 is never edited. |
+| `reports/` | Aggregate data-quality, split-v2, pair-review, label-audit and pilot status reports (counts and hashes only). |
 | `dataset_governance/` | Manifest schema and validator; matching normalization, fingerprints and the simulator-fixture exclusion. |
 | `sms_prep/` | The M4.2 pipeline: acquisition, feature normalization, clustering, records, synthetic hard negatives, label-audit bundle and evaluation, splits and the held-out guard, quality report, CLI. |
 | `audit/dataset_audit.py` | Recomputes the M4.1 manifest's measured values (checksums + counts) from local copies. |
-| `tests/` | 144 deterministic tests on small synthetic fixtures. |
+| `tests/` | 195 deterministic tests on small synthetic fixtures. |
 
 Read [docs/DATASET_GOVERNANCE.md](../docs/DATASET_GOVERNANCE.md), [docs/M4_EVALUATION_PLAN.md](../docs/M4_EVALUATION_PLAN.md) and [docs/M4_2_DATA_PREPARATION_REPORT.md](../docs/M4_2_DATA_PREPARATION_REPORT.md) first.
 
@@ -26,6 +27,10 @@ uv run --project . --locked python -m sms_prep acquire    # download + verify in
 uv run --project . --locked python -m sms_prep verify     # offline checksum check
 uv run --project . --locked python -m sms_prep build      # records, clusters, review bundle, splits, reports
 uv run --project . --locked python -m sms_prep audit      # evaluate completed review sheets; exit 3 while BLOCKED
+uv run --project . --locked python -m sms_prep pairs --sample 9   # review pairs that cross the frozen split (aggregates; dry-run stricter grouping)
+uv run --project . --locked python -m sms_prep split --version 2  # build the proposed split v2 beside v1; exit 4 if a check fails
+uv run --project . --locked python -m sms_prep pilot      # blank calibration-pilot sheets in ../data/m4/review_pilot/
+uv run --project . --locked python -m sms_prep pilot-audit   # pilot agreement and controls; exit 3 while INCOMPLETE; never gates
 uv run --project . --locked pytest tests
 uv run --project . --locked ruff check . && uv run --project . --locked ruff format --check .
 ```

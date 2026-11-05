@@ -120,12 +120,22 @@
       "smallest_sample_that_can_pass": 73
     },
     "progress": {
+      "adjudicators_independent": true,
+      "answer_key_intact": true,
       "disagreements": 0,
       "disagreements_unadjudicated": 0,
       "items": 1485,
       "reviewer_a_completed": 0,
       "reviewer_b_completed": 0,
-      "reviewers_distinct_ids": false
+      "reviewers_distinct_ids": false,
+      "sheet_problems": {
+        "duplicate_item_rows": 0,
+        "sheets_missing": [],
+        "sheets_missing_columns": [],
+        "sheets_with_several_reviewer_ids": [],
+        "unknown_item_rows": 0,
+        "unusable_adjudication_rows": 0
+      }
     },
     "status": "BLOCKED"
   },

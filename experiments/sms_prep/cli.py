@@ -4,6 +4,10 @@
     python -m sms_prep verify    [--data-dir DIR]   offline checksum check of stored files
     python -m sms_prep build     [--data-dir DIR]   records, clusters, review, splits, reports
     python -m sms_prep audit     [--data-dir DIR]   evaluate completed human review sheets
+    python -m sms_prep pairs     [--sample N]       review cross-split near-duplicate pairs
+    python -m sms_prep split     [--version 2]      create a proposed split version beside v1
+    python -m sms_prep pilot                        create the blinded calibration pilot
+    python -m sms_prep pilot-audit                  agreement and control accuracy of the pilot
 
 Private outputs (raw files, the record store, review sheets) go under the data directory, which
 defaults to the ignored `data/m4/` at the repository root. Public outputs (aggregate reports and
@@ -21,9 +25,10 @@ from pathlib import Path
 
 from dataset_governance.fingerprints import REPO_ROOT, simulator_overlap
 from dataset_governance.manifest import DEFAULT_MANIFEST, MANIFESTS, load_manifest
-from sms_prep import review, synthetic
+from sms_prep import pairs as pair_review
+from sms_prep import pilot, review, split_report, synthetic
 from sms_prep.acquire import AcquisitionError, acquire, specs_from_manifest, verify_local
-from sms_prep.clusters import assign_clusters, build_cluster_infos, write_clusters
+from sms_prep.clusters import assign_clusters, build_cluster_infos, read_clusters, write_clusters
 from sms_prep.normalize import FEATURE_NORMALIZATION_VERSION
 from sms_prep.quality import (
     cluster_threshold_sensitivity,
@@ -41,15 +46,18 @@ from sms_prep.records import (
     load_imc,
     load_mishra,
     load_uci,
+    read_records,
     synthetic_records,
     write_records,
 )  # fmt: skip
+from sms_prep.split_versions import VERSIONS
 from sms_prep.splits import (
     DEFAULT_PROPORTIONS,
     DEFAULT_SEED,
     SPLIT_ALGORITHM_VERSION,
     SPLITS,
     assign_splits,
+    read_assignments,
     record_assignments,
     write_assignments,
 )  # fmt: skip
@@ -91,7 +99,13 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
 
 def audit_status(args: argparse.Namespace) -> dict:
-    status = review.evaluate_audit(args.data_dir / "review")
+    clusters = args.data_dir / "work" / "clusters.jsonl"
+    sizes = (
+        {c.cluster_id: c.candidate_records for c in read_clusters(clusters)}
+        if clusters.exists()
+        else None
+    )
+    status = review.evaluate_audit(args.data_dir / "review", cluster_sizes=sizes)
     write_json(args.reports_dir / "label_audit_status.json", status)
     return status
 
@@ -99,6 +113,11 @@ def audit_status(args: argparse.Namespace) -> dict:
 def cmd_audit(args: argparse.Namespace) -> int:
     status = audit_status(args)
     progress = status["progress"]
+    queued = review.write_adjudication_queue(args.data_dir / "review")
+    if queued:
+        print(
+            f"{queued} disagreement(s) written to review/adjudication_queue.csv for the adjudicator"
+        )
     print(
         f"Label approval: {status['label_approval']} "
         f"({progress['reviewer_a_completed']}/{progress['items']} reviewer A, "
@@ -107,6 +126,15 @@ def cmd_audit(args: argparse.Namespace) -> int:
     )
     for klass, entry in status["classes"].items():
         print(f"  {klass}: {entry['status']} (sampled {entry['sampled']})")
+    problems = {k: v for k, v in progress["sheet_problems"].items() if v}
+    if problems:
+        print(f"  sheet problems: {problems}")
+    if not progress["answer_key_intact"]:
+        print("  the answer key does not match the bundle metadata")
+    if not progress["adjudicators_independent"]:
+        print("  an adjudicator is also a reviewer")
+    for warning in status["reviewer_quality"]["warnings"]:
+        print(f"  warning: {warning}")
     return 0 if status["label_approval"] != "BLOCKED" else 3
 
 
@@ -118,7 +146,18 @@ def ensure_bundle(directory: Path, records, infos, seed: int, per_class: int) ->
         planned = {i.item_id for i in review.select_items(records, infos, seed, per_class)}
         if existing != planned:
             raise BuildError("A review bundle with different items already exists; not overwriting")
-        return json.loads((directory / "bundle_meta.json").read_text())
+        meta_path = directory / "bundle_meta.json"
+        meta = json.loads(meta_path.read_text())
+        rubric_path = directory / "RUBRIC.md"
+        if meta.get("rubric_version") != review.RUBRIC_VERSION or (
+            rubric_path.read_text() != review.RUBRIC
+        ):
+            if review.has_annotations(directory):
+                raise BuildError("The rubric changed after review began; not overwriting")
+            rubric_path.write_text(review.RUBRIC)
+            meta["rubric_version"] = review.RUBRIC_VERSION
+            write_json(meta_path, meta)
+        return meta
     return review.build_bundle(records, infos, directory, seed, per_class)
 
 
@@ -248,15 +287,191 @@ def cmd_build(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_pairs(args: argparse.Namespace) -> int:
+    """Review near-duplicate pairs that cross the frozen split. Aggregates only; writes no split."""
+    work = args.data_dir / "work"
+    records = read_records(work / "records.jsonl")
+    rows = read_assignments(work / "assignments.jsonl")
+    items = pair_review.unique_texts(records, rows)
+    crossing, total = pair_review.cross_split_pairs(items, args.threshold)
+    report = {
+        "frozen_split_assignments_sha256": file_sha256(work / "assignments.jsonl"),
+        "threshold": args.threshold,
+        "summary": pair_review.summarize(items, crossing, total),
+        "v1_leakage_profile": pair_review.leakage_profile(
+            items, pair_review.cross_split_pairs(items, min(pair_review.LEAKAGE_LEVELS))[0]
+        ),
+        "dry_run_stricter_grouping": [
+            pair_review.recluster_dry_run(records, rows, t, DEFAULT_SEED) for t in args.dry_run
+        ],
+        "note": (
+            "Aggregates only. The dry runs write no split; creating sms_split.v2 is a separate "
+            "decision. Test text was never displayed."
+        ),
+    }
+    write_json(args.reports_dir / "m4_2_pair_review.json", report)
+    if args.sample:
+        sample = pair_review.masked_sample(records, items, crossing, args.sample_seed, args.sample)
+        target = args.data_dir / "pair_review"
+        target.mkdir(parents=True, exist_ok=True)
+        write_json(target / "sample_train_validation.json", {"pairs": sample})
+        print(f"wrote {len(sample)} masked train/validation pairs to the private data directory")
+    summary = report["summary"]
+    shown = summary["test_texts_in_a_cross_split_pair"]["share"]
+    print(
+        f"pairs at {args.threshold}: {summary['pairs_at_threshold']}, across splits "
+        f"{summary['pairs_across_splits']}; test texts affected {shown:.2%}"
+    )
+    return 0
+
+
+SPLIT_LEAKAGE_LEVELS = (0.3, 0.35, 0.4, 0.5, 0.6, 0.7)
+
+
+def cmd_pilot(args: argparse.Namespace) -> int:
+    """Create the blinded calibration pilot once; never overwrite sheets someone has started."""
+    directory = args.data_dir / "review_pilot"
+    main_key = json.loads((args.data_dir / "review" / "answer_key.json").read_text())
+    work = args.data_dir / "work"
+    records = read_records(work / "records.jsonl")
+    infos = read_clusters(work / "clusters.jsonl")
+    if (directory / "answer_key.json").exists():
+        planned = {i.item_id for i in pilot.select_pilot(records, infos, main_key, args.seed)}
+        existing = set(json.loads((directory / "answer_key.json").read_text()))
+        if planned != existing:
+            raise BuildError("A pilot with different items already exists; not overwriting")
+        if (directory / "RUBRIC.md").read_text() != review.RUBRIC:
+            if pilot.pilot_has_annotations(directory):
+                raise BuildError("The rubric changed after the pilot began; not overwriting")
+            (directory / "RUBRIC.md").write_text(review.RUBRIC)
+        print(f"pilot already exists ({len(existing)} items); left unchanged")
+        return 0
+    meta = pilot.build_pilot(records, infos, main_key, directory, args.seed)
+    print(f"pilot created: {meta['items']} items per reviewer, {meta['items_by_kind']}")
+    return 0
+
+
+def cmd_pilot_audit(args: argparse.Namespace) -> int:
+    status = pilot.evaluate_pilot(args.data_dir / "review_pilot")
+    write_json(args.reports_dir / "pilot_status.json", status)
+    agreement = status["agreement"]
+    print(
+        f"Pilot: {status['status']} (not used by the gate); compared {agreement['items_compared']}"
+        f"/{status['progress']['items']}, disagreements {agreement['disagreements']}, "
+        f"kappa {agreement['cohen_kappa']}"
+    )
+    return 0 if status["status"] != "INCOMPLETE" else 3
+
+
+def cmd_split(args: argparse.Namespace) -> int:
+    """Create a proposed split version (2 or later) beside v1. v1 is never rewritten."""
+    if args.version not in VERSIONS or args.version == 1:
+        raise BuildError("Only a registered split version above 1 can be created here")
+    spec, previous = VERSIONS[args.version], VERSIONS[args.version - 1]
+    records_path = args.data_dir / "work" / "records.jsonl"
+    v1_meta = json.loads((args.meta_dir / VERSIONS[1].meta_name).read_text())
+    if file_sha256(records_path) != v1_meta["inputs"]["records_sha256"]:
+        raise BuildError("The record store differs from the one v1 was built from")
+    v1_assignments = VERSIONS[1].assignments(args.data_dir)
+    v1_before = file_sha256(v1_assignments)
+    if v1_before != v1_meta["assignments_sha256"]:
+        raise BuildError("The v1 assignment file no longer matches its frozen metadata")
+    records = read_records(records_path)
+    infos = build_cluster_infos(records, assign_clusters(records, spec.threshold))
+    cluster_split = assign_splits(infos, args.seed, DEFAULT_PROPORTIONS)
+    rows = record_assignments(records, infos, cluster_split)
+    spec.work_dir(args.data_dir).mkdir(parents=True, exist_ok=True)
+    clusters_sha = write_clusters(spec.clusters(args.data_dir), infos)
+    assignments_sha = write_assignments(spec.assignments(args.data_dir), rows)
+    items = pair_review.unique_texts(records, rows)
+    crossing, _ = pair_review.cross_split_pairs(items, min(SPLIT_LEAKAGE_LEVELS))
+    report = split_report.build_report(
+        records, infos, cluster_split, rows, read_assignments(previous.assignments(args.data_dir)),
+        items, crossing, SPLIT_LEAKAGE_LEVELS, spec.threshold,
+    )  # fmt: skip
+    if file_sha256(v1_assignments) != v1_before:
+        raise BuildError("v1 changed while v2 was built")  # defensive: nothing here writes v1
+    counts = report["distribution"]["records_by_split"]
+    meta = {
+        "split_version": spec.version,
+        "status": "proposed" if report["all_checks_passed"] else "proposed_failed_checks",
+        "owner_decision": (
+            "5 November 2026: creating a proposed sms_split.v2 at similarity threshold 0.4 is "
+            "approved, subject to final distribution and leakage checks; v1 and its metadata are "
+            "preserved. Adoption for M4.3 awaits the owner's manual review."
+        ),
+        "supersedes_for_evaluation_if_adopted": 1,
+        "v1_preserved": {"meta": VERSIONS[1].meta_name, "assignments_sha256": v1_before},
+        "algorithm_version": SPLIT_ALGORITHM_VERSION,
+        "seed": args.seed,
+        "proportions": DEFAULT_PROPORTIONS,
+        "grouping": spec.grouping,
+        "cluster_jaccard_threshold": spec.threshold,
+        "manifest": v1_meta["manifest"],
+        "inputs": {**v1_meta["inputs"], "clusters_sha256": clusters_sha},
+        "assignments_sha256": assignments_sha,
+        "counts": {s: {"records": counts[s]} for s in SPLITS},
+        "checks_passed": report["all_checks_passed"],
+        "evaluation_boundary": (
+            "The threshold was chosen from label-free similarity statistics and hand checks of "
+            "train/validation pairs only. No model exists, no score was computed, and no test "
+            "text was displayed. The test split is read only through HeldOutGuard for a logged "
+            "final evaluation."
+        ),
+        "real_world_test_excludes_synthetic": True,
+    }
+    write_json(args.meta_dir / spec.meta_name, meta)
+    write_json(args.reports_dir / spec.report_name, report)
+    write_registry(args.meta_dir)
+    failed = [c["check"] for c in report["checks"] if not c["passed"]]
+    print(f"split v{spec.version} at {spec.threshold}: {meta['status']}; records {counts}")
+    for name in failed:
+        print(f"  FAILED: {name}")
+    return 0 if not failed else 4
+
+
+def write_registry(meta_dir: Path) -> None:
+    """Index of split versions and their state; written from the version metadata files."""
+    entries = []
+    for number, spec in sorted(VERSIONS.items()):
+        path = meta_dir / spec.meta_name
+        if not path.exists():
+            continue
+        meta = json.loads(path.read_text())
+        entries.append({
+            "version": number,
+            "meta": spec.meta_name,
+            "threshold": spec.threshold,
+            "assignments_sha256": meta["assignments_sha256"],
+            "status": meta.get("status", "frozen"),
+        })  # fmt: skip
+    write_json(meta_dir / "sms_splits.json", {
+        "versions": entries,
+        "rule": "A split version is never edited. The test split of an adopted version is read "
+                "only through HeldOutGuard; once a model has been evaluated on it, it cannot be "
+                "replaced.",
+    })  # fmt: skip
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m sms_prep", description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("acquire", "verify", "build", "audit"):
+    for name in ("acquire", "verify", "build", "audit", "pairs", "split", "pilot", "pilot-audit"):
         command = sub.add_parser(name)
         command.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
         command.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
         command.add_argument("--reports-dir", type=Path, default=REPORTS)
         command.add_argument("--meta-dir", type=Path, default=MANIFESTS)
+        if name == "pairs":
+            command.add_argument("--threshold", type=float, default=0.6)
+            command.add_argument("--dry-run", type=float, nargs="*", default=[0.6, 0.5])
+            command.add_argument("--sample", type=int, default=0, help="pairs per similarity band")
+            command.add_argument("--sample-seed", type=int, default=20261106)
+        if name == "pilot":
+            command.add_argument("--seed", type=int, default=DEFAULT_SEED)
+        if name == "split":
+            command.add_argument("--version", type=int, default=2)
+            command.add_argument("--seed", type=int, default=DEFAULT_SEED)
         if name == "build":
             command.add_argument("--seed", type=int, default=DEFAULT_SEED)
             command.add_argument("--per-class", type=int, default=review.DEFAULT_PER_CLASS)
@@ -270,6 +485,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         "verify": cmd_verify,
         "build": cmd_build,
         "audit": cmd_audit,
+        "pairs": cmd_pairs,
+        "split": cmd_split,
+        "pilot": cmd_pilot,
+        "pilot-audit": cmd_pilot_audit,
     }
     try:
         return handlers[args.command](args)
