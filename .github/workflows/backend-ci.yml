@@ -1,8 +1,10 @@
 # Backend CI: locked install, pytest and Ruff (M1.1), plus real PostgreSQL/Redis
 # integration tests (M2.1) and schema migrations (M2.2). Since M4.2 the offline `experiments/`
 # project (dataset governance and preparation) has its own lockfile, tests and Ruff checks in the
-# first job; it is a separate environment and never part of the API image. Actions are pinned to
-# full commit SHAs; the comment names the tag.
+# first job; it is a separate environment and never part of the API image. Since M4-I.1 the
+# isolated SMS worker (`workers/sms/`) has its own lockfile too; CI installs only its default,
+# standard-library environment (no torch) and runs its protocol and verification tests; the real
+# model runs locally (`-m model`). Actions are pinned to full commit SHAs; the comment names the tag.
 name: Backend CI
 
 on:
@@ -39,12 +41,16 @@ jobs:
           cache-dependency-glob: |
             backend/uv.lock
             experiments/uv.lock
+            workers/sms/uv.lock
 
       - name: Verify lockfile matches pyproject.toml
         run: uv lock --check --project backend
 
       - name: Verify experiments lockfile matches its pyproject.toml
         run: uv lock --check --project experiments
+
+      - name: Verify SMS worker lockfile matches its pyproject.toml
+        run: uv lock --check --project workers/sms
 
       - name: Install locked dependencies
         id: install
@@ -77,6 +83,23 @@ jobs:
       - name: Run Ruff format check (experiments)
         if: ${{ !cancelled() && steps.experiments.outcome == 'success' }}
         run: uv run --project experiments --locked ruff format --check experiments
+
+      # Default environment only: no torch is installed in CI.
+      - name: Install locked SMS worker dependencies
+        id: worker
+        run: uv sync --project workers/sms --locked
+
+      - name: Run SMS worker tests
+        if: ${{ !cancelled() && steps.worker.outcome == 'success' }}
+        run: uv run --project workers/sms --locked pytest workers/sms/tests
+
+      - name: Run Ruff lint (SMS worker)
+        if: ${{ !cancelled() && steps.worker.outcome == 'success' }}
+        run: uv run --project workers/sms --locked ruff check workers/sms --output-format=github
+
+      - name: Run Ruff format check (SMS worker)
+        if: ${{ !cancelled() && steps.worker.outcome == 'success' }}
+        run: uv run --project workers/sms --locked ruff format --check workers/sms
 
   integration:
     name: Backend integration (PostgreSQL and Redis)

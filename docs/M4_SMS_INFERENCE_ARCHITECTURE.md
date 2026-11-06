@@ -2,7 +2,12 @@
 
 Design gate, 6 November 2026, at commit `42da12e`. CI run 42000377582 passed both jobs.
 
-**Status: approved design, not implemented.**
+**Status update, 7 November 2026 (M4-I.1).** The worker and its supervisor are implemented and tested, but **not connected to ingestion**. Implementation choices made within this design, measured values and results are in [M4_I1_SMS_WORKER_REPORT.md](M4_I1_SMS_WORKER_REPORT.md):
+- `artifact_dir` is relative to `MODEL_DIR`;
+- no idle ping;
+- added codes `worker_busy`, `invalid_startup_output` and `runtime_mismatch`.
+
+**Original status (6 November): approved design, not implemented.**
 - No worker exists, and inference is not connected to ingestion.
 - No schema, API or configuration change has been made.
 - The pretrained model has **not** been validated on KAVACH data.
