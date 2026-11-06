@@ -5,7 +5,9 @@ import hashlib
 import io
 import json
 import re
+import tomllib
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -346,3 +348,23 @@ def test_the_runner_accepts_no_free_text_or_file_input():
         cli.main(["run", "--input", "messages.csv"])
     with pytest.raises(SystemExit):
         cli.main(["run", "some message text"])
+
+
+def test_the_deployment_manifest_matches_the_audited_pins():
+    """The runtime manifest (deployment/models) must describe exactly the audited candidate."""
+    path = Path(__file__).parents[2] / "deployment" / "models" / "sms_classifier.horizon.v1.json"
+    manifest = json.loads(path.read_text())
+    assert manifest["repo"] == HORIZON.repo and manifest["revision"] == HORIZON.revision
+    assert tuple(manifest["labels"]) == HORIZON.labels
+    assert {(f["name"], f["sha256"], f["size_bytes"]) for f in manifest["files"]} == {
+        (f.name, f.sha256, f.size_bytes) for f in HORIZON.files
+    }
+    assert manifest["artifact_dir"] == f"{HORIZON.key}/{HORIZON.revision}"
+    pins = {
+        r.split("==")[0]: r.split("==")[1]
+        for r in tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())[
+            "dependency-groups"
+        ]["pretrained"]
+    }
+    assert manifest["runtime"]["packages"] == pins
+    assert manifest["calibration"] is None and manifest["kavach_validation"] == "not_validated"

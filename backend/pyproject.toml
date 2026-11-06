@@ -32,9 +32,10 @@ packages = ["src/kavach"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # Integration tests need real PostgreSQL/Redis; select them explicitly with `-m integration`.
-addopts = "-ra --strict-markers -m 'not integration'"
+addopts = "-ra --strict-markers -m 'not integration and not model'"
 markers = [
     "integration: requires the development/test PostgreSQL and Redis services",
+    "model: runs the real SMS worker and pinned model (workers/sms model group + MODEL_DIR)",
 ]
 
 [tool.ruff]

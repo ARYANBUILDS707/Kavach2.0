@@ -1,0 +1,48 @@
+{
+  "manifest_version": 1,
+  "stage": "sms_classifier",
+  "model_key": "horizon-phishing-scam-base",
+  "repo": "Horizon-Labs/phishing-scam-detector-base",
+  "revision": "fa686fc0d6a3634092ada93a7c6b89ab0746b8f8",
+  "license": "Apache-2.0; NOTICE retained (weights and tokenizer derive from MIT-licensed mmBERT-base)",
+  "provenance": "Third-party pretrained weights, audited 5 November 2026 (docs/M4_PRETRAINED_EVALUATION.md). Not trained by KAVACH.",
+  "artifact_dir": "horizon-phishing-scam-base/fa686fc0d6a3634092ada93a7c6b89ab0746b8f8",
+  "files": [
+    {"name": "config.json", "sha256": "99b40411e6748ebc586843956cd36377fc928f2d743395f136a9a15ce464daa9", "size_bytes": 2068},
+    {"name": "special_tokens_map.json", "sha256": "baec30ea10906f16adb8c18af7a34023002c1746542612b8b41c9f09e1351351", "size_bytes": 636},
+    {"name": "tokenizer_config.json", "sha256": "1d2f82c1341a79748e00efe82e67690f99d00b3c2a894f2b23128fd9d3519da3", "size_bytes": 46440},
+    {"name": "tokenizer.json", "sha256": "e7322a5d841fcfe921a2457104f85e5bfd2fbb03cdbbe495ce6c04365b9f670a", "size_bytes": 34363286},
+    {"name": "model.safetensors", "sha256": "1f056ed61f8c0f6bfb11616e9c2f640762dcbbaff92bdb71657723f1d84125af", "size_bytes": 1230144500},
+    {"name": "LICENSE", "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30", "size_bytes": 11358},
+    {"name": "NOTICE", "sha256": "52bb89a98d1f7e7bda75f7bbef665f57631b20601c19e8da6ee21e73a7c80cd6", "size_bytes": 1562}
+  ],
+  "labels": ["legitimate", "spam", "fraud"],
+  "preprocessing": {
+    "max_input_chars": 4096,
+    "max_tokens": 256,
+    "truncation": "tokenizer",
+    "normalization": "none"
+  },
+  "score_semantics": "uncalibrated_softmax",
+  "calibration": null,
+  "kavach_validation": "not_validated",
+  "runtime": {
+    "python": "3.12",
+    "device": "cpu",
+    "packages": {
+      "huggingface-hub": "2.2.0",
+      "numpy": "2.5.4",
+      "safetensors": "0.8.0",
+      "tokenizers": "0.23.3",
+      "torch": "2.14.1",
+      "transformers": "5.20.2"
+    }
+  },
+  "self_test": {
+    "canary_id": "canary-v1",
+    "canary_sha256": "4f5515cda4265300f6ae062a69628f9e5c08778fcf082edff39d357fd1efedda",
+    "expected_top_label": "fraud",
+    "expected_probabilities": [0.000705, 0.000828, 0.998467],
+    "tolerance": 0.001
+  }
+}
