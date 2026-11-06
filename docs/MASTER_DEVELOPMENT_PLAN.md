@@ -59,6 +59,7 @@ Each conflict is recorded with the interim handling this plan assumes. Items mar
 | C-08 | Handoff milestone order (Redis ingestion in M2, PostgreSQL in M3) disagrees with the specifications. | Superseded by the owner's decision of 31 October 2026: PostgreSQL first, ingestion second, Redis never authoritative. | Resolved |
 | C-09 | Schema timing: Phase 2 allows creating all tables together for deferred FKs. | M2 creates the full DATABASE.md schema; domain behavior stays phased. | Resolved (per Phase 2 text) |
 | C-10 | CONTRIBUTING.md had no branch rules. | CONTRIBUTING.md now documents the branch workflow and PR policy and points to GIT_WORKFLOW.md. | Resolved |
+| C-11 | FR03/D04/ARCHITECTURE specified a TF-IDF SMS classifier and M4_EVALUATION_PLAN.md put transformers out of scope, while the owner chose a pretrained-first prototype (5 Nov 2026). | **Approved 6 Nov 2026 as D04-A1 (PRD.md).** The pinned Horizon-Labs transformer is permitted for experimental SMS evidence in a separate, supervised worker. TF-IDF stays the comparison baseline. Outputs are uncalibrated evidence, never `sms_score` or a tier, until validated. TD-18 controls must be implemented first. Design: M4_SMS_INFERENCE_ARCHITECTURE.md. | Resolved (design); implementation M4-I |
 
 ## Unresolved decisions
 
@@ -177,6 +178,12 @@ Common to every milestone: the checks, reporting and PR conditions in [DEFINITIO
 - **Exit:** DoD met; limitations (language, data source) stated in the report.
 - **PR/merge:** stays on `backend`; model binaries stay out of Git (stored per `.gitignore` rules).
 - **Risks/assumptions:** dataset availability and licensing; keyword baselines are not proof of fraud. **Unresolved:** D04.
+- **Amendment (D04-A1, C-11, 6 Nov 2026):** M4 adds a pretrained-first track.
+  - **M4-P:** the offline proof of concept. Done, commit `42da12e`.
+  - **M4-I:** the supervised SMS worker connected to ingestion under the contract in M4_SMS_INFERENCE_ARCHITECTURE.md (TD-18 controls, uncalibrated evidence, `sms_score` null). Not started.
+  - **M4.3:** the TF-IDF baseline and the comparison evaluation, once the label gate passes.
+
+  The "populates `sms_score`" deliverable above now applies only to a calibrated model approved after evaluation.
 
 ### M5 — Voice transcription, conversational fraud intent, separate synthetic-speech indication
 

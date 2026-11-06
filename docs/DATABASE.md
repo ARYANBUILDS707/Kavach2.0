@@ -78,6 +78,20 @@ One capability: submit events and read receipts for its own source. Do not add a
 
 `signals` contains reason-code arrays, approved canonical organization labels, intent category, boolean URL-risk indicators, context confidence where supported, per-stage status/duration, audio duration/sample ID for synthetic fixtures, and late-event status. Never store arbitrary entity text, URLs, phone numbers, OTPs, raw sender IDs, SMS, transcript, audio or feature vectors. Missing-score reason is required for every unavailable stage. Cap serialized signals at 16 KiB and versions at 4 KiB.
 
+**Proposed `signals` schema version 2 (D04-A1, M4-I; not implemented, no migration needed).**
+- A completed `sms_classifier` stage adds `model_output`:
+  - `labels`: exactly the manifest's `legitimate`/`spam`/`fraud` keys, values in [0, 1], 4 decimals;
+  - `top_label`;
+  - `score_semantics: "uncalibrated_softmax"`;
+  - `truncated`.
+- `model_output` is absent for any other status.
+- It is model evidence, not `sms_score`, which stays null until a validated calibration manifest exists.
+- No text, tokens or embeddings are ever stored.
+- `model_versions.sms_classifier` is `<model_key>@<revision[:12]>+m<manifest_version>:<manifest sha256[:12]>`.
+- Rows written before M4-I keep version 1.
+
+The full contract is in M4_SMS_INFERENCE_ARCHITECTURE.md §9.
+
 Store only post-analysis events; a pending raw job table is intentionally absent. `kind` consistency CHECKs prohibit voice scores on SMS and SMS scores on calls. Stronger status/signal-schema validation is enforced at the service boundary.
 
 ### incidents
@@ -213,7 +227,7 @@ These record how the tables above are enforced in PostgreSQL. They do not change
 - **Checks added at the database boundary** (consistent with the column rules above): 32-byte length for every digest/HMAC column; canonical non-empty lowercase usernames; JSONB columns must be objects, with the documented 16 KiB (`events.signals`), 4 KiB (`events.model_versions`) and 32 KiB (`assessments.evidence`) caps; NaN and infinities fail the 0–1 score checks.
 - **Server defaults.** UUID primary keys default to `gen_random_uuid()`; `created_at` defaults to `now()`; `users.updated_at` is maintained by a `BEFORE UPDATE` trigger. `incidents.updated_at` is set by the service.
 - **Operator lifecycle (M2.4).** Account and key changes require an active admin actor, re-checked in the same transaction, and are audited in it. The first admin is created by an explicit bootstrap that is refused once any active admin exists; bootstrap, deactivation and demotion are serialized with a transaction-scoped advisory lock so the last active admin cannot be removed. Ingestion keys store only a SHA-256 digest and are revoked, never deleted.
-- **Event writes (M3.1).** One transaction per new event: a transaction-scoped advisory lock derived from the subscriber digest, `INSERT ... ON CONFLICT (source, external_event_id) DO NOTHING`, the standalone incident (`incident_key = standalone:<event UUID>`, expiry equal to the event's) with its link and assessment revision 1 (tier `unknown`, all scores null, `policy_version` `kavach-m3.1-no-models`), and an `event.ingest` audit record whose actor is the ingestion key (`actor_kind = ingestor`). `subscriber_digest` and `payload_digest` are HMAC-SHA256 under the versioned `SUBSCRIBER_HMAC_KEYS` and `PAYLOAD_HMAC_KEYS`; raw text, sender IDs and subscriber tokens are never stored. `signals` holds `{"schema_version": 1, "stages": {<stage>: {"status", "reason", "duration_ms"}}, "reason_codes": []}`; `expires_at` is `received_at + EVENT_RETENTION_DAYS` (default 7).
+- **Event writes (M3.1).** One transaction per new event: a transaction-scoped advisory lock derived from the subscriber digest, `INSERT ... ON CONFLICT (source, external_event_id) DO NOTHING`, the standalone incident (`incident_key = standalone:<event UUID>`, expiry equal to the event's) with its link and assessment revision 1 (tier `unknown`, all scores null, `policy_version` `kavach-m3.1-no-models`), and an `event.ingest` audit record whose actor is the ingestion key (`actor_kind = ingestor`). `subscriber_digest` and `payload_digest` are HMAC-SHA256 under the versioned `SUBSCRIBER_HMAC_KEYS` and `PAYLOAD_HMAC_KEYS`; raw text, sender IDs and subscriber tokens are never stored. `signals` holds `{"schema_version": 1, "stages": {<stage>: {"status", "reason", "duration_ms"}}, "reason_codes": []}` (proposed version 2 for M4-I below); `expires_at` is `received_at + EVENT_RETENTION_DAYS` (default 7).
 - **Migrations.** `alembic -c backend/alembic.ini upgrade head` with `MIGRATION_DATABASE_URL` set to the migration owner. Repeated upgrades are no-ops; `alembic check` must report no differences. The downgrade drops the schema and is refused unless the target database name ends in `_test` and is passed explicitly (`-x allow-destructive-downgrade=<database>`); deployed databases use forward repair only.
 
 ## Redis keys

@@ -23,6 +23,12 @@ The user authorized a backend-only foundation after the initial specification. T
 - Idempotency: the canonical payload (validated fields, timestamp normalized to UTC microseconds, absent optionals as null, text kept exactly) is fingerprinted with HMAC-SHA256 under `PAYLOAD_HMAC_KEYS[PAYLOAD_HMAC_ACTIVE_VERSION]`; the stored version is used when comparing, so retired versions must stay configured. First commit → 201 with `Location`; same fingerprint → 200 with the original receipt and `replayed: true`; different fingerprint → 409 `EVENT_ID_CONFLICT`. PostgreSQL's unique `(source, external_event_id)` arbitrates concurrent requests.
 - Receipts: `event_id`, `external_event_id`, `source`, `kind`, `analysis_status`, `received_at`, `processing_ms`, `replayed`, `warnings`. No subscriber, incident or content field is ever returned to an ingestor. `GET /events/{id}` returns `replayed: false` and the same 404 for a missing event, another source's event or a malformed ID.
 - No models are deployed: every stage is stored as unavailable with a reason, all scores are null, `analysis_status` is `unavailable`, warnings name each unavailable stage (for example `SMS_CLASSIFIER_UNAVAILABLE`), and the standalone incident's assessment has tier `unknown` with a null final score.
+- **Proposed for M4-I (D04-A1; not implemented)** — full contract in M4_SMS_INFERENCE_ARCHITECTURE.md §6.4 and §9:
+  - **No analysis slot free:** 429 `CAPACITY_EXCEEDED` with `Retry-After`; nothing stored.
+  - **SMS worker starting or restarting:** 503 `DEPENDENCY_UNAVAILABLE` with `Retry-After`; nothing stored.
+  - **Successful SMS inference:** the event's `analysis_status` is `complete`, and its signals record the model's uncalibrated `legitimate`/`spam`/`fraud` evidence. `sms_score` stays null, the assessment stays tier `unknown` with `analysis_status` `partial`, and the receipt warns `SMS_SCORE_UNCALIBRATED`.
+  - **Attempted inference that fails** (timeout, crash, invalid output, deadline budget too short): committed with the stage unavailable and a reason.
+  - Replays and conflicts never reach the worker.
 - A database failure returns 503 `DEPENDENCY_UNAVAILABLE` with nothing stored; an unexpected failure (for example an audit write) returns 500 with nothing stored. Either can be retried with the same event ID. If the connection is lost *while committing*, the 503 is ambiguous: retry with the same event ID (200 replay if it was committed) or read the receipt.
 
 **Limits, deadline and Redis (M3.2, implemented).**
@@ -178,7 +184,9 @@ Required services are local PostgreSQL, Redis and model artifacts. Runtime audio
 | KAVACH_SIMULATOR_API_KEY | Operator shell (simulator client only) | Ingestion key for `python -m kavach.simulator`; alternatively piped with `--key-stdin`; never stored in a file or passed as an argument |
 | POLICY_PATH | Server | Approved versioned thresholds/window configuration |
 | INFERENCE_DEVICE | Server | Explicit CPU/GPU selection |
-| MAX_INFLIGHT_ANALYSES / INFERENCE_TIMEOUT_SECONDS | Server | Bounded admission/deadline; `INFERENCE_TIMEOUT_SECONDS` (default 30) is the ingestion deadline since M3.2, `MAX_INFLIGHT_ANALYSES` arrives with inference |
+| MAX_INFLIGHT_ANALYSES / INFERENCE_TIMEOUT_SECONDS | Server | Bounded admission/deadline; `INFERENCE_TIMEOUT_SECONDS` (default 30) is the ingestion deadline since M3.2, `MAX_INFLIGHT_ANALYSES` (default 2, 1–2 while one worker exists) arrives with inference |
+| SMS_WORKER_ENABLED / SMS_WORKER_PYTHON | Server | Proposed (D04-A1, M4-I): enable the SMS worker (default `false`) and the absolute path of its separate environment's interpreter |
+| SMS_INFERENCE_TIMEOUT_MS / SMS_WORKER_THREADS / SMS_WORKER_MAX_RSS_MB / SMS_WORKER_START_TIMEOUT_SECONDS | Server | Proposed (M4-I): per-request timeout (default 2000), torch threads (2), memory ceiling for between-request restart (1536), readiness bound (90). Values and validation in M4_SMS_INFERENCE_ARCHITECTURE.md §10 |
 | EVENT_RETENTION_DAYS / AUDIT_RETENTION_DAYS | Server/job | Approved expiry policies |
 | SESSION_IDLE_MINUTES / SESSION_MAX_HOURS | Server | Approved session limits; defaults 30 and 8 (M2.3) |
 | LOG_LEVEL | Server | Structured safe logging verbosity |

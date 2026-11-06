@@ -51,6 +51,13 @@ Prepared in M4.1 on 4 November 2026; **M4.2 was executed on 5 November 2026** (s
 
 A transformer is out of scope for M4 (no GPU requirement, no external download, explainability and artifact size); it can be proposed later against these baselines.
 
+**Amended 6 November 2026 (D04-A1).**
+- The owner approved a separate pretrained-first track. The pinned Horizon-Labs transformer may produce experimental, uncalibrated SMS evidence ([M4_PRETRAINED_EVALUATION.md](M4_PRETRAINED_EVALUATION.md), [M4_SMS_INFERENCE_ARCHITECTURE.md](M4_SMS_INFERENCE_ARCHITECTURE.md)).
+- This plan is otherwise unchanged. In M4.3 the pretrained model is evaluated **as a comparison model**, on the same split, label gate and held-out procedure as the baselines above.
+- Its threshold and any calibration are fitted on validation only.
+- It cannot be tuned (it is frozen), and its training data is independent of ours as far as published.
+- Until that evaluation exists, no quality claim is made for it.
+
 **Metrics** (held-out test, once, at the threshold(s) fixed on validation):
 
 - Confusion matrix with TP, FP, TN, FN and the denominator of each rate.

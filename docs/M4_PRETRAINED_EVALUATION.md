@@ -11,6 +11,8 @@ Dated 5 November 2026. This is a separate track, authorized by the owner, alongs
 
 ## Relationship to existing decisions
 
+**Resolved 6 November 2026 as D04-A1** (PRD.md; conflict C-11). The integration design is [M4_SMS_INFERENCE_ARCHITECTURE.md](M4_SMS_INFERENCE_ARCHITECTURE.md). The text below is the record as written on 5 November.
+
 There is a conflict to resolve:
 - PRD FR03 and D04 specify a "versioned TF-IDF classifier".
 - `M4_EVALUATION_PLAN.md` says "a transformer is out of scope for M4".
