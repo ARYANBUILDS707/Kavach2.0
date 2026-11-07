@@ -134,7 +134,7 @@ def test_catalog_expectations_match_d05_and_are_labeled_provisional() -> None:
         ),
         ({"steps": [sms_step(step=f"s{n}") for n in range(11)]}, "at most 10"),
     ],
-)  # fmt: skip
+)
 def test_invalid_catalogs_are_rejected(changes: dict[str, Any], message: str) -> None:
     with pytest.raises(ValidationError, match=message):
         parse_catalog(with_scenario(**changes))
@@ -187,9 +187,14 @@ def test_planned_payloads_are_valid_api_requests_without_labels() -> None:
         event = model.model_validate(step.payload, context={"now": ANCHOR})
         assert event.timestamp == ANCHOR + timedelta(seconds=step.offset_seconds)
         assert set(step.payload) <= {
-            "event_id", "subscriber_token", "timestamp", "source", "text", "sender_id",
+            "event_id",
+            "subscriber_token",
+            "timestamp",
+            "source",
+            "text",
+            "sender_id",
             "audio_reference",
-        }  # fmt: skip
+        }
         assert step.truth not in json.dumps(step.payload)
     s05 = {s.step: s.payload for s in by_scenario["S05"]}
     assert s05["sms"]["subscriber_token"] == s05["call"]["subscriber_token"]
@@ -431,9 +436,14 @@ def test_unreachable_target_aborts_without_retrying() -> None:
 
     fake = FakeTime()
     runner = Runner(
-        load_catalog(), Down(), KEY, clock=lambda: ANCHOR,
-        pacer=Pacer(20, monotonic=fake.monotonic, sleep=fake.sleep), seed=0, run_id="down1",
-    )  # fmt: skip
+        load_catalog(),
+        Down(),
+        KEY,
+        clock=lambda: ANCHOR,
+        pacer=Pacer(20, monotonic=fake.monotonic, sleep=fake.sleep),
+        seed=0,
+        run_id="down1",
+    )
     report = runner.run(all_ids())
     assert report.aborted == "target unreachable" and Down.calls == 1
 
@@ -448,8 +458,43 @@ def test_wrong_receipt_or_scores_fail_the_scenario() -> None:
 
     report = make_runner(ScriptedServer(scored), FakeTime()).run(["S01"])
     failures = report.scenarios[0].steps[0].failures
-    assert "analysis must be unavailable while no model is deployed" in failures
+    assert "SMS model evidence must be marked uncalibrated" in failures
     assert "stored receipt does not match" in failures
+
+
+class ModelServer(ScriptedServer):
+    """The M4-I.2 contract with the SMS worker enabled: SMS receipts are `complete` with the
+    uncalibrated warning, calls stay unavailable. `replay_differs` breaks replay fidelity."""
+
+    def __init__(self, replay_differs: bool = False) -> None:
+        super().__init__()
+        self.replay_differs = replay_differs
+
+    def request(self, method, path, headers, body):  # type: ignore[no-untyped-def]
+        result = super().request(method, path, headers, body)
+        if result.status not in (200, 201):
+            return result
+        envelope = json.loads(result.body)
+        data = envelope["data"]
+        if data["kind"] == "sms":
+            data |= {"analysis_status": "complete", "warnings": ["SMS_SCORE_UNCALIBRATED"]}
+            if self.replay_differs and data["replayed"]:
+                data |= {
+                    "analysis_status": "unavailable",
+                    "warnings": ["SMS_CLASSIFIER_UNAVAILABLE"],
+                }
+        return HttpResult(result.status, result.headers, json.dumps(envelope).encode())
+
+
+def test_documented_sms_model_evidence_passes_every_scenario() -> None:
+    report = make_runner(ModelServer(), FakeTime()).run(all_ids())
+    assert report.passed, [s.failures for r in report.scenarios for s in r.steps if s.failures]
+
+
+def test_a_replay_that_changes_the_stored_analysis_fails() -> None:
+    report = make_runner(ModelServer(replay_differs=True), FakeTime()).run(all_ids())
+    failures = [f for r in report.scenarios for s in r.steps for f in s.failures]
+    assert "a replay must repeat the original analysis result" in failures
 
 
 def test_submission_cap_refuses_oversized_plans(monkeypatch: pytest.MonkeyPatch) -> None:

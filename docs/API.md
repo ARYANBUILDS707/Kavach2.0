@@ -23,12 +23,14 @@ The user authorized a backend-only foundation after the initial specification. T
 - Idempotency: the canonical payload (validated fields, timestamp normalized to UTC microseconds, absent optionals as null, text kept exactly) is fingerprinted with HMAC-SHA256 under `PAYLOAD_HMAC_KEYS[PAYLOAD_HMAC_ACTIVE_VERSION]`; the stored version is used when comparing, so retired versions must stay configured. First commit → 201 with `Location`; same fingerprint → 200 with the original receipt and `replayed: true`; different fingerprint → 409 `EVENT_ID_CONFLICT`. PostgreSQL's unique `(source, external_event_id)` arbitrates concurrent requests.
 - Receipts: `event_id`, `external_event_id`, `source`, `kind`, `analysis_status`, `received_at`, `processing_ms`, `replayed`, `warnings`. No subscriber, incident or content field is ever returned to an ingestor. `GET /events/{id}` returns `replayed: false` and the same 404 for a missing event, another source's event or a malformed ID.
 - No models are deployed: every stage is stored as unavailable with a reason, all scores are null, `analysis_status` is `unavailable`, warnings name each unavailable stage (for example `SMS_CLASSIFIER_UNAVAILABLE`), and the standalone incident's assessment has tier `unknown` with a null final score.
-- **Proposed for M4-I (D04-A1; not implemented)** — full contract in M4_SMS_INFERENCE_ARCHITECTURE.md §6.4 and §9:
-  - **No analysis slot free:** 429 `CAPACITY_EXCEEDED` with `Retry-After`; nothing stored.
-  - **SMS worker starting or restarting:** 503 `DEPENDENCY_UNAVAILABLE` with `Retry-After`; nothing stored.
-  - **Successful SMS inference:** the event's `analysis_status` is `complete`, and its signals record the model's uncalibrated `legitimate`/`spam`/`fraud` evidence. `sms_score` stays null, the assessment stays tier `unknown` with `analysis_status` `partial`, and the receipt warns `SMS_SCORE_UNCALIBRATED`.
-  - **Attempted inference that fails** (timeout, crash, invalid output, deadline budget too short): committed with the stage unavailable and a reason.
-  - Replays and conflicts never reach the worker.
+- **SMS worker (M4-I.2, implemented; off unless `SMS_WORKER_ENABLED=true`).** Full contract: M4_SMS_INFERENCE_ARCHITECTURE.md §6.4 and §9; results: M4_I2_SMS_INTEGRATION_REPORT.md.
+  - **Order.** Key → submission quota → body size → validation → source scope → idempotency lookup → inference → commit. Replays (200) and conflicts (409) never reach the worker.
+  - **Rejected before anything is stored** (retry with the same event ID gets a fresh analysis):
+    - no analysis slot free: 429 `CAPACITY_EXCEEDED`, `Retry-After: 1`;
+    - worker starting or restarting: 503 `DEPENDENCY_UNAVAILABLE`, `Retry-After: 10`.
+  - **Successful inference:** 201 with `analysis_status: complete` and warning `SMS_SCORE_UNCALIBRATED`. The stored signals carry the model's native `legitimate`/`spam`/`fraud` outputs; `sms_score` stays null, and the assessment stays tier `unknown` with a null final score and `analysis_status: partial`. **The receipt never contains scores or labels.**
+  - **Attempted inference that fails, or a worker that is unavailable:** 201 with `analysis_status: unavailable` and `SMS_CLASSIFIER_UNAVAILABLE`. The stored reason is one of `model_not_deployed`, `model_unverified`, `worker_unavailable`, `inference_timeout`, `worker_crashed`, `invalid_model_output`, `deadline_exhausted`. A replay returns the stored result and never retries the model.
+  - **Calls** are unchanged (voice stages unavailable).
 - A database failure returns 503 `DEPENDENCY_UNAVAILABLE` with nothing stored; an unexpected failure (for example an audit write) returns 500 with nothing stored. Either can be retried with the same event ID. If the connection is lost *while committing*, the 503 is ambiguous: retry with the same event ID (200 replay if it was committed) or read the receipt.
 
 **Limits, deadline and Redis (M3.2, implemented).**
@@ -86,7 +88,8 @@ Browser: server session cookie plus CSRF token header `X-CSRF-Token` for mutatio
 | `/incidents/{id}/review` | POST | Analyst/admin + CSRF | Append review |
 | `/simulator/scenarios` | GET | Admin | Read fixed scenario and sample catalog |
 | `/health/live` | GET | Public | Process liveness only |
-| `/health` | GET | Viewer, analyst, admin | Dependencies and model readiness |
+| `/health` | GET | Viewer, analyst, admin | Dependencies and model readiness (planned; see C-07) |
+| `/api/v1/system/models` | GET | Viewer, analyst, admin | Implemented (M4-I.2): operational state of the SMS model: `disabled`, `starting`, `ready` or `unavailable`, with the supervisor `detail`, a safe `reason` code, `model_version`, `score_semantics: uncalibrated_softmax` and `validated_on_kavach_data: false`. Readiness is operational, never accuracy. Session only: ingestion keys get 401 |
 | `/stream` | WebSocket | Authenticated user; allowed Origin | Incident/system invalidations |
 
 No public registration, account management API, arbitrary media upload/download, provider webhook, call-control or training endpoint is in scope. Provisioning is a secured operator command with an audit record.
@@ -184,9 +187,9 @@ Required services are local PostgreSQL, Redis and model artifacts. Runtime audio
 | KAVACH_SIMULATOR_API_KEY | Operator shell (simulator client only) | Ingestion key for `python -m kavach.simulator`; alternatively piped with `--key-stdin`; never stored in a file or passed as an argument |
 | POLICY_PATH | Server | Approved versioned thresholds/window configuration |
 | INFERENCE_DEVICE | Server | Explicit CPU/GPU selection |
-| MAX_INFLIGHT_ANALYSES / INFERENCE_TIMEOUT_SECONDS | Server | Bounded admission/deadline; `INFERENCE_TIMEOUT_SECONDS` (default 30) is the ingestion deadline since M3.2, `MAX_INFLIGHT_ANALYSES` (default 2, 1–2 while one worker exists) arrives with inference |
-| SMS_WORKER_ENABLED / SMS_WORKER_PYTHON | Server | Proposed (D04-A1, M4-I): enable the SMS worker (default `false`) and the absolute path of its separate environment's interpreter |
-| SMS_INFERENCE_TIMEOUT_MS / SMS_WORKER_THREADS / SMS_WORKER_MAX_RSS_MB / SMS_WORKER_START_TIMEOUT_SECONDS | Server | Proposed (M4-I): per-request timeout (default 2000), torch threads (2), memory ceiling for between-request restart (1536), readiness bound (90). Values and validation in M4_SMS_INFERENCE_ARCHITECTURE.md §10 |
+| MAX_INFLIGHT_ANALYSES / INFERENCE_TIMEOUT_SECONDS | Server | Bounded admission/deadline; `INFERENCE_TIMEOUT_SECONDS` (default 30) is the ingestion deadline since M3.2, `MAX_INFLIGHT_ANALYSES` (default 2, 1–2 while one worker exists) is enforced for SMS since M4-I.2 |
+| SMS_WORKER_ENABLED / SMS_WORKER_PYTHON | Server | Implemented (M4-I.2): enable the SMS worker (default `false`) and the absolute path of its separate environment's interpreter. Enabling requires `SMS_WORKER_PYTHON`, `MODEL_DIR`, `MODEL_MANIFEST_PATH` (all absolute) and the event ingestion configuration; `INFERENCE_DEVICE` accepts only `cpu`. An unusable manifest, interpreter or model directory makes the model `unverified` (refuses startup in `APP_ENV=pilot`) |
+| SMS_INFERENCE_TIMEOUT_MS / SMS_WORKER_THREADS / SMS_WORKER_MAX_RSS_MB / SMS_WORKER_START_TIMEOUT_SECONDS | Server | Implemented (M4-I.2): per-request timeout (default 2000; 100–10000 and, with the 2 s commit reserve, below `INFERENCE_TIMEOUT_SECONDS`), torch threads (2), memory ceiling for between-request restart (1536), readiness bound (90) |
 | EVENT_RETENTION_DAYS / AUDIT_RETENTION_DAYS | Server/job | Approved expiry policies |
 | SESSION_IDLE_MINUTES / SESSION_MAX_HOURS | Server | Approved session limits; defaults 30 and 8 (M2.3) |
 | LOG_LEVEL | Server | Structured safe logging verbosity |

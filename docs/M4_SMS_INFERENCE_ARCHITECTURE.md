@@ -2,7 +2,9 @@
 
 Design gate, 6 November 2026, at commit `42da12e`. CI run 42000377582 passed both jobs.
 
-**Status update, 7 November 2026 (M4-I.1).** The worker and its supervisor are implemented and tested, but **not connected to ingestion**. Implementation choices made within this design, measured values and results are in [M4_I1_SMS_WORKER_REPORT.md](M4_I1_SMS_WORKER_REPORT.md):
+**Status update, 7 November 2026 (M4-I.2).** The worker is connected to SMS ingestion behind `SMS_WORKER_ENABLED`; results, deviations and measurements are in [M4_I2_SMS_INTEGRATION_REPORT.md](M4_I2_SMS_INTEGRATION_REPORT.md). Differences from this design: the readiness route is `/api/v1/system/models` (the public `/health` is unchanged, C-07); `min_budget_s` is capped at the configured timeout; the replay still stores unavailable results permanently.
+
+**Earlier status (M4-I.1).** The worker and its supervisor are implemented and tested, but **not connected to ingestion**. Implementation choices made within this design, measured values and results are in [M4_I1_SMS_WORKER_REPORT.md](M4_I1_SMS_WORKER_REPORT.md):
 - `artifact_dir` is relative to `MODEL_DIR`;
 - no idle ping;
 - added codes `worker_busy`, `invalid_startup_output` and `runtime_mismatch`.

@@ -54,6 +54,15 @@ NO_MODEL_WARNINGS = {
     "sms": ["SMS_CLASSIFIER_UNAVAILABLE"],
     "call": ["SYNTHESIS_UNAVAILABLE", "TRANSCRIPTION_UNAVAILABLE", "VOICE_INTENT_UNAVAILABLE"],
 }
+# The only receipt outcomes the contract allows (API.md; M4-I.2 adds the SMS worker): no model,
+# or uncalibrated SMS model evidence. A receipt never carries a score or a tier.
+ALLOWED_ANALYSIS = {
+    "sms": {
+        ("unavailable", ("SMS_CLASSIFIER_UNAVAILABLE",)),
+        ("complete", ("SMS_SCORE_UNCALIBRATED",)),
+    },
+    "call": {("unavailable", tuple(NO_MODEL_WARNINGS["call"]))},
+}
 RECEIPT_FIELDS = ("event_id", "external_event_id", "source", "kind", "analysis_status", "warnings")
 
 
@@ -404,7 +413,7 @@ class Runner:
     def _run_steps(
         self, steps: list[PlannedStep], result: ScenarioResult, report: RunReport
     ) -> None:
-        receipts: dict[str, str] = {}
+        receipts: dict[str, StepResult] = {}
         for index, (planned, outcome) in enumerate(zip(steps, result.steps, strict=True)):
             if planned.of is not None and planned.of not in receipts:
                 outcome.skipped = True
@@ -473,27 +482,41 @@ class Runner:
         if expect.status == 201:
             if outcome.replayed is not False:
                 outcome.failures.append("a new event must not be a replay")
-            self._check_unavailable(planned, outcome)
+            self._check_analysis(planned, outcome)
             if outcome.receipt_id:
-                receipts[planned.step] = outcome.receipt_id
-                self._check_receipt(planned, outcome, outcome.receipt_id)
+                receipts[planned.step] = outcome
+                self._check_receipt(planned, outcome, outcome)
         elif expect.status == 200:
             original = receipts[planned.of or ""]
-            if outcome.replayed is not True or outcome.receipt_id != original:
+            if outcome.replayed is not True or outcome.receipt_id != original.receipt_id:
                 outcome.failures.append("a replay must return the original receipt")
-            self._check_unavailable(planned, outcome)
+            # A replay repeats the stored result exactly; it never re-runs the model.
+            if (outcome.analysis_status, outcome.warnings) != (
+                original.analysis_status,
+                original.warnings,
+            ):
+                outcome.failures.append("a replay must repeat the original analysis result")
+            self._check_analysis(planned, outcome)
         elif expect.status == 409:
             # The original event must be untouched by the rejected reuse of its ID.
             self._check_receipt(planned, outcome, receipts[planned.of or ""])
 
-    def _check_unavailable(self, planned: PlannedStep, outcome: StepResult) -> None:
-        if outcome.analysis_status != "unavailable":
+    def _check_analysis(self, planned: PlannedStep, outcome: StepResult) -> None:
+        found = (outcome.analysis_status, tuple(outcome.warnings))
+        if found in ALLOWED_ANALYSIS[planned.kind]:
+            return
+        if planned.kind == "call" or outcome.analysis_status != "complete":
             outcome.failures.append("analysis must be unavailable while no model is deployed")
-        if outcome.warnings != NO_MODEL_WARNINGS[planned.kind]:
             outcome.failures.append("every model stage must be reported unavailable")
+        else:
+            outcome.failures.append("SMS model evidence must be marked uncalibrated")
 
-    def _check_receipt(self, planned: PlannedStep, outcome: StepResult, receipt_id: str) -> None:
-        """Receipt reads go through GET /events/{id} (not counted by the submission limit)."""
+    def _check_receipt(
+        self, planned: PlannedStep, outcome: StepResult, original: StepResult
+    ) -> None:
+        """Receipt reads go through GET /events/{id} (not counted by the submission limit).
+        The stored receipt must match what the original submission returned."""
+        receipt_id = original.receipt_id or ""
         response = self._send("GET", f"{EVENTS_PATH}/{receipt_id}", self._headers, None, outcome)
         if response.status in (401, 429) or response.status >= 500:
             outcome.failures.append(f"receipt lookup returned {response.status}")
@@ -504,8 +527,8 @@ class Runner:
             "external_event_id": planned.external_event_id,
             "source": planned.payload["source"],
             "kind": planned.kind,
-            "analysis_status": "unavailable",
-            "warnings": NO_MODEL_WARNINGS[planned.kind],
+            "analysis_status": original.analysis_status,
+            "warnings": original.warnings,
         }
         if response.status != 200 or {k: data.get(k) for k in RECEIPT_FIELDS} != wanted:
             outcome.failures.append("stored receipt does not match")
@@ -633,7 +656,8 @@ def report_lines(report: RunReport) -> list[str]:
         + (f"; ABORTED: {report.aborted}" if report.aborted else "")
     )
     lines.append(
-        "Ground-truth labels are simulation-only; no model ran and no risk conclusion was drawn."
+        "Ground-truth labels are simulation-only; any SMS model evidence is uncalibrated "
+        "and no risk conclusion was drawn."
     )
     return lines
 

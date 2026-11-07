@@ -107,6 +107,17 @@ FATAL_CODES = (
     "invalid_arguments",
 )
 OK_KEYS = {"v", "type", "id", "status", "probabilities", "truncated", "duration_ms", "rss_mb"}
+# The four readiness states shown to operators. Readiness is operational, never accuracy.
+PUBLIC_STATE: dict[str, str] = {
+    "disabled": "disabled",
+    "starting": "starting",
+    "restarting": "starting",
+    "ready": "ready",
+    "unverified": "unavailable",
+    "circuit_open": "unavailable",
+    "lock_held": "unavailable",
+    "closed": "unavailable",
+}
 WORKER_ENV_PATH = "/usr/bin:/bin"
 # Queued by the reader when the worker sent bytes that are not a valid frame (then the stream ends).
 PROTOCOL_ERROR: dict[str, Any] = {"__protocol_error__": True}
@@ -248,13 +259,28 @@ class SmsWorkerSupervisor:
         self._threads: list[threading.Thread] = []  # every generation's reader/stderr threads
         self._peak_rss_mb: int | None = None  # the current worker's self-reported peak RSS
 
+    @classmethod
+    def refused(cls, code: str) -> "SmsWorkerSupervisor":
+        """Enabled, but refused before any worker could be configured (for example the manifest
+        or the worker interpreter is missing). Every request is `model_unverified`."""
+        supervisor = cls(None)
+        supervisor._state = "unverified"
+        supervisor._fatal_code = code
+        return supervisor
+
     # --- lifecycle ---------------------------------------------------------------------------
 
     def start(self) -> None:
         """Take the model-copy lock and start the worker in the background (never blocks)."""
         if self.config is None:
             return
-        fd = os.open(self.config.lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fd = os.open(self.config.lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+        except OSError:
+            with self._cond:
+                self._fatal_code = "lock_file_unavailable"
+            self._set_state("unverified", "lock_file_unavailable")
+            return
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
@@ -334,6 +360,7 @@ class SmsWorkerSupervisor:
             pid = self._worker.process.pid if self._worker and self._state == "ready" else None
             return {
                 "state": self._state,
+                "public_state": PUBLIC_STATE[self._state],
                 "model_version": self.config.manifest.model_version if self.config else None,
                 "starts": self._starts,
                 "failures_in_window": len(self._failures),
@@ -351,7 +378,7 @@ class SmsWorkerSupervisor:
         model or worker problems; raises ValueError only for text outside the manifest bounds."""
         started = self._clock()
         if self.config is None:
-            return unavailable("model_not_deployed")
+            return unavailable(TERMINAL_STATE_REASON.get(self.state, "model_not_deployed"))
         if not isinstance(text, str) or not 1 <= len(text) <= self.config.manifest.max_input_chars:
             raise ValueError("SMS text outside the manifest input bounds")
         early = self._state_result()

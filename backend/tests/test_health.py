@@ -32,6 +32,7 @@ def test_production_application_has_no_test_harness(client: TestClient) -> None:
         "/api/v1/events/call",
         "/api/v1/events/{event_id}",
         "/api/v1/simulator/scenarios",
+        "/api/v1/system/models",
     }
     for path in ["/_test/sms", "/_test/call"]:
         assert client.post(path, json={}).status_code == 404

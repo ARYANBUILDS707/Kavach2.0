@@ -1,6 +1,7 @@
 """Application factory; import does not load models or connect to external services."""
 
 import logging
+import os
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import timedelta
@@ -14,17 +15,21 @@ from kavach.api.routes.auth import router as auth_router
 from kavach.api.routes.events import router as events_router
 from kavach.api.routes.health import router as health_router
 from kavach.api.routes.simulator import router as simulator_router
+from kavach.api.routes.system import router as system_router
 from kavach.auth.cookies import cookie_policy_for
 from kavach.auth.ingest_keys import IngestKeyService
 from kavach.auth.passwords import PasswordService
 from kavach.auth.service import AuthService, SessionPolicy
 from kavach.auth.throttle import BearerAttemptThrottle, LoginThrottle, SubmissionQuota
 from kavach.core.clock import Clock, utc_now
-from kavach.core.config import Settings, parse_audit_keys, parse_key_map
+from kavach.core.config import SMS_COMMIT_RESERVE_SECONDS, Settings, parse_audit_keys, parse_key_map
 from kavach.core.errors import ApiError, api_error, http_error, unexpected_error, validation_error
 from kavach.core.redis_client import create_redis_client
+from kavach.core.telemetry import operational_event
 from kavach.correlation.candidates import CandidateIndex
 from kavach.db.engine import create_db_engine, create_session_factory
+from kavach.models.manifest import ManifestInvalid, load_manifest
+from kavach.models.sms_worker import SmsWorkerConfig, SmsWorkerSupervisor, worker_command
 from kavach.privacy.audit import AuditWriter
 from kavach.privacy.digests import KeyedDigester
 from kavach.services.ingestion import IngestionService
@@ -32,7 +37,12 @@ from kavach.services.ingestion import IngestionService
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    yield
+    # Starts the SMS worker in the background (never blocks startup); a no-op when disabled.
+    app.state.sms_worker.start()
+    try:
+        yield
+    finally:
+        app.state.sms_worker.close()
     if app.state.db_engine is not None:
         app.state.db_engine.dispose()
     if app.state.redis is not None:
@@ -70,6 +80,51 @@ def build_auth_service(settings: Settings, app: FastAPI, clock: Clock) -> AuthSe
     )
 
 
+def build_sms_worker(settings: Settings) -> SmsWorkerSupervisor:
+    """The SMS worker supervisor from settings (design §10). Disabled unless enabled.
+
+    In `pilot` an unusable manifest, interpreter or model directory refuses startup; elsewhere
+    the worker is `unverified` and every SMS is stored with the stage unavailable.
+    """
+    if not settings.sms_worker_enabled:
+        return SmsWorkerSupervisor(None)
+    python, model_dir, manifest_path = (
+        settings.sms_worker_python,
+        settings.model_dir,
+        settings.model_manifest_path,
+    )
+    assert python is not None and model_dir is not None and manifest_path is not None
+    problem = None
+    try:
+        manifest = load_manifest(manifest_path)
+    except ManifestInvalid:
+        problem = "manifest_invalid"
+    if problem is None and not (python.is_file() and os.access(python, os.X_OK)):
+        problem = "worker_python_missing"
+    if problem is None and not model_dir.is_dir():
+        problem = "model_dir_missing"
+    if problem is not None:
+        if settings.app_env == "pilot":
+            raise RuntimeError(f"The SMS worker cannot start: {problem}")
+        operational_event("sms_worker.unverified", problem, None)
+        return SmsWorkerSupervisor.refused(problem)
+    return SmsWorkerSupervisor(
+        SmsWorkerConfig(
+            command=worker_command(python, manifest_path, model_dir, settings.sms_worker_threads),
+            lock_path=model_dir / ".kavach-sms-worker.lock",
+            manifest=manifest,
+            max_inflight=settings.max_inflight_analyses,
+            inference_timeout_s=settings.sms_inference_timeout_ms / 1000,
+            start_timeout_s=settings.sms_worker_start_timeout_seconds,
+            commit_reserve_s=SMS_COMMIT_RESERVE_SECONDS,
+            # Never above the timeout itself, or every request would look deadline-exhausted.
+            min_budget_s=min(0.25, settings.sms_inference_timeout_ms / 1000),
+            max_rss_mb=settings.sms_worker_max_rss_mb,
+            threads=settings.sms_worker_threads,
+        )
+    )
+
+
 def build_ingestion_service(settings: Settings, app: FastAPI, clock: Clock) -> IngestionService:
     # Settings guarantees the ingestion group, and the auth group it needs, are complete.
     if (
@@ -95,10 +150,19 @@ def build_ingestion_service(settings: Settings, app: FastAPI, clock: Clock) -> I
         retention=timedelta(days=settings.event_retention_days),
         deadline=settings.inference_timeout_seconds,
         candidates=CandidateIndex(app.state.redis, namespace=settings.app_env),
+        # Only an enabled (or injected) worker changes SMS handling; disabled keeps M3 behaviour.
+        sms_classifier=None if app.state.sms_worker.state == "disabled" else app.state.sms_worker,
     )
 
 
-def create_app(settings: Settings | None = None, *, clock: Clock = utc_now) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    *,
+    clock: Clock = utc_now,
+    sms_worker: SmsWorkerSupervisor | None = None,
+) -> FastAPI:
+    """`sms_worker` lets tests inject a supervisor (for example one driving the test-only fake
+    worker); production builds it from settings."""
     settings = settings or Settings()
     logging.getLogger("kavach").setLevel(settings.log_level)
     app = FastAPI(
@@ -128,6 +192,7 @@ def create_app(settings: Settings | None = None, *, clock: Clock = utc_now) -> F
         else None
     )
     app.state.clock = clock
+    app.state.sms_worker = sms_worker if sms_worker is not None else build_sms_worker(settings)
     rate_key = (
         settings.rate_limit_hmac_key.get_secret_value().encode()
         if settings.rate_limit_hmac_key is not None
@@ -165,4 +230,5 @@ def create_app(settings: Settings | None = None, *, clock: Clock = utc_now) -> F
     app.include_router(auth_router)
     app.include_router(events_router)
     app.include_router(simulator_router)
+    app.include_router(system_router)
     return app

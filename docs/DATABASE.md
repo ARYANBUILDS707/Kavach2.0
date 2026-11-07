@@ -78,7 +78,7 @@ One capability: submit events and read receipts for its own source. Do not add a
 
 `signals` contains reason-code arrays, approved canonical organization labels, intent category, boolean URL-risk indicators, context confidence where supported, per-stage status/duration, audio duration/sample ID for synthetic fixtures, and late-event status. Never store arbitrary entity text, URLs, phone numbers, OTPs, raw sender IDs, SMS, transcript, audio or feature vectors. Missing-score reason is required for every unavailable stage. Cap serialized signals at 16 KiB and versions at 4 KiB.
 
-**Proposed `signals` schema version 2 (D04-A1, M4-I; not implemented, no migration needed).**
+**`signals` schema version 2 (D04-A1; implemented in M4-I.2, no migration).** Written only for SMS events while the SMS worker is enabled; version 1 rows are unchanged.
 - A completed `sms_classifier` stage adds `model_output`:
   - `labels`: exactly the manifest's `legitimate`/`spam`/`fraud` keys, values in [0, 1], 4 decimals;
   - `top_label`;
@@ -88,7 +88,9 @@ One capability: submit events and read receipts for its own source. Do not add a
 - It is model evidence, not `sms_score`, which stays null until a validated calibration manifest exists.
 - No text, tokens or embeddings are ever stored.
 - `model_versions.sms_classifier` is `<model_key>@<revision[:12]>+m<manifest_version>:<manifest sha256[:12]>`.
-- Rows written before M4-I keep version 1.
+- Rows written before M4-I.2 keep version 1.
+- Assessments for these events use `policy_version` `kavach-m4-uncalibrated-sms-evidence`: tier `unknown`, null scores, `analysis_status` `partial` (model completed) or `unavailable`, and `model_versions` equal to the event's. `evidence.sms_model_evidence` repeats the labels with the same uncalibrated marker.
+- The service validates the exact key set before every write (an extra key, a non-numeric label or a text field is rejected, never stored).
 
 The full contract is in M4_SMS_INFERENCE_ARCHITECTURE.md §9.
 

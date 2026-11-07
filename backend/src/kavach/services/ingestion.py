@@ -5,8 +5,18 @@ fingerprinted with a versioned HMAC. `(source, external_event_id)` is unique in 
 the first committed insert wins (201); a later request with the same fingerprint is a replay
 (200, original receipt); a different fingerprint is a conflict (409). Redis is not involved.
 
-No inference models exist yet: every model stage is recorded as unavailable with a reason,
-scores stay null, and the standalone incident's assessment has tier `unknown`.
+Models (M4-I.2, docs/M4_SMS_INFERENCE_ARCHITECTURE.md §6.4 and §9):
+- Without an SMS classifier every model stage is recorded as unavailable with a reason, scores
+  stay null, and the standalone incident's assessment has tier `unknown` (signals version 1,
+  unchanged).
+- With the pretrained SMS worker enabled:
+  - the SMS text is classified **after** the replay/conflict lookup and **outside** any
+    transaction;
+  - no admission slot, or a starting worker, raises `AnalysisRejected` before anything is stored
+    (429/503, retried with the same event ID);
+  - a completed or failed inference is stored as a signals version 2 stage.
+- Model evidence is uncalibrated: `sms_score` stays null and the tier stays `unknown`.
+
 Raw SMS text, sender IDs and subscriber tokens are never stored; only keyed digests are.
 """
 
@@ -31,6 +41,7 @@ from kavach.correlation.candidates import (
     CandidateIndexUnavailable,
 )
 from kavach.db import event_repository as repo
+from kavach.models.sms_worker import SmsInferenceResult, SmsWorkerSupervisor
 from kavach.privacy.audit import AuditWriter
 from kavach.privacy.digests import KeyedDigester, UnknownKeyVersion
 
@@ -39,6 +50,13 @@ QUERY_CANCELED = "57014"  # statement_timeout fired: the request deadline was re
 DEFAULT_DEADLINE_SECONDS = 30.0
 POLICY_VERSION = "kavach-m3.1-no-models"
 SIGNALS_SCHEMA_VERSION = 1
+# Signals written while the SMS worker is enabled (design §9); version 1 rows stay as they are.
+SMS_POLICY_VERSION = "kavach-m4-uncalibrated-sms-evidence"
+SMS_SIGNALS_SCHEMA_VERSION = 2
+SMS_STAGE = "sms_classifier"
+UNCALIBRATED = "uncalibrated_softmax"
+SMS_STAGE_KEYS = {"status", "reason", "duration_ms"}
+SMS_OUTPUT_KEYS = {"labels", "top_label", "score_semantics", "truncated"}
 # No controlled audio sample manifest is approved yet, so every non-null reference is unknown.
 APPROVED_AUDIO_REFERENCES: frozenset[str] = frozenset()
 
@@ -59,6 +77,32 @@ class IngestionUnavailable(Exception):
 
 class ProcessingTimeout(Exception):
     """The request deadline passed before commit; nothing was stored (retry is safe)."""
+
+
+class AnalysisRejected(Exception):
+    """Inference could not be admitted (no free slot, or the worker is starting or restarting).
+    Nothing was stored: the client retries with the same event ID and gets a fresh analysis."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+    @property
+    def saturated(self) -> bool:
+        return self.reason == "inference_saturated"
+
+
+@dataclass(frozen=True)
+class Analysis:
+    """Everything the event and its standalone assessment store about model stages."""
+
+    signals: dict[str, Any]
+    model_versions: dict[str, str]
+    analysis_status: str  # of the event
+    assessment_status: str
+    assessment_reasons: list[str]
+    assessment_extra: dict[str, Any]
+    policy_version: str
 
 
 def remaining_ms(deadline: float) -> int:
@@ -104,12 +148,124 @@ def unavailable_stages(event: Event) -> dict[str, dict[str, Any]]:
 
 
 def warnings_from(signals: Mapping[str, Any]) -> list[str]:
+    """Receipt warnings, derived from what was stored, so a replay repeats them exactly."""
     stages = signals.get("stages", {})
-    return [
+    warnings = [
         f"{name.upper()}_UNAVAILABLE"
         for name, stage in sorted(stages.items())
         if stage.get("status") != "complete"
     ]
+    sms = stages.get(SMS_STAGE, {})
+    if (
+        sms.get("status") == "complete"
+        and sms.get("model_output", {}).get("score_semantics") == UNCALIBRATED
+    ):
+        warnings.append("SMS_SCORE_UNCALIBRATED")
+    return warnings
+
+
+def no_model_analysis(event: Event) -> Analysis:
+    """The M3 behaviour, unchanged: every model stage unavailable, signals version 1."""
+    stages = unavailable_stages(event)
+    return Analysis(
+        signals={"schema_version": SIGNALS_SCHEMA_VERSION, "stages": stages, "reason_codes": []},
+        model_versions={},
+        analysis_status="unavailable",
+        assessment_status="unavailable",
+        assessment_reasons=["no_base_signal_available"],
+        assessment_extra={},
+        policy_version=POLICY_VERSION,
+    )
+
+
+def sms_analysis(result: SmsInferenceResult) -> Analysis:
+    """Signals version 2 for an SMS whose inference completed or failed (never rejected).
+
+    Model evidence keeps the native labels and uncalibrated scores. It never becomes
+    `sms_score`, base risk or a tier (D04-A1).
+    """
+    duration = result.model_ms or 0
+    if result.outcome == "complete" and result.evidence is not None:
+        evidence = result.evidence
+        output = {
+            "labels": dict(evidence.labels),
+            "top_label": evidence.top_label,
+            "score_semantics": evidence.score_semantics,
+            "truncated": evidence.truncated,
+        }
+        stage = {
+            "status": "complete",
+            "reason": None,
+            "duration_ms": duration,
+            "model_output": output,
+        }
+        signals = {
+            "schema_version": SMS_SIGNALS_SCHEMA_VERSION,
+            "stages": {SMS_STAGE: stage},
+            "reason_codes": ["sms_model_uncalibrated"],
+        }
+        versions = {SMS_STAGE: evidence.model_version}
+        check_sms_signals(signals)
+        return Analysis(
+            signals=signals,
+            model_versions=versions,
+            analysis_status="complete",
+            assessment_status="partial",
+            assessment_reasons=["sms_model_uncalibrated", "no_calibrated_base_signal"],
+            assessment_extra={
+                "sms_model_evidence": output | {"model_version": evidence.model_version}
+            },
+            policy_version=SMS_POLICY_VERSION,
+        )
+    if result.outcome != "unavailable" or not result.reason:
+        raise ValueError("A rejected or malformed result cannot be stored")
+    stage = {"status": "unavailable", "reason": result.reason, "duration_ms": duration}
+    signals = {
+        "schema_version": SMS_SIGNALS_SCHEMA_VERSION,
+        "stages": {SMS_STAGE: stage},
+        "reason_codes": [],
+    }
+    check_sms_signals(signals)
+    return Analysis(
+        signals=signals,
+        model_versions={},
+        analysis_status="unavailable",
+        assessment_status="unavailable",
+        assessment_reasons=["no_base_signal_available"],
+        assessment_extra={},
+        policy_version=SMS_POLICY_VERSION,
+    )
+
+
+def check_sms_signals(signals: Mapping[str, Any]) -> None:
+    """Service-boundary allowlist for signals version 2 (DATABASE.md): fixed keys, numbers and
+    codes only. Anything else is a programming error, never stored."""
+    if set(signals) != {"schema_version", "stages", "reason_codes"}:
+        raise ValueError("signals keys")
+    if signals["schema_version"] != SMS_SIGNALS_SCHEMA_VERSION or set(signals["stages"]) != {
+        SMS_STAGE
+    }:
+        raise ValueError("signals stages")
+    stage = signals["stages"][SMS_STAGE]
+    complete = stage.get("status") == "complete"
+    if set(stage) != SMS_STAGE_KEYS | ({"model_output"} if complete else set()):
+        raise ValueError("stage keys")
+    if not isinstance(stage["duration_ms"], int) or stage["duration_ms"] < 0:
+        raise ValueError("stage duration")
+    if not complete:
+        if stage["status"] != "unavailable" or not isinstance(stage["reason"], str):
+            raise ValueError("stage status")
+        return
+    output = stage["model_output"]
+    if set(output) != SMS_OUTPUT_KEYS or output["score_semantics"] != UNCALIBRATED:
+        raise ValueError("model output keys")
+    labels = output["labels"]
+    if not labels or not all(
+        isinstance(k, str) and isinstance(v, float) and 0.0 <= v <= 1.0 for k, v in labels.items()
+    ):
+        raise ValueError("model output labels")
+    if output["top_label"] not in labels or not isinstance(output["truncated"], bool):
+        raise ValueError("model output fields")
 
 
 def receipt_from(record: repo.EventRecord, *, replayed: bool) -> Receipt:
@@ -138,6 +294,7 @@ class IngestionService:
         retention: timedelta,
         deadline: float = DEFAULT_DEADLINE_SECONDS,
         candidates: CandidateIndex | None = None,
+        sms_classifier: SmsWorkerSupervisor | None = None,
     ) -> None:
         self.sessions = sessions
         self.subscriber_digests = subscriber_digests
@@ -148,6 +305,8 @@ class IngestionService:
         # Total request deadline in seconds (INFERENCE_TIMEOUT_SECONDS, D08: 30).
         self.deadline = deadline
         self.candidates = candidates
+        # None: no model path at all (M3 behaviour). Otherwise every SMS goes through it.
+        self.sms_classifier = sms_classifier
 
     def ingest(
         self, event: Event, principal: IngestPrincipal, request_id: UUID, started: float
@@ -171,10 +330,11 @@ class IngestionService:
                 return self._replay(existing, canonical, request_id)
 
             subscriber = self.subscriber_digests.digest(event.subscriber_token.encode())
-            stages = unavailable_stages(event)
+            # Analysis runs here, outside any transaction and before anything is stored.
+            analysis = self._analyze(event, deadline, request_id)
+            stages = analysis.signals["stages"]
             now = self.clock()
             expires_at = now + self.retention
-            # Analysis would run here, outside any transaction; no models are deployed yet.
             processing_ms = max(0, int((time.monotonic() - started) * 1000))
             with self.sessions.begin() as db:
                 repo.set_local_statement_timeout(db, remaining_ms(deadline))
@@ -191,13 +351,9 @@ class IngestionService:
                         "payload_key_version": self.payload_digests.active_version,
                         "event_time": event.timestamp,
                         "received_at": now,
-                        "analysis_status": "unavailable",
-                        "signals": {
-                            "schema_version": SIGNALS_SCHEMA_VERSION,
-                            "stages": stages,
-                            "reason_codes": [],
-                        },
-                        "model_versions": {},
+                        "analysis_status": analysis.analysis_status,
+                        "signals": analysis.signals,
+                        "model_versions": analysis.model_versions,
                         "processing_ms": processing_ms,
                         "expires_at": expires_at,
                     },
@@ -211,12 +367,15 @@ class IngestionService:
                         now=now,
                         expires_at=expires_at,
                         evidence={
-                            "schema_version": SIGNALS_SCHEMA_VERSION,
+                            "schema_version": analysis.signals["schema_version"],
                             "event_ids": [str(event_id)],
                             "signal_status": {name: s["status"] for name, s in stages.items()},
-                            "reasons": ["no_base_signal_available"],
-                        },
-                        policy_version=POLICY_VERSION,
+                            "reasons": analysis.assessment_reasons,
+                        }
+                        | analysis.assessment_extra,
+                        policy_version=analysis.policy_version,
+                        analysis_status=analysis.assessment_status,
+                        model_versions=analysis.model_versions,
                     )
                     self.audit.record(
                         db,
@@ -246,6 +405,17 @@ class IngestionService:
         # Committed: from here on the outcome is success, whatever Redis does.
         self._index(stored, request_id, now)
         return receipt_from(stored, replayed=False)
+
+    def _analyze(self, event: Event, deadline: float, request_id: UUID) -> Analysis:
+        if not isinstance(event, SMSEvent) or self.sms_classifier is None:
+            return no_model_analysis(event)
+        result = self.sms_classifier.classify(event.text, deadline)
+        if result.outcome == "rejected":
+            operational_event("ingest.analysis_rejected", result.reason or "rejected", request_id)
+            raise AnalysisRejected(result.reason or "worker_busy")
+        if result.outcome == "unavailable":
+            operational_event("ingest.analysis_unavailable", result.reason or "", request_id)
+        return sms_analysis(result)
 
     def _index(self, record: repo.EventRecord, request_id: UUID, now: datetime) -> None:
         """Best effort after commit; PostgreSQL stays authoritative and `rebuild` recovers.

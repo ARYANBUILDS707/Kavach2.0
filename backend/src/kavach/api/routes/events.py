@@ -23,6 +23,7 @@ from kavach.auth.throttle import SubmissionQuota, ThrottleUnavailable
 from kavach.core.errors import ApiError
 from kavach.core.telemetry import security_event
 from kavach.services.ingestion import (
+    AnalysisRejected,
     EventIdConflict,
     IngestionService,
     IngestionUnavailable,
@@ -32,6 +33,10 @@ from kavach.services.ingestion import (
 )
 
 MAX_BODY_BYTES = 32 * 1024  # API.md: JSON request at most 32 KiB
+# Retry-After for analysis rejections: a slot frees within one inference (tens of ms); a
+# starting or restarting worker needs its startup (about 6 s measured, M4-I.1).
+CAPACITY_RETRY_AFTER_SECONDS = 1
+WORKER_RETRY_AFTER_SECONDS = 10
 
 router = APIRouter(prefix="/api/v1/events", tags=["events"])
 
@@ -132,6 +137,21 @@ async def submit(
         receipt = await run_in_threadpool(
             service.ingest, event, principal, request.state.request_id, started
         )
+    except AnalysisRejected as rejection:
+        # Nothing was stored; a same-ID retry is analyzed afresh (design §6.4).
+        if rejection.saturated:
+            raise ApiError(
+                429,
+                "CAPACITY_EXCEEDED",
+                "Analysis capacity is full; retry with the same event ID",
+                {"Retry-After": str(CAPACITY_RETRY_AFTER_SECONDS)},
+            ) from None
+        raise ApiError(
+            503,
+            "DEPENDENCY_UNAVAILABLE",
+            "SMS analysis is starting; retry with the same event ID",
+            {"Retry-After": str(WORKER_RETRY_AFTER_SECONDS)},
+        ) from None
     except UnknownAudioReference:
         raise ApiError(
             422, "UNKNOWN_AUDIO_REFERENCE", "The audio reference is not an approved sample"

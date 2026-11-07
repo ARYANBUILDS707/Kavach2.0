@@ -3,6 +3,7 @@
 import ipaddress
 import json
 import re
+from pathlib import Path
 from typing import Literal, Self
 from urllib.parse import urlsplit
 
@@ -12,6 +13,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
 
 MIN_SECRET_LENGTH = 32
+SMS_COMMIT_RESERVE_SECONDS = 2.0  # kept free for the commit after inference (design §6.2)
 KEY_VERSION = re.compile(r"^[A-Za-z0-9_.-]{1,32}$")
 LOOPBACK_HOSTS = {"localhost"}
 
@@ -57,6 +59,21 @@ class Settings(BaseSettings):
     event_retention_days: int = Field(default=7, ge=1, le=3650)
     # Total ingestion deadline in seconds (API.md INFERENCE_TIMEOUT_SECONDS; D08: 30).
     inference_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
+
+    # Pretrained SMS worker (M4-I.2, docs/M4_SMS_INFERENCE_ARCHITECTURE.md §10). Off by default:
+    # without it every SMS is stored with the classifier stage unavailable (model_not_deployed).
+    # When enabled, the three paths are required and must be absolute; the worker runs from its
+    # own environment, offline, on CPU only.
+    sms_worker_enabled: bool = False
+    sms_worker_python: Path | None = None
+    model_dir: Path | None = None
+    model_manifest_path: Path | None = None
+    max_inflight_analyses: int = Field(default=2, ge=1, le=2)
+    sms_inference_timeout_ms: int = Field(default=2000, ge=100, le=10_000)
+    sms_worker_threads: int = Field(default=2, ge=1, le=8)
+    sms_worker_max_rss_mb: int = Field(default=1536, ge=512, le=8192)
+    sms_worker_start_timeout_seconds: float = Field(default=90.0, ge=10, le=600)
+    inference_device: Literal["cpu"] = "cpu"
 
     @field_validator("database_url", "retention_database_url")
     @classmethod
@@ -172,6 +189,27 @@ class Settings(BaseSettings):
             ):
                 if keys is not None and version not in parse_key_map(keys, f"{name}_HMAC_KEYS"):
                     raise ValueError(f"{name}_HMAC_ACTIVE_VERSION is not a key in {name}_HMAC_KEYS")
+        if self.sms_worker_enabled:
+            worker_paths = {
+                "SMS_WORKER_PYTHON": self.sms_worker_python,
+                "MODEL_DIR": self.model_dir,
+                "MODEL_MANIFEST_PATH": self.model_manifest_path,
+            }
+            missing = sorted(name for name, value in worker_paths.items() if value is None)
+            if missing:
+                raise ValueError(f"The SMS worker requires: {', '.join(missing)}")
+            if any(not value.is_absolute() for value in worker_paths.values() if value):
+                raise ValueError("SMS worker paths must be absolute")
+            if not self.ingestion_configured:
+                raise ValueError("The SMS worker requires the event ingestion configuration")
+            # The inference budget plus the commit reserve must fit inside the request deadline.
+            if self.sms_inference_timeout_ms / 1000 + SMS_COMMIT_RESERVE_SECONDS >= (
+                self.inference_timeout_seconds
+            ):
+                raise ValueError(
+                    "SMS_INFERENCE_TIMEOUT_MS plus the 2 s commit reserve must be shorter "
+                    "than INFERENCE_TIMEOUT_SECONDS"
+                )
         return self
 
     @property

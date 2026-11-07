@@ -108,8 +108,11 @@ def insert_standalone_incident(
     expires_at: datetime,
     evidence: dict[str, Any],
     policy_version: str,
+    analysis_status: str = "unavailable",
+    model_versions: dict[str, str] | None = None,
 ) -> UUID:
-    """One standalone incident with its first assessment (tier unknown: no base signal)."""
+    """One standalone incident with its first assessment. The tier is always `unknown` here:
+    no calibrated base signal exists (M4 model evidence is uncalibrated, D04-A1)."""
     incident_id = db.execute(
         insert(Incident)
         .values(
@@ -135,9 +138,9 @@ def insert_standalone_incident(
             fusion_score=None,
             final_score=None,
             tier="unknown",
-            analysis_status="unavailable",
+            analysis_status=analysis_status,
             evidence=evidence,
-            model_versions={},
+            model_versions=model_versions or {},
             policy_version=policy_version,
             created_at=now,
         )
