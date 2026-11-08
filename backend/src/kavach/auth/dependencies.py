@@ -16,7 +16,7 @@ from kavach.auth.ingest_keys import (
     well_formed_key,
 )
 from kavach.auth.service import ActiveSession, AuthService, DependencyUnavailable, SessionInvalid
-from kavach.auth.throttle import BearerAttemptThrottle, ThrottleUnavailable
+from kavach.auth.throttle import BearerAttemptThrottle, ReadQuota, ThrottleUnavailable
 from kavach.auth.tokens import presented_token_matches
 from kavach.core.errors import ApiError
 from kavach.core.telemetry import security_event
@@ -105,6 +105,39 @@ def require_role(*roles: str) -> Callable[[ActiveSession], ActiveSession]:
     def check(session: CurrentSession) -> ActiveSession:
         if session.role not in roles:
             raise ApiError(403, "FORBIDDEN", "You do not have access to this resource")
+        return session
+
+    return check
+
+
+def require_read_quota(request: Request, session: CurrentSession) -> ActiveSession:
+    """D08: 120 session-authenticated reads per minute per user, shared across processes.
+
+    Counted after the session is validated, so anonymous requests never spend a user's budget.
+    If Redis cannot confirm the limit the read fails closed (503); there is no local fallback.
+    """
+    quota: ReadQuota | None = request.app.state.read_quota
+    if quota is None:
+        raise unavailable("Authentication is not configured")
+    try:
+        reservation = quota.acquire(str(session.user_id), str(request.state.request_id))
+    except ThrottleUnavailable:
+        security_event("read.quota", "throttle_unavailable", request.state.request_id)
+        raise unavailable("Reads are temporarily unavailable") from None
+    if not reservation.allowed:
+        security_event("read.quota", "rate_limited", request.state.request_id)
+        raise rate_limited(reservation.retry_after_seconds, "Too many requests; try again later")
+    return session
+
+
+def require_reader(*roles: str) -> Callable[..., ActiveSession]:
+    """A rate-limited read: the role is checked first, then the user's read budget is spent."""
+    role_check = require_role(*roles)
+
+    def check(
+        session: Annotated[ActiveSession, Depends(role_check)],
+        _: Annotated[ActiveSession, Depends(require_read_quota)],
+    ) -> ActiveSession:
         return session
 
     return check

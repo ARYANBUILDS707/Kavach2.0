@@ -1,6 +1,15 @@
 """Event ingestion routes (API.md "Event requests and receipts"): thin adapters over
-IngestionService. Authentication is a source-scoped Bearer ingestion key; the admin session
-path is not part of M3.1."""
+IngestionService.
+
+Two credentials reach `POST /events/sms`: a source-scoped Bearer ingestion key (M3.1), or an
+admin browser session (MVP-B4: Origin, session, active account, admin role, CSRF, per-admin
+limit, then `source=simulator` and the synthetic `ui-` identifiers). `/events/call` and receipt
+reads remain key-only.
+
+No route declares a body parameter: FastAPI 0.162 reads a declared body *before* resolving any
+dependency, so the body is read by `bounded_json` inside the handler, after every credential
+check. The request schema is documented through `openapi_extra` instead.
+"""
 
 import json
 import time
@@ -11,11 +20,30 @@ from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ValidationError
 from starlette.concurrency import run_in_threadpool
 
-from kavach.api.schemas.events import CallEvent, EventReceipt, ReceiptResponse, SMSEvent
+from kavach.api.schemas.errors import error_responses
+from kavach.api.schemas.events import (
+    SIMULATOR_SOURCE,
+    AdminEventReceipt,
+    AdminReceiptResponse,
+    CallEvent,
+    EventReceipt,
+    ReceiptResponse,
+    SMSEvent,
+    has_browser_identifiers,
+)
 from kavach.auth.dependencies import (
     IngestPrincipalDep,
+    auth_service,
+    cookie_policy,
+    current_session,
+    has_session_cookie,
+    ingest_key_service,
     rate_limited,
+    require_csrf,
+    require_ingest_key,
     require_source,
+    require_trusted_origin,
+    session_token,
     unavailable,
 )
 from kavach.auth.ingest_keys import IngestPrincipal
@@ -29,6 +57,8 @@ from kavach.services.ingestion import (
     IngestionUnavailable,
     ProcessingTimeout,
     Receipt,
+    SessionSubmitter,
+    Submitter,
     UnknownAudioReference,
 )
 
@@ -70,6 +100,40 @@ def require_submission_quota(request: Request, principal: IngestPrincipalDep) ->
 
 
 SubmittingPrincipal = Annotated[IngestPrincipal, Depends(require_submission_quota)]
+
+
+def require_admin_session_submitter(request: Request) -> SessionSubmitter:
+    """MVP-B4, in this order and before the body is read: exact Origin, a valid session of an
+    active account, the admin role (re-read from the database), the CSRF token, then the
+    per-admin submission limit (30 per minute; Redis down fails closed)."""
+    require_trusted_origin(request)
+    session = current_session(session_token(request, cookie_policy(request)), auth_service(request))
+    if session.role != "admin":
+        security_event("ingest.session_forbidden", "role", request.state.request_id)
+        raise ApiError(403, "FORBIDDEN", "You do not have access to this resource")
+    require_csrf(request, session)
+    quota: SubmissionQuota = request.app.state.submission_quota
+    try:
+        reservation = quota.acquire_for_user(str(session.user_id), str(request.state.request_id))
+    except ThrottleUnavailable:
+        security_event("ingest.quota", "throttle_unavailable", request.state.request_id)
+        raise unavailable("Event ingestion is temporarily unavailable") from None
+    if not reservation.allowed:
+        security_event("ingest.quota", "rate_limited", request.state.request_id)
+        raise rate_limited(reservation.retry_after_seconds, "Too many event submissions")
+    return SessionSubmitter(user_id=session.user_id)
+
+
+def require_submitter(request: Request) -> Submitter:
+    """Exactly one credential: both is 401 MIXED_CREDENTIALS; none (or a Bearer only) takes the
+    unchanged key path, whose missing-credential answer is 401 INVALID_CREDENTIALS."""
+    if has_session_cookie(request):
+        if "authorization" in request.headers:
+            raise ApiError(401, "MIXED_CREDENTIALS", "Use exactly one authentication mechanism")
+        return require_admin_session_submitter(request)
+    return require_submission_quota(
+        request, require_ingest_key(request, ingest_key_service(request))
+    )
 
 
 def not_found() -> ApiError:
@@ -117,25 +181,37 @@ def receipt_response(request: Request, receipt: Receipt) -> ReceiptResponse:
     )
 
 
+def check_scope(submitter: Submitter, event: SMSEvent | CallEvent, request: Request) -> None:
+    if isinstance(submitter, SessionSubmitter):
+        if event.source != SIMULATOR_SOURCE:
+            security_event("ingest.source_forbidden", "session_source", request.state.request_id)
+            raise ApiError(403, "FORBIDDEN", "Browser submissions must use the simulator source")
+        if not has_browser_identifiers(event):
+            raise invalid()
+        return
+    if event.source != submitter.source:
+        security_event("ingest.source_forbidden", "source_mismatch", request.state.request_id)
+    require_source(submitter, event.source)
+
+
 async def submit(
     request: Request,
     response: Response,
-    principal: IngestPrincipal,
+    submitter: Submitter,
     service: IngestionService,
     model: type[SMSEvent] | type[CallEvent],
-) -> ReceiptResponse:
+) -> ReceiptResponse | AdminReceiptResponse:
     started = time.monotonic()
+    # The first read of the body: every credential check has already passed.
     payload = await bounded_json(request)
     try:
         event = model.model_validate(payload, context={"now": service.clock()})
     except ValidationError:
         raise invalid() from None
-    if event.source != principal.source:
-        security_event("ingest.source_forbidden", "source_mismatch", request.state.request_id)
-    require_source(principal, event.source)
+    check_scope(submitter, event, request)
     try:
         receipt = await run_in_threadpool(
-            service.ingest, event, principal, request.state.request_id, started
+            service.ingest, event, submitter, request.state.request_id, started
         )
     except AnalysisRejected as rejection:
         # Nothing was stored; a same-ID retry is analyzed afresh (design §6.4).
@@ -170,9 +246,20 @@ async def submit(
         ) from None
     if receipt.replayed:
         response.status_code = 200
-    else:
+    if isinstance(submitter, SessionSubmitter):
+        # No Location: receipt reads are key-only, so a browser navigates by `incident_ids`.
+        return admin_receipt_response(request, receipt)
+    if not receipt.replayed:
         response.headers["Location"] = f"/api/v1/events/{receipt.event_id}"
     return receipt_response(request, receipt)
+
+
+def admin_receipt_response(request: Request, receipt: Receipt) -> AdminReceiptResponse:
+    base = receipt_response(request, receipt).data
+    return AdminReceiptResponse(
+        data=AdminEventReceipt(**base.model_dump(), incident_ids=list(receipt.incident_ids)),
+        request_id=request.state.request_id,
+    )
 
 
 def request_body(model: type[BaseModel]) -> dict[str, Any]:
@@ -186,15 +273,23 @@ def request_body(model: type[BaseModel]) -> dict[str, Any]:
 
 
 @router.post(
-    "/sms", status_code=201, response_model=ReceiptResponse, openapi_extra=request_body(SMSEvent)
+    "/sms",
+    status_code=201,
+    # Ingestion keys get ReceiptResponse; an admin browser session gets AdminReceiptResponse.
+    response_model=ReceiptResponse | AdminReceiptResponse,
+    responses={
+        200: {"model": ReceiptResponse | AdminReceiptResponse, "description": "Replay"},
+        **error_responses(401, 403, 409, 413, 422, 429, 503),
+    },
+    openapi_extra=request_body(SMSEvent),
 )
 async def ingest_sms(
     request: Request,
     response: Response,
-    principal: SubmittingPrincipal,
+    submitter: Annotated[Submitter, Depends(require_submitter)],
     service: IngestionServiceDep,
-) -> ReceiptResponse:
-    return await submit(request, response, principal, service, SMSEvent)
+) -> ReceiptResponse | AdminReceiptResponse:
+    return await submit(request, response, submitter, service, SMSEvent)
 
 
 @router.post(

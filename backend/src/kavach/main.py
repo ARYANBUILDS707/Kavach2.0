@@ -14,13 +14,19 @@ from starlette.exceptions import HTTPException
 from kavach.api.routes.auth import router as auth_router
 from kavach.api.routes.events import router as events_router
 from kavach.api.routes.health import router as health_router
+from kavach.api.routes.incidents import router as incidents_router
 from kavach.api.routes.simulator import router as simulator_router
 from kavach.api.routes.system import router as system_router
 from kavach.auth.cookies import cookie_policy_for
 from kavach.auth.ingest_keys import IngestKeyService
 from kavach.auth.passwords import PasswordService
 from kavach.auth.service import AuthService, SessionPolicy
-from kavach.auth.throttle import BearerAttemptThrottle, LoginThrottle, SubmissionQuota
+from kavach.auth.throttle import (
+    BearerAttemptThrottle,
+    LoginThrottle,
+    ReadQuota,
+    SubmissionQuota,
+)
 from kavach.core.clock import Clock, utc_now
 from kavach.core.config import SMS_COMMIT_RESERVE_SECONDS, Settings, parse_audit_keys, parse_key_map
 from kavach.core.errors import ApiError, api_error, http_error, unexpected_error, validation_error
@@ -32,6 +38,7 @@ from kavach.models.manifest import ManifestInvalid, load_manifest
 from kavach.models.sms_worker import SmsWorkerConfig, SmsWorkerSupervisor, worker_command
 from kavach.privacy.audit import AuditWriter
 from kavach.privacy.digests import KeyedDigester
+from kavach.services.incidents import IncidentReadService
 from kavach.services.ingestion import IngestionService
 
 
@@ -208,8 +215,19 @@ def create_app(
         if app.state.auth is not None and rate_key is not None
         else None
     )
+    app.state.read_quota = (
+        ReadQuota(app.state.redis, rate_key, namespace=settings.app_env)
+        if app.state.auth is not None and rate_key is not None
+        else None
+    )
     app.state.ingestion = (
         build_ingestion_service(settings, app, clock) if settings.ingestion_configured else None
+    )
+    # Incident reads are session-authenticated, so they need the authentication configuration.
+    app.state.incidents = (
+        IncidentReadService(sessions=app.state.db_sessions, clock=clock)
+        if app.state.auth is not None
+        else None
     )
 
     @app.middleware("http")
@@ -229,6 +247,7 @@ def create_app(
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(events_router)
+    app.include_router(incidents_router)
     app.include_router(simulator_router)
     app.include_router(system_router)
     return app

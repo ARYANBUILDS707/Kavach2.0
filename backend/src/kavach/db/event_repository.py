@@ -72,6 +72,16 @@ def events_since(db: Session, earliest_event_time: datetime) -> list[EventRecord
     return [EventRecord(*row) for row in rows]
 
 
+def incident_ids_for_event(db: Session, event_id: UUID) -> tuple[UUID, ...]:
+    """Incidents linked to an event, for the admin browser receipt (MVP-B4)."""
+    rows = db.execute(
+        select(IncidentEvent.incident_id)
+        .where(IncidentEvent.event_id == event_id)
+        .order_by(IncidentEvent.incident_id)
+    )
+    return tuple(rows.scalars())
+
+
 def set_local_statement_timeout(db: Session, milliseconds: int) -> None:
     """Bound every statement in this transaction by the request's remaining deadline."""
     db.execute(select(func.set_config("statement_timeout", str(max(1, milliseconds)), True)))

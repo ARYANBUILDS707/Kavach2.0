@@ -112,3 +112,30 @@ class EventReceipt(BaseModel):
 class ReceiptResponse(BaseModel):
     data: EventReceipt
     request_id: UUID
+
+
+class AdminEventReceipt(EventReceipt):
+    """The admin browser receipt (MVP-B4): adds the incidents to open. Never scores or labels."""
+
+    incident_ids: list[UUID]
+
+
+class AdminReceiptResponse(BaseModel):
+    data: AdminEventReceipt
+    request_id: UUID
+
+
+# MVP-B4 (owner decision B4-1): browser submissions use synthetic UI namespaces, a version-4
+# UUID as `crypto.randomUUID()` produces. They are not real-world identities, and M6 must never
+# treat a `ui-sub-` token as identity evidence.
+SIMULATOR_SOURCE = "simulator"
+UUID4 = r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
+BROWSER_EVENT_ID = re.compile(rf"ui-{UUID4}")
+BROWSER_SUBSCRIBER_TOKEN = re.compile(rf"ui-sub-{UUID4}")
+
+
+def has_browser_identifiers(event: EventBase) -> bool:
+    return bool(
+        BROWSER_EVENT_ID.fullmatch(event.event_id)
+        and BROWSER_SUBSCRIBER_TOKEN.fullmatch(event.subscriber_token)
+    )

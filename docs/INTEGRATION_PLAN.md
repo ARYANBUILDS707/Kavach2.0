@@ -12,7 +12,7 @@ How independently built pieces connect, in what order, and how each connection i
 | Ingestion ↔ Redis | M3 | Rate counters and post-commit candidate IDs (no matching logic until M6); Redis failure cannot roll back or fake a commit |
 | Ingestion ↔ inference | M3 (port), M4/M5 (adapters) | Typed adapter result: score or `null`, status, reason code, version, duration; before models exist outputs are `null`, analysis is `unavailable`, tier `unknown`; models never inside request handlers |
 | Correlation ↔ PostgreSQL/Redis | M6 | Redis accelerates lookup; the PostgreSQL query inside the subscriber advisory lock decides |
-| Backend ↔ frontend | M7 | Typed same-origin REST; wire fields snake_case; errors use the documented envelope |
+| Backend ↔ frontend | MVP-1 (M7 subset) | Typed same-origin REST; wire fields snake_case; errors use the documented envelope; development uses the Vite proxy on the `APP_ORIGIN` origin |
 | Backend ↔ browser (live) | M8 | WebSocket carries incident IDs and versions only; REST refetch is the source of truth |
 | Simulator ↔ ingestion | M3 (scenario catalog and submission script), M8 (UI) | Ordinary event endpoints only; no score injection |
 | Everything ↔ deployment | M11 | Compose, migrations once before traffic, private data ports |
@@ -25,11 +25,29 @@ How independently built pieces connect, in what order, and how each connection i
 3. **M4, M5:** each adapter replaces the unavailable stage behind the same port. Integration check: ingestion tests still pass unchanged; new behavior adds assertions, not exceptions.
 4. **M6:** correlation reads M3 events and M4/M5 scores. Integration check: both arrival orders and concurrent submission produce exactly one pair incident.
 5. **M7a then M7b:** API before UI. The UI is developed on `frontend` against real endpoints (or the OpenAPI schema), not hardcoded scores.
-5a. **Backend integration PR:** after M1.1–M7a pass acceptance testing on `backend`, the single `backend` → `dev` PR brings the complete backend into `dev` (gates in [GIT_WORKFLOW.md](GIT_WORKFLOW.md)). Steps 0–5 above happen on `backend`, not on `dev`.
+5a. **First integration: SMS MVP-1 (approved 9 Nov 2026, C-12; replaces the earlier single post-M7a backend PR as the first integration).** The accepted backend MVP (M1.1–M4-I.2 as already verified, plus the MVP-1 backend work: M4-Q decision, incident reads with the `channel` filter, the read limit, admin browser SMS submission and the frozen contract) and the accepted frontend MVP are integrated into `dev` after **joint acceptance** (checklist below). M5 and M6 are not prerequisites. Each branch reaches `dev` through its own owner-controlled PR; gates in [GIT_WORKFLOW.md](GIT_WORKFLOW.md). Steps 0–5 happen on `backend` and `frontend`, not on `dev`.
 6. **M8:** assemble the whole path from simulator to reviewed incident, add live updates and health, run browser journeys.
 7. **M9–M11:** harden, measure, package.
 
-The preserved M1 health routes (`/health`, `/api/v1/health`) and their tests must keep passing at every checkpoint (C-07 deferred). Backend milestones M1.1–M7a accumulate on `backend` and are checked by CI on every push; they reach `dev` through one integration PR after full backend acceptance, not per milestone. Frontend work stays on `frontend`; its integration timing is an open decision ([GIT_WORKFLOW.md](GIT_WORKFLOW.md)).
+The preserved M1 health routes (`/health`, `/api/v1/health`) and their tests must keep passing at every checkpoint (C-07 deferred). Backend milestones accumulate on `backend` and frontend milestones on `frontend`, each checked by CI on every push; neither has a per-milestone PR into `dev`. After MVP-1, the postponed work (M5, M6, reviews, M7 advanced features, M8–M11) continues on `backend`/`frontend` and reaches `dev` through further owner-controlled PRs, each with its own acceptance evidence.
+
+## SMS MVP-1 joint acceptance (gate for the first integration into `dev`)
+
+Both branches must pass this together on their PR heads, run against a real backend, PostgreSQL and Redis, with exact commands and outcomes in an integration report ("not run" with a reason where something could not run):
+
+1. **Backend checks:** default, integration (real PostgreSQL/Redis) and worker suites, Ruff lint/format, `uv lock --check` for each locked project, `alembic check`; CI green on the pushed commits.
+2. **Frontend checks:** strict type-check, lint, Vitest, production build. The bundle contains no ingestion key, no test double and no fixture predictions.
+3. **Contract:** frontend types match the committed backend OpenAPI snapshot and the MVP-1 section of API.md; every documented error envelope is exercised.
+4. **Authentication:** login, idle and absolute expiry, logout revocation, inactive account refused, CSRF rejected without the header, wrong `Origin` rejected, mixed credentials rejected; login fails closed when Redis is down.
+5. **Authorization:** viewer and analyst cannot reach `/analyze` and the server returns 403 for their submission; admin submits only `source=simulator`; missing and expired incidents return the same 404.
+6. **Model state:** the UI shows the actual `GET /system/models` state. With the worker disabled (the MVP default until the M4-Q decision), submissions show the honest unavailable state. Only if the M4-Q rule enables the worker (C-12 D): a synthetic benign and a synthetic scam SMS submitted through the UI show the real native outputs from the pinned model, labelled uncalibrated, with tier `unknown` and null scores.
+7. **Degraded paths** each show their documented state: worker disabled, starting (503), saturation (429 `CAPACITY_EXCEEDED`), inference timeout and worker crash (stored unavailable), Redis down (fail closed), PostgreSQL down (503), read limit (429).
+8. **Idempotency:** same-ID retry returns 200 `replayed: true`; a changed payload under the same ID returns 409.
+9. **Privacy:** no SMS text in browser storage, URLs, logs or any API response; authenticated responses send `no-store`.
+10. **Accessibility:** keyboard focus order, visible focus, status conveyed by text and not colour alone.
+11. **Preserved behavior:** every existing backend feature (key ingestion, simulator runner, operator CLI, retention, candidate index, M1 health routes) still passes its tests unchanged.
+
+Accuracy is not part of this gate: no MVP-1 artifact may claim production accuracy, and the solo M4-Q result is reported only with its stated limits.
 
 ## Contract discipline
 
@@ -51,7 +69,7 @@ M2 may create a development/test-only PostgreSQL Compose configuration (approved
 
 ## Integration checkpoints
 
-At the end of M3 and M6 (on `backend`), at the backend integration PR, and at the end of M8 and M11 (on `dev`), produce an integration report containing: branch and commit, services and versions, commands with outputs, scenarios exercised (benign OTP plus family call, phishing plus human scam caller, benign synthetic IVR, unrelated close-timed events, out-of-order delivery, missing signals), duplicate-submission behavior, and failures. Scenarios that could not run are "not run" with the reason.
+At the end of M3 and M6 (on `backend`), at the MVP-1 joint acceptance, and at the end of M8 and M11 (on `dev`), produce an integration report containing: branch and commit, services and versions, commands with outputs, scenarios exercised (benign OTP plus family call, phishing plus human scam caller, benign synthetic IVR, unrelated close-timed events, out-of-order delivery, missing signals), duplicate-submission behavior, and failures. Scenarios that could not run are "not run" with the reason.
 
 ## Failure handling to verify at each stage
 

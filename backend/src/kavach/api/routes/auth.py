@@ -11,6 +11,7 @@ from kavach.auth.dependencies import (
     SessionTokenDep,
     reject_bearer_on_login,
     reject_mixed_credentials,
+    require_read_quota,
     require_trusted_origin,
     unavailable,
 )
@@ -86,7 +87,8 @@ def login(
 @router.get(
     "/session",
     response_model=SessionResponse,
-    dependencies=[Depends(reject_mixed_credentials)],
+    # Counted against the D08 read limit (MVP-1), after the session is validated.
+    dependencies=[Depends(reject_mixed_credentials), Depends(require_read_quota)],
 )
 def get_session(
     request: Request, session: CurrentSession, token: SessionTokenDep

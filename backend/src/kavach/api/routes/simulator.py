@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 
 from kavach.api.schemas.simulator import SimulatorCatalog, SimulatorCatalogResponse
-from kavach.auth.dependencies import reject_mixed_credentials, require_role
+from kavach.auth.dependencies import reject_mixed_credentials, require_reader
 from kavach.auth.service import ActiveSession
 from kavach.simulator.catalog import load_catalog
 
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api/v1/simulator", tags=["simulator"])
     dependencies=[Depends(reject_mixed_credentials)],
 )
 def get_scenarios(
-    request: Request, session: Annotated[ActiveSession, Depends(require_role("admin"))]
+    request: Request, session: Annotated[ActiveSession, Depends(require_reader("admin"))]
 ) -> SimulatorCatalogResponse:
     catalog = load_catalog()
     return SimulatorCatalogResponse(

@@ -104,6 +104,17 @@ def failed_logins_in_process(
         return [login(client, username, "wrong password!").status_code for _ in range(attempts)]
 
 
+def reads_in_process(
+    cookie: tuple[str, str], now: datetime, count: int, rate_limit_key: str, audit_keys: str
+) -> list[int]:
+    """Runs in a separate OS process: the same session cookie spends the shared read budget.
+    `now` is the issuing app's fake time, so the session is not seen as expired."""
+    app = create_app(auth_settings(rate_limit_key, audit_keys), clock=lambda: now)
+    with TestClient(app, base_url=ORIGIN) as client:
+        client.cookies.set(*cookie)
+        return [client.get("/api/v1/system/models").status_code for _ in range(count)]
+
+
 def submissions_in_process(
     key: str, bodies: list[dict[str, Any]], rate_limit_key: str, audit_keys: str
 ) -> list[int]:

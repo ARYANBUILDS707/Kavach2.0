@@ -123,6 +123,19 @@ class Receipt:
     processing_ms: int
     replayed: bool
     warnings: list[str]
+    # Filled only for an admin browser submission (MVP-B4); ingestors never see incidents.
+    incident_ids: tuple[UUID, ...] = ()
+
+
+@dataclass(frozen=True)
+class SessionSubmitter:
+    """An admin submitting from the browser session (MVP-B4). Audited as the user."""
+
+    user_id: UUID
+    source: str = "simulator"
+
+
+Submitter = IngestPrincipal | SessionSubmitter
 
 
 def canonical_payload(event: Event) -> bytes:
@@ -268,7 +281,16 @@ def check_sms_signals(signals: Mapping[str, Any]) -> None:
         raise ValueError("model output fields")
 
 
-def receipt_from(record: repo.EventRecord, *, replayed: bool) -> Receipt:
+def audit_actor(submitter: Submitter) -> dict[str, Any]:
+    """The audit actor for an accepted event: the ingestion key, or the admin user."""
+    if isinstance(submitter, SessionSubmitter):
+        return {"actor_kind": "user", "actor_user_id": submitter.user_id}
+    return {"actor_kind": "ingestor", "actor_ingest_key_id": submitter.key_id}
+
+
+def receipt_from(
+    record: repo.EventRecord, *, replayed: bool, incident_ids: tuple[UUID, ...] = ()
+) -> Receipt:
     return Receipt(
         event_id=record.id,
         external_event_id=record.external_event_id,
@@ -279,6 +301,7 @@ def receipt_from(record: repo.EventRecord, *, replayed: bool) -> Receipt:
         processing_ms=record.processing_ms,
         replayed=replayed,
         warnings=warnings_from(record.signals),
+        incident_ids=incident_ids,
     )
 
 
@@ -309,7 +332,7 @@ class IngestionService:
         self.sms_classifier = sms_classifier
 
     def ingest(
-        self, event: Event, principal: IngestPrincipal, request_id: UUID, started: float
+        self, event: Event, submitter: Submitter, request_id: UUID, started: float
     ) -> Receipt:
         """`started` is the request's time.monotonic(); past the deadline nothing is committed.
 
@@ -322,12 +345,18 @@ class IngestionService:
             if event.audio_reference not in APPROVED_AUDIO_REFERENCES:
                 raise UnknownAudioReference
         canonical = canonical_payload(event)
+        wants_incidents = isinstance(submitter, SessionSubmitter)
         try:
             with self.sessions.begin() as db:
                 repo.set_local_statement_timeout(db, remaining_ms(deadline))
                 existing = repo.find_event(db, event.source, event.event_id)
+                incidents = (
+                    repo.incident_ids_for_event(db, existing.id)
+                    if existing is not None and wants_incidents
+                    else ()
+                )
             if existing is not None:
-                return self._replay(existing, canonical, request_id)
+                return self._replay(existing, canonical, request_id, incidents)
 
             subscriber = self.subscriber_digests.digest(event.subscriber_token.encode())
             # Analysis runs here, outside any transaction and before anything is stored.
@@ -379,8 +408,7 @@ class IngestionService:
                     )
                     self.audit.record(
                         db,
-                        actor_kind="ingestor",
-                        actor_ingest_key_id=principal.key_id,
+                        **audit_actor(submitter),
                         action="event.ingest",
                         resource_type="event",
                         resource_id=event_id,
@@ -388,6 +416,11 @@ class IngestionService:
                         now=now,
                     )
                 stored = repo.find_event(db, event.source, event.event_id)
+                incidents = (
+                    repo.incident_ids_for_event(db, stored.id)
+                    if stored is not None and wants_incidents
+                    else ()
+                )
                 if time.monotonic() >= deadline:
                     # Roll back rather than commit after the deadline (API.md: 503, no result).
                     raise ProcessingTimeout
@@ -401,10 +434,10 @@ class IngestionService:
             raise RuntimeError("An event row vanished while it was being ingested")
         if event_id is None:
             # Another request committed this event ID first: replay or conflict against it.
-            return self._replay(stored, canonical, request_id)
+            return self._replay(stored, canonical, request_id, incidents)
         # Committed: from here on the outcome is success, whatever Redis does.
         self._index(stored, request_id, now)
-        return receipt_from(stored, replayed=False)
+        return receipt_from(stored, replayed=False, incident_ids=incidents)
 
     def _analyze(self, event: Event, deadline: float, request_id: UUID) -> Analysis:
         if not isinstance(event, SMSEvent) or self.sms_classifier is None:
@@ -445,7 +478,13 @@ class IngestionService:
             raise RuntimeError("No candidate index is configured")
         return rebuild_candidate_index(self.sessions, self.candidates, self.clock)
 
-    def _replay(self, existing: repo.EventRecord, canonical: bytes, request_id: UUID) -> Receipt:
+    def _replay(
+        self,
+        existing: repo.EventRecord,
+        canonical: bytes,
+        request_id: UUID,
+        incident_ids: tuple[UUID, ...] = (),
+    ) -> Receipt:
         try:
             same = self.payload_digests.matches(
                 canonical, existing.payload_digest, existing.payload_key_version
@@ -460,7 +499,7 @@ class IngestionService:
         if same:
             # Re-indexing is idempotent; it repairs an earlier deferred index write.
             self._index(existing, request_id, self.clock())
-            return receipt_from(existing, replayed=True)
+            return receipt_from(existing, replayed=True, incident_ids=incident_ids)
         security_event("ingest.event_conflict", "payload_mismatch", request_id)
         raise EventIdConflict
 

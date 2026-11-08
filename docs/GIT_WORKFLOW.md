@@ -2,17 +2,17 @@
 
 ## Status
 
-Procedure document, prepared 31 October 2026 and updated the same day with the owner's final integration policy. The four branches below exist locally and on `origin`. **GitHub branch protection, rulesets and the default branch (`main`) have not been configured or changed.**
+Procedure document, prepared 31 October 2026 and updated the same day with the owner's final integration policy; **integration policy revised by the owner on 9 November 2026 (SMS MVP-1 first, MASTER_DEVELOPMENT_PLAN.md C-12)**. The four branches below exist locally and on `origin`. **GitHub branch protection, rulesets and the default branch (`main`) have not been configured or changed.**
 
 Owner decisions recorded here:
 
 - `main` stays the stable release branch for validated releases.
-- `backend` carries all backend milestones, M1.1 through M7a, until the complete backend passes acceptance testing.
-- `frontend` carries frontend development independently (M7b).
-- `dev` receives backend work through **one** approved `backend` → `dev` integration pull request after the complete backend is verified. There is **no** per-milestone `backend` → `dev` pull request.
+- `backend` carries backend milestones; `frontend` carries frontend development independently.
+- **First integration (9 Nov 2026, supersedes "one backend PR after M7a"):** the accepted backend MVP-1 and the accepted frontend MVP-1 are integrated into `dev` after **joint acceptance** ([INTEGRATION_PLAN.md](INTEGRATION_PLAN.md) "SMS MVP-1 joint acceptance"), through one owner-controlled `backend` → `dev` PR and one `frontend` → `dev` PR. M5 and M6 are not required first. There is still **no** per-milestone PR into `dev`.
+- After MVP-1, postponed work continues on `backend` and `frontend` and reaches `dev` through further owner-controlled PRs with their own acceptance evidence.
 - **The user performs every Git mutation**: staging, commits, pushes, merges, branch switches and pull requests. Agents run read-only Git commands only.
 - `dev` is *intended* to become the GitHub default branch (not yet applied). `main` and `dev` are to be protected once CI is configured (not yet applied).
-- Short-lived `feature/*` branches were allowed by an earlier decision; they are not used for backend milestones M1.1–M7a and must never bypass the single integration pull request.
+- Short-lived `feature/*` branches were allowed by an earlier decision; they are not used for MVP-1 work and must never bypass the joint-acceptance integration pull requests.
 
 CI (`.github/workflows/backend-ci.yml`, M1.1) runs on pushes to `backend`, `dev` and `main` and on pull requests targeting `dev` and `main`. See "CI gates" for its verification status.
 
@@ -21,22 +21,23 @@ CI (`.github/workflows/backend-ci.yml`, M1.1) runs on pushes to `backend`, `dev`
 | Branch | Purpose | Who changes it |
 | --- | --- | --- |
 | `main` | Stable, validated releases only | Release PR from `dev`, created and merged by the user |
-| `dev` | Integration branch | One `backend` → `dev` integration PR after full backend acceptance; frontend integration per the open decision below |
-| `backend` | All backend milestones M1.1–M7a (dependencies, CI, persistence, auth, ingestion, models, correlation, incident/review APIs) | Direct commits by the user |
-| `frontend` | Independent React/TypeScript development (M7b) | Direct commits by the user |
-| `feature/<milestone>-<topic>` | Optional short-lived branch at the owner's discretion; not used for backend M1.1–M7a | The user |
+| `dev` | Integration branch | The MVP-1 `backend` → `dev` and `frontend` → `dev` PRs after joint acceptance; later owner-controlled PRs for postponed work |
+| `backend` | Backend milestones (dependencies, CI, persistence, auth, ingestion, models, MVP-1 incident reads; later correlation and review APIs) | Direct commits by the user |
+| `frontend` | Independent React/TypeScript development (MVP-1 UI, then M7b remainder) | Direct commits by the user |
+| `feature/<milestone>-<topic>` | Optional short-lived branch at the owner's discretion; not used for MVP-1 work | The user |
 
 The directories `backend/` and `frontend/` are separate from the branches of the same name. Nothing is pushed directly to `main` or `dev`; they change only through pull requests.
 
 ## Flow
 
 ```text
-backend   (M1.1 → M2 → … → M7a, direct commits, CI on every push)
-    └── single integration PR, after full backend acceptance ──► dev ── release PR ──► main ── tag
-frontend  (M7b, independent) ──── integration timing: open decision ──► dev
+backend   (M1.1 → … → M4-I.2 → MVP-1 backend, direct commits, CI on every push) ──┐
+                                                          joint MVP-1 acceptance ├──► dev ── release PR ──► main ── tag
+frontend  (MVP-1 UI, independent, direct commits, CI once it exists) ───────────┘
+later: M5, M6, reviews, M7 advanced, M8–M11 ── further owner-controlled PRs ──► dev
 ```
 
-### Backend milestones on `backend` (M1.1 through M7a)
+### Milestones on `backend` (and, the same way, on `frontend`)
 
 1. Work on `backend` only. Each milestone is implemented, verified and reported against [DEFINITION_OF_DONE.md](DEFINITION_OF_DONE.md) and its acceptance criteria in [MASTER_DEVELOPMENT_PLAN.md](MASTER_DEVELOPMENT_PLAN.md).
 2. The owner reviews the milestone report and the `git diff`, then the user commits and pushes to `backend`.
@@ -44,19 +45,19 @@ frontend  (M7b, independent) ──── integration timing: open decision ─�
 4. There is no pull request into `dev` at the end of a milestone. The next backend milestone builds on `backend` directly.
 5. If `dev` changes while backend work is in progress (for example a documentation fix), the user merges `dev` into `backend` (no rebase, no force-push) and the checks are re-run.
 
-### Single backend integration PR (after M7a)
+### First integration PRs: SMS MVP-1 (approved 9 Nov 2026)
 
-Opened by the user from `backend` into `dev` only after the **complete backend** (M1.1, M2, M3, M4, M5, M6 and M7a) passes acceptance testing. Required before the user merges it:
+Opened by the user, one from `backend` and one from `frontend` into `dev`, only after **joint MVP-1 acceptance** ([INTEGRATION_PLAN.md](INTEGRATION_PLAN.md)). M5, M6, reviews and the advanced M7 features are not required. Required before the user merges them:
 
-- Every backend milestone M1.1–M7a is `complete (verified)` in [MILESTONE_TRACKER.md](MILESTONE_TRACKER.md) with its report.
-- A backend acceptance run on the PR head: unit tests, real PostgreSQL/Redis integration tests, real-artifact model smoke tests, Ruff, and the scenarios listed in [INTEGRATION_PLAN.md](INTEGRATION_PLAN.md), with exact commands and results.
-- CI green on the PR.
-- `dev` merged into `backend` first if `dev` has moved, with checks re-run.
-- `git diff dev...backend` reviewed for secrets, private data, binaries and accidental files; migrations reviewed separately; no destructive migration without explicit authorization and a recovery plan.
+- Every MVP-1 row in [MILESTONE_TRACKER.md](MILESTONE_TRACKER.md) is `complete (verified)` with its report, and the M4-Q model decision is recorded (worker enabled only under C-12 D).
+- The joint acceptance run on both PR heads, with exact commands and results, in the integration report.
+- CI green on both PRs (the frontend job is added to CI with the frontend scaffold).
+- `dev` merged into each branch first if `dev` has moved, with checks re-run.
+- `git diff dev...backend` and `git diff dev...frontend` reviewed for secrets, private data, datasets, model binaries, review sheets and accidental files; migrations reviewed separately; no destructive migration without explicit authorization and a recovery plan.
 - No unresolved critical or high finding; review by someone other than the author, or an explicit owner waiver recorded in the PR.
-- Owner approval recorded in the PR.
+- Owner approval recorded in each PR.
 
-Use a merge commit (not squash, not rebase) so the backend milestone history is kept intact on `dev`.
+Merge order: `backend` first, then `frontend`, so `dev` never holds a UI without its API. Use merge commits (not squash, not rebase) so milestone history is kept intact on `dev`.
 
 ### Release
 
@@ -113,7 +114,6 @@ Never use force-push to undo a pushed change on a protected branch.
 ## Open decisions
 
 - When to apply the default-branch change and the branch protection for `main` and `dev` (after the first green CI run, on the owner's instruction). Whether `backend` also gets protection (for example blocking force-pushes) is undecided.
-- When and how `frontend` integrates into `dev` (one PR after M7b acceptance, analogous to the backend PR, is the natural reading but has not been decided). M7b depends on the M7a APIs, which reach `dev` only through the backend integration PR.
-- How M8–M11 changes reach `dev` after the backend integration PR (continued work on `backend`/`frontend` with further PRs, or `feature/*` branches from `dev`).
+- ~~When and how `frontend` integrates into `dev`~~ and ~~how later work reaches `dev`~~: **decided 9 Nov 2026** (MVP-1 joint acceptance, then further owner-controlled PRs from `backend`/`frontend`). Whether later work may also use `feature/*` branches from `dev` stays open.
 - Which merge method to configure in GitHub (merge commit recommended for the integration and release PRs).
 - Required reviewer count and who reviews while there is a single maintainer (an owner waiver must then be recorded per PR).

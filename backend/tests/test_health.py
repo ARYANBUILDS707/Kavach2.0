@@ -31,6 +31,8 @@ def test_production_application_has_no_test_harness(client: TestClient) -> None:
         "/api/v1/events/sms",
         "/api/v1/events/call",
         "/api/v1/events/{event_id}",
+        "/api/v1/incidents",
+        "/api/v1/incidents/{incident_id}",
         "/api/v1/simulator/scenarios",
         "/api/v1/system/models",
     }

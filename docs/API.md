@@ -50,7 +50,7 @@ The user authorized a backend-only foundation after the initial specification. T
 
 **Controlled simulator (M3.3, implemented; C-03).**
 
-- `GET /api/v1/simulator/scenarios`: admin session only (viewer/analyst 403 `FORBIDDEN`; no or expired session 401 `SESSION_EXPIRED`; API keys cannot use it; cookie plus Bearer 401 `MIXED_CREDENTIALS`; 503 without the authentication configuration). Read-only; it creates no events or scores. `data` is `{catalog_version, synthetic: true, source, scenarios, samples}`. Each scenario has `id`, `version`, `name`, `description`, `expected_summary`, simulation-only `truth`, `provisional` (decisions its expectations depend on, such as `D05`), ordered `steps` and `candidate_pairs`. `samples` is always `[]` until an audio sample manifest is approved (TD-17). Reads are not yet rate-limited (the D08 read limit is not implemented for any route).
+- `GET /api/v1/simulator/scenarios`: admin session only (viewer/analyst 403 `FORBIDDEN`; no or expired session 401 `SESSION_EXPIRED`; API keys cannot use it; cookie plus Bearer 401 `MIXED_CREDENTIALS`; 503 without the authentication configuration). Read-only; it creates no events or scores. `data` is `{catalog_version, synthetic: true, source, scenarios, samples}`. Each scenario has `id`, `version`, `name`, `description`, `expected_summary`, simulation-only `truth`, `provisional` (decisions its expectations depend on, such as `D05`), ordered `steps` and `candidate_pairs`. `samples` is always `[]` until an audio sample manifest is approved (TD-17). Reads count against the D08 read limit (MVP-B5, see below).
 - The catalog is the packaged, versioned file `backend/src/kavach/simulator/scenarios_v1.json`, validated strictly on load. Every step's expected HTTP outcome, Redis `indexed` state and D05 `late` flag are recomputed by the validator from the contract and the provisional D05 constants, so the catalog cannot silently drift from the code.
 - The runner (`python -m kavach.simulator`) is an ordinary API client. It submits with an ingestion key for source `simulator` through `POST /events/sms|call`, reads receipts with `GET /events/{id}`, and never touches PostgreSQL or Redis. It replaces scenario offsets with fresh timestamps (event time = scenario start + offset) and generates stable run-specific event IDs (`sim-<run_id>-<scenario>-<step>`) and subscriber tokens (derived from seed, run ID, scenario and alias). The scenario's `truth` labels are never sent to the API. They are simulation-only ground truth, not model outputs. Usage and safety limits are in the README ("Controlled simulator").
 
@@ -63,6 +63,97 @@ The user authorized a backend-only foundation after the initial specification. T
 - An approved reference without a deployed voice model would still record every voice stage as unavailable. It never yields a score.
 
 Test-only HTTP handlers still verify DTO validation separately. No client-provided model scores or arbitrary feature objects are accepted. Endpoint contracts below that are not identified as implemented above describe later work. See the root README and [MILESTONE_TRACKER.md](MILESTONE_TRACKER.md).
+
+## SMS MVP-1 contract (approved 9 Nov 2026; not yet implemented)
+
+The owner approved an SMS-first MVP (decisions A–E, MASTER_DEVELOPMENT_PLAN.md C-12). This section is the exact contract the `frontend` branch builds against. It adds one query filter (`channel`) to the planned incident list and fixes the MVP subset of the planned routes; everything else below "Status and conventions" still applies. Nothing in this section exists in code until its tracker row says so. **Implemented locally (9 Nov 2026, uncommitted):** the incident reads (MVP-B3) and the read limit (MVP-B5). The generated OpenAPI document is pinned in `backend/contract/openapi.json` and checked against this section by `backend/tests/test_contract.py` (MVP-B6 draft); the frontend types against that file. The admin browser submission (MVP-B4) is **implemented locally (9 Nov 2026, uncommitted)**, with owner decisions B4-1 to B4-3.
+
+**Scope.** Implemented in MVP-1: `GET /incidents`, `GET /incidents/{id}`, the admin browser path of `POST /events/sms`, and the D08 read limit. Already implemented and unchanged: `/auth/*`, `GET /system/models`, `GET /simulator/scenarios`, the health aliases and key-authenticated ingestion. **Postponed beyond MVP-1:** `POST /incidents/{id}/review`, `GET /incidents/{id}/reviews`, the `review_status` filter, `WS /stream`, admin receipt reads (`GET /events/{id}` with a session), admin call submission and detailed `/health`.
+
+**Common rules for the session routes below.**
+
+- Browser session only. A request with a Bearer credential and no session gets 401 `SESSION_EXPIRED` (keys never read incidents); cookie plus Bearer gets 401 `MIXED_CREDENTIALS`; no, expired or revoked session gets 401 `SESSION_EXPIRED`; an inactive account is treated as no session. The role is re-read from the database on every request. 503 `DEPENDENCY_UNAVAILABLE` without the authentication configuration or when PostgreSQL fails.
+- Responses carry `Cache-Control: no-store` and `X-Request-ID`. Bodies use the envelopes in "Status and conventions".
+- **Read limit (D08, adopted for MVP-1):** 120 requests per minute per user, one shared budget across every session-authenticated `GET` (`/auth/session`, `/system/models`, `/simulator/scenarios`, `/incidents`, `/incidents/{id}`), an exact sliding window on Redis server time keyed by an HMAC of the user ID. Excess: 429 `RATE_LIMITED` with `Retry-After`. If Redis cannot confirm the limit (0.5 s, no retries), the read fails closed with 503 `DEPENDENCY_UNAVAILABLE`, matching login and ingestion; there is no in-process fallback.
+- `GET /system/models` now also rejects cookie plus Bearer with 401 `MIXED_CREDENTIALS`, like the other session routes (it previously ignored the Bearer header).
+- No response contains message text, sender IDs, subscriber tokens or digests, payload digests, HMAC key versions, external event IDs, sources, audit data or credentials. Message text is never stored (D07), so no route can return it.
+- Incidents whose `expires_at` has passed are never returned, even before the retention job removes them.
+
+**`GET /api/v1/incidents`** (viewer, analyst, admin)
+
+| Query | Rules |
+| --- | --- |
+| `limit` | integer 1–100, default 25 |
+| `cursor` | opaque, from `page.next_cursor`; bound to the sort tuple and the active filters. Malformed, tampered or used with different filters: 400 `INVALID_CURSOR` |
+| `channel` | **new:** `sms` or `call`; incidents linked to at least one event of that channel. The MVP frontend always sends `channel=sms` |
+| `kind` | `standalone` or `pair` (MVP-1 data is standalone only) |
+| `tier` | `unknown`, `low`, `medium`, `high`, `critical` (MVP-1 data is always `unknown`) |
+| `from`, `to` | RFC 3339 with explicit offset; `from` inclusive, `to` exclusive, on `occurred_at`; `from` ≥ `to` is 422 |
+
+Any other parameter, a repeated parameter or an invalid value: 422 `VALIDATION_ERROR` (field names only, values never echoed). Sort `occurred_at DESC, id DESC`. Pagination is not a snapshot: new incidents appear only on refresh.
+
+```json
+{"data": [{"id": "<uuid>", "kind": "standalone", "occurred_at": "2026-11-09T10:15:00Z",
+           "tier": "unknown", "final_score": null, "analysis_status": "partial",
+           "current_revision": 1, "version": 1, "latest_review": null,
+           "updated_at": "2026-11-09T10:15:01Z"}],
+ "page": {"next_cursor": "<opaque or null>", "has_more": false},
+ "request_id": "<uuid>"}
+```
+
+`tier`, `final_score` and `analysis_status` come from the incident's current assessment revision. `latest_review` is always `null` in MVP-1 (reviews postponed).
+
+**`GET /api/v1/incidents/{id}`** (viewer, analyst, admin). A malformed ID, a missing incident and an expired incident all return the same 404 `NOT_FOUND`.
+
+```json
+{"data": {
+   "id": "<uuid>", "kind": "standalone", "occurred_at": "…", "tier": "unknown",
+   "final_score": null, "analysis_status": "partial", "current_revision": 1, "version": 1,
+   "latest_review": null, "updated_at": "…",
+   "events": [{
+     "id": "<uuid>", "channel": "sms", "occurred_at": "…", "received_at": "…",
+     "analysis_status": "complete", "processing_ms": 412, "sms_score": null,
+     "reason_codes": ["sms_model_uncalibrated"],
+     "stages": {"sms_classifier": {
+       "status": "complete", "reason": null, "duration_ms": 41,
+       "model_output": {"labels": {"legitimate": 0.0123, "spam": 0.021, "fraud": 0.9667},
+                        "top_label": "fraud", "score_semantics": "uncalibrated_softmax",
+                        "truncated": false}}},
+     "model_versions": {"sms_classifier": "<model version>"}}],
+   "assessment": {"revision": 1, "tier": "unknown", "base_score": null, "fusion_score": null,
+                  "final_score": null, "analysis_status": "partial",
+                  "policy_version": "kavach-m4-uncalibrated-sms-evidence",
+                  "model_versions": {"sms_classifier": "<model version>"}, "created_at": "…"},
+   "related_incident_ids": [],
+   "reviews": {"items": [], "page": {"next_cursor": null, "has_more": false}}},
+ "request_id": "<uuid>"}
+```
+
+- `stages` holds exactly the stored stage entries. A stage that did not complete has `model_output: null` and a `reason` from the M4-I.2 list (`model_not_deployed`, `model_unverified`, `worker_unavailable`, `inference_timeout`, `worker_crashed`, `invalid_model_output`, `deadline_exhausted`) or the M3 reason for signals-v1 events. Call events carry their voice stages, each `unavailable`.
+- `model_output.labels` are the model's **native uncalibrated softmax outputs**, rounded to 4 decimals. They are not probabilities, not `sms_score` and not a risk tier; `sms_score`, `base_score`, `fusion_score` and `final_score` stay `null` and the tier stays `unknown` until a calibration validated on KAVACH data is approved. Clients must display them with that label and must not derive a tier, a colour scale or a "safe" state from them.
+- `reviews` is always the empty page in MVP-1.
+
+**`POST /api/v1/events/sms` — admin browser path** (decision A)
+
+- Credential: admin session cookie only; `Origin` must equal `APP_ORIGIN` and `X-CSRF-Token` must be valid (403 `CSRF_REJECTED`); viewer or analyst 403 `FORBIDDEN`; cookie plus Bearer 401 `MIXED_CREDENTIALS`. The key-authenticated path is unchanged. The browser never holds an ingestion key.
+- Body: `SMSEvent` exactly as for ingestors, with `source` required to be `simulator` (anything else 403 `FORBIDDEN`). **Server-validated (B4-1):** `event_id` must be `ui-` plus a lowercase version-4 UUID and `subscriber_token` must be `ui-sub-` plus a lowercase version-4 UUID; anything else is 422 `VALIDATION_ERROR`. The client generates them with `crypto.randomUUID()` (never `Math.random`), once per submission, and reuses them for retries. These are synthetic UI namespaces, **not** trusted subscriber identities: M6 must never treat a `ui-sub-` token as real-world identity evidence.
+- Order (verified by an ASGI-level test that the body is not pulled before a rejection): mixed credentials (401) → exact `Origin` (403 `CSRF_REJECTED`) → valid session of an active account (401) → admin role (403) → CSRF token (403) → per-admin limit → body read → validation → source and identifier rules → ingestion. The route declares no body parameter, because FastAPI 0.162 reads a declared body before resolving dependencies; the schema is documented through `openapi_extra`. No credential at all keeps 401 `INVALID_CREDENTIALS` (B4-3).
+- Submission limit: 30 per minute **per admin user** (D08 "or admin"), Redis sliding window in its own keyspace (separate from ingestion keys, and not part of the 120 per minute read budget, B4-2), checked after authentication and before the body is read; 429 `RATE_LIMITED` with `Retry-After`; Redis unavailable fails closed with 503.
+- Then the ingestion order and outcomes are identical to the key path: body size 413, validation 422, source 403, idempotency lookup (201/200/409 within the `simulator` source, shared with the key-authenticated simulator runner), inference, commit. 429 `CAPACITY_EXCEEDED` and 503 `DEPENDENCY_UNAVAILABLE` / `PROCESSING_TIMEOUT` behave as in M4-I.2. The audit actor is the user (`actor_kind = user`).
+- Response: the standard receipt plus `incident_ids` (admin only):
+
+```json
+{"data": {"event_id": "<uuid>", "external_event_id": "ui-<uuid>", "source": "simulator",
+          "kind": "sms", "analysis_status": "complete", "received_at": "…",
+          "processing_ms": 412, "replayed": false,
+          "warnings": ["SMS_SCORE_UNCALIBRATED"], "incident_ids": ["<uuid>"]},
+ "request_id": "<uuid>"}
+```
+
+  The receipt never contains labels or scores; the client opens `/incidents/{incident_ids[0]}` to see them. Browser receipts carry **no `Location` header** (new or replayed), because receipt reads are key-only; ingestion-key receipts keep `Location` on 201 as before. With the model disabled (the MVP default until the M4-Q decision, MASTER_DEVELOPMENT_PLAN.md C-12 D), every submission is stored with `analysis_status: unavailable`, reason `model_not_deployed` and warning `SMS_CLASSIFIER_UNAVAILABLE`.
+- The text exists only in the request and the worker's memory; it is never stored, logged or returned.
+
+**Unchanged contracts the frontend uses:** `POST /auth/login`, `GET /auth/session`, `POST /auth/logout` (M2.3 above) and `GET /system/models` (`{state, detail, reason, model_version, score_semantics, validated_on_kavach_data}`; `state` is `disabled`, `starting`, `ready` or `unavailable`; readiness is operational, never accuracy).
 
 ## Status and conventions
 
@@ -82,15 +173,15 @@ Browser: server session cookie plus CSRF token header `X-CSRF-Token` for mutatio
 | `/events/sms` | POST | Ingestor or admin + CSRF | Analyze and persist an SMS event |
 | `/events/call` | POST | Ingestor or admin + CSRF | Analyze allowlisted audio or metadata-only call |
 | `/events/{id}` | GET | Own-source ingestor or admin | Recover submission receipt |
-| `/incidents` | GET | Viewer, analyst, admin | Filtered incident records |
-| `/incidents/{id}` | GET | Viewer, analyst, admin | Evidence, assessment and initial review page |
-| `/incidents/{id}/reviews` | GET | Viewer, analyst, admin | Paginated immutable review history |
-| `/incidents/{id}/review` | POST | Analyst/admin + CSRF | Append review |
+| `/incidents` | GET | Viewer, analyst, admin | Filtered incident records (MVP-1, with the `channel` filter) |
+| `/incidents/{id}` | GET | Viewer, analyst, admin | Evidence, assessment and initial review page (MVP-1; empty review page) |
+| `/incidents/{id}/reviews` | GET | Viewer, analyst, admin | Paginated immutable review history (postponed beyond MVP-1) |
+| `/incidents/{id}/review` | POST | Analyst/admin + CSRF | Append review (postponed beyond MVP-1) |
 | `/simulator/scenarios` | GET | Admin | Read fixed scenario and sample catalog |
 | `/health/live` | GET | Public | Process liveness only |
 | `/health` | GET | Viewer, analyst, admin | Dependencies and model readiness (planned; see C-07) |
 | `/api/v1/system/models` | GET | Viewer, analyst, admin | Implemented (M4-I.2): operational state of the SMS model: `disabled`, `starting`, `ready` or `unavailable`, with the supervisor `detail`, a safe `reason` code, `model_version`, `score_semantics: uncalibrated_softmax` and `validated_on_kavach_data: false`. Readiness is operational, never accuracy. Session only: ingestion keys get 401 |
-| `/stream` | WebSocket | Authenticated user; allowed Origin | Incident/system invalidations |
+| `/stream` | WebSocket | Authenticated user; allowed Origin | Incident/system invalidations (postponed beyond MVP-1; the UI refreshes) |
 
 No public registration, account management API, arbitrary media upload/download, provider webhook, call-control or training endpoint is in scope. Provisioning is a secured operator command with an audit record.
 
@@ -123,7 +214,7 @@ Inference failure within the deadline may return a committed partial/unavailable
 
 ## Incident read formats
 
-List query parameters: `limit` integer 1–100, default 25; optional opaque `cursor`; `tier` enum including unknown; `review_status` enum `unreviewed`, `true_fraud`, `false_alarm`, `needs_investigation`; `kind` standalone/pair; `from` inclusive and `to` exclusive RFC 3339 event-time bounds. Reject invalid ranges. No subscriber lookup or unrestricted text search in MVP.
+List query parameters: `limit` integer 1–100, default 25; optional opaque `cursor`; `tier` enum including unknown; `review_status` enum `unreviewed`, `true_fraud`, `false_alarm`, `needs_investigation` (added with reviews, after MVP-1); `kind` standalone/pair; `channel` `sms`/`call` (approved 9 Nov 2026, MVP-1); `from` inclusive and `to` exclusive RFC 3339 event-time bounds. Reject invalid ranges. No subscriber lookup or unrestricted text search in MVP.
 
 Sort by `occurred_at DESC, id DESC`. Cursor binds this tuple and active filters; validate schema and bounds, never interpolate it into SQL. Feed ordering is stable because occurred_at is immutable. New rows require refresh; review-status changes can alter filtered membership, which the UI must explain. Pagination is not a transactional historical snapshot.
 

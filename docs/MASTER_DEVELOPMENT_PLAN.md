@@ -21,7 +21,7 @@ Companion documents: [GIT_WORKFLOW.md](GIT_WORKFLOW.md), [MILESTONE_TRACKER.md](
 9. History is append-only: assessments and reviews are new rows; analyst identity and viewed assessment revision are recorded. No UPDATE/DELETE on reviews or assessments by the runtime role.
 10. Routes stay thin (validation, auth dependency, call service, map result). Business rules live in services/domain modules; SQL lives in repositories; ORM entities in `db/`; inference adapters in `models/`.
 11. The user performs every Git mutation (staging, commits, pushes, merges, branch switches, pull requests) and every deployment or GitHub settings change; agents use read-only Git commands only.
-12. Backend milestones M1.1–M7a stay on `backend`. Backend work reaches `dev` through a single `backend` → `dev` integration pull request after the complete backend passes acceptance testing; there is no per-milestone pull request into `dev`. Frontend work (M7b) stays on `frontend`. `main` holds validated releases only ([GIT_WORKFLOW.md](GIT_WORKFLOW.md)).
+12. Backend milestones stay on `backend` and frontend work stays on `frontend`. **Revised 9 Nov 2026 (C-12):** the first integration into `dev` is the SMS MVP-1, after joint backend and frontend acceptance, through owner-controlled PRs from each branch; M5 and M6 are not prerequisites. There is no per-milestone pull request into `dev`. `main` holds validated releases only ([GIT_WORKFLOW.md](GIT_WORKFLOW.md)).
 
 ## Milestone-to-phase mapping
 
@@ -59,6 +59,7 @@ Each conflict is recorded with the interim handling this plan assumes. Items mar
 | C-08 | Handoff milestone order (Redis ingestion in M2, PostgreSQL in M3) disagrees with the specifications. | Superseded by the owner's decision of 31 October 2026: PostgreSQL first, ingestion second, Redis never authoritative. | Resolved |
 | C-09 | Schema timing: Phase 2 allows creating all tables together for deferred FKs. | M2 creates the full DATABASE.md schema; domain behavior stays phased. | Resolved (per Phase 2 text) |
 | C-10 | CONTRIBUTING.md had no branch rules. | CONTRIBUTING.md now documents the branch workflow and PR policy and points to GIT_WORKFLOW.md. | Resolved |
+| C-12 | The approved order integrates only after the complete backend (M1.1–M7a, including M5 and M6) passes, leaving no demonstrable product within the available time. | **Approved by the owner 9 Nov 2026: SMS MVP-1 first.** Scope prioritization, not a rewrite: no completed feature is removed and no security, privacy or failure rule is weakened. Decisions: **A** browser SMS submission is admin-only (session + CSRF + Origin, `source=simulator`); no ingestion key in the browser. **B** review creation and history are postponed. **C** `GET /incidents` gains `channel=sms`. **D** model rule: until the M4-Q evaluation is complete the worker stays disabled for the MVP; GO enables the frozen pinned worker as experimental and uncalibrated; CONDITIONAL enables it only after the owner's explicit approval, with every shortfall shown in the UI and documentation; NO-GO keeps it disabled with the honest unavailable state. Always: `sms_score` null, tier `unknown`, native outputs labelled uncalibrated, no production-accuracy claim, no fine-tuning of the Horizon model; TF-IDF training and comparison wait until the independent label gate passes. **E** the accepted backend and frontend MVPs integrate into `dev` after joint acceptance (INTEGRATION_PLAN.md). Contract: API.md "SMS MVP-1 contract". | Resolved |
 | C-11 | FR03/D04/ARCHITECTURE specified a TF-IDF SMS classifier and M4_EVALUATION_PLAN.md put transformers out of scope, while the owner chose a pretrained-first prototype (5 Nov 2026). | **Approved 6 Nov 2026 as D04-A1 (PRD.md).** The pinned Horizon-Labs transformer is permitted for experimental SMS evidence in a separate, supervised worker. TF-IDF stays the comparison baseline. Outputs are uncalibrated evidence, never `sms_score` or a tier, until validated. TD-18 controls must be implemented first. Design: M4_SMS_INFERENCE_ARCHITECTURE.md. | Resolved (design); implementation M4-I |
 
 ## Unresolved decisions
@@ -91,6 +92,28 @@ None of these is selected by this plan. The owner's 31 October 2026 decisions on
 | D07 | M2 schema (`expires_at`), M9 | **Approved 31 Oct 2026 for the synthetic-data local MVP**: 7-day synthetic evidence, 30-day metadata-only audit, 14-day metadata-only logs, configurable; not authorization for real data |
 | D08 | M3 | Rate limits, 2 concurrent analyses, 30 s deadline; load-test before treating as fixed |
 | D09 | M7 | UI tokens and English-first evaluation |
+
+## SMS MVP-1 (current priority, approved 9 Nov 2026)
+
+The first deliverable is one working, tested SMS fraud-intelligence MVP (C-12). It claims no cross-channel correlation and no production accuracy. It reuses everything already verified (M1–M4-I.2: authentication, roles, CSRF and Origin checks, key ingestion with PostgreSQL idempotency, the schema, audit, retention, the supervised SMS worker, `GET /system/models`, the simulator) and adds only the items below. Exact wire shapes: API.md "SMS MVP-1 contract".
+
+| ID | Branch | Work | Depends on |
+| --- | --- | --- | --- |
+| MVP-B1 | `backend` | M4-Q completion: owner commits the M4-Q workflow (CI green), labels the 183-row sheet, `solo-preflight` READY (all checks PASS), owner authorizes a single `solo-evaluate`, aggregate report with leak scan | Owner |
+| MVP-B2 | `backend` | Model decision record from the M4-Q verdict under C-12 D; the worker stays disabled until then | MVP-B1 |
+| MVP-B3 | `backend` | Incident read layer: repository, service, `GET /incidents` (cursor, filters incl. `channel`) and `GET /incidents/{id}`; session roles; same 404; expired rows hidden; `no-store` | — |
+| MVP-B4 | `backend` | Admin browser path of `POST /events/sms` (session + CSRF + Origin, `source=simulator`, per-admin limit, `incident_ids` in the receipt, user audit actor) | — (decision A approved) |
+| MVP-B5 | `backend` | D08 read limit: 120/min/user over session GETs, Redis, fail closed | — |
+| MVP-B6 | `backend` | Contract freeze: committed OpenAPI snapshot and contract tests against API.md | MVP-B3, MVP-B4, MVP-B5 |
+| MVP-B7 | `backend` | Local integration launch: worker setting per MVP-B2, Vite dev proxy on the `APP_ORIGIN` origin, documented commands | MVP-B6 |
+| MVP-F1 | `frontend` | Scaffold (Vite, React, TypeScript strict, React Router, Vitest, Testing Library, Playwright; lockfile; CI job), DESIGN.md tokens, typed API client and error handling, login and app shell, shared state components | Owner approval of the frontend packages at install time; D09 |
+| MVP-F2 | `frontend` | Overview, SMS history (`channel=sms`), incident detail with uncalibrated-output panel, system status page | MVP-F1; contract in API.md (frozen by MVP-B6) |
+| MVP-F3 | `frontend` | `/analyze` admin page | **MVP-B4 implemented**; never built against an invented API |
+| MVP-J | both | Joint acceptance (INTEGRATION_PLAN.md), integration report, owner PRs into `dev` | All of the above |
+
+Parallel now: MVP-B1 (owner), MVP-B3, MVP-B5, the MVP-B6 draft, MVP-F1 and MVP-F2. Critical path: labeling → preflight → authorized evaluation → MVP-B2.
+
+**Postponed until after MVP-1:** review creation and history (M7a remainder, M7b review form); `/stream` live updates and detailed health (M8, C-07); call and voice analysis (M5); correlation, pair incidents, fusion, tiers and calibration (M6); TF-IDF training and comparison (after the independent label gate); simulator scenario playback in the UI; advanced M7 features; M8–M11.
 
 ## Milestones
 
@@ -217,12 +240,12 @@ Common to every milestone: the checks, reporting and PR conditions in [DEFINITIO
 - **Tests:** backend filter/pagination stability, concurrent review conflict (409 `REVIEW_CONFLICT`), idempotent retry, altered payload under same key (409 `IDEMPOTENCY_CONFLICT`), viewer denial, same 404 for missing and inaccessible; frontend component tests (Vitest/Testing Library) and type-check; no credentials or raw communications in browser storage or URLs.
 - **Acceptance (measurable):** analyst journey (feed → detail → save review → reload shows attribution) passes; UI shows `Not available` for null and never "safe"; production build and strict type-check pass.
 - **Exit:** DoD met; accessibility checks listed in TESTING_QA run or marked not run.
-- **PR/merge:** M7a completes the backend on `backend`; after full backend acceptance (M1.1–M7a) the user opens the **single `backend` → `dev` integration PR** with the gates in GIT_WORKFLOW.md. M7b is developed on `frontend`; its integration into `dev` is an open decision (GIT_WORKFLOW.md).
+- **PR/merge (revised 9 Nov 2026, C-12):** the MVP-1 subset of M7a and M7b (section "SMS MVP-1" above) integrates into `dev` after joint acceptance. The remainder of M7a (review history and review POST) and of M7b (review form, live updates) stays on `backend`/`frontend` and reaches `dev` through later owner-controlled PRs (GIT_WORKFLOW.md).
 - **Risks/assumptions:** M7b browser login depends on the shared throttle being available (C-06); unmeasured read-latency targets are not claimed. **Unresolved:** D09.
 
 ### M8 — End-to-end integration and analyst workflows
 
-- **Objective:** the whole path from simulator event to reviewed incident works against the real stack. **Prerequisites:** backend integration PR merged into `dev`; M7b integrated into `dev`. Maps to Phase 6 tasks 2–4 and Phase 5 browser journeys.
+- **Objective:** the whole path from simulator event to reviewed incident works against the real stack. **Prerequisites:** MVP-1 integrated into `dev`; the remaining M7a/M7b review work and the M5/M6 work it exercises integrated into `dev`. Maps to Phase 6 tasks 2–4 and Phase 5 browser journeys.
 - **Tasks and deliverables:** session-checked WebSocket `/stream` with bounded buffers and polling fallback; authenticated detailed dependency/model readiness and System page, added without changing the preserved M1 `/health` and `/api/v1/health` routes or their tests (C-07 deferred; the path comes from a separately approved compatibility plan); admin simulator page using ordinary endpoints with stable event IDs and visible partial failures; Playwright journeys in `tests/e2e/`.
 - **Branch:** verified on `dev`; how M8 changes reach `dev` is an open decision in GIT_WORKFLOW.md.
 - **Tests:** the six journeys in TESTING_QA.md; disconnect and reconnect refetch; expired session closes the socket; degraded Redis/STT/model-missing states shown truthfully; six core scenarios against the actual backend.

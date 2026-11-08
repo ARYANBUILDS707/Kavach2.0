@@ -99,6 +99,9 @@ VALID_KEY_MEMORY_SECONDS = 24 * 60 * 60
 # D08 (proposed, adopted for M3.2): 30 event submissions per minute per ingestion key.
 SUBMISSIONS_PER_KEY = 30
 SUBMISSION_WINDOW_SECONDS = 60
+# D08 (adopted for MVP-1, 9 Nov 2026): 120 session-authenticated reads per minute per user.
+READS_PER_USER = 120
+READ_WINDOW_SECONDS = 60
 
 # KEYS: counter. ARGV: limit, window in ms. Reserve before checking the credential.
 RESERVE_ONE_SCRIPT = """
@@ -226,6 +229,7 @@ class SubmissionQuota:
     def __init__(self, redis: Redis, hmac_key: bytes, namespace: str) -> None:
         self._key = hmac_key
         self._prefix = f"kavach:{namespace}:ratelimit:ingest:key"
+        self._user_prefix = f"kavach:{namespace}:ratelimit:ingest:user"
         self._acquire = redis.register_script(SLIDING_WINDOW_SCRIPT)
 
     def _redis_key(self, key_id: str) -> str:
@@ -233,10 +237,43 @@ class SubmissionQuota:
         return f"{self._prefix}:{digest.hexdigest()}"
 
     def acquire(self, key_id: str, request_id: str) -> Reservation:
+        return self._take(self._redis_key(key_id), request_id)
+
+    def acquire_for_user(self, user_id: str, request_id: str) -> Reservation:
+        """MVP-B4: an admin's browser submissions, 30 per minute per user, in a namespace of
+        their own so they never share a budget with an ingestion key or with reads."""
+        digest = hmac.new(self._key, f"ingest-user\0{user_id}".encode(), hashlib.sha256)
+        return self._take(f"{self._user_prefix}:{digest.hexdigest()}", request_id)
+
+    def _take(self, redis_key: str, request_id: str) -> Reservation:
         try:
             allowed, wait_ms = self._acquire(
-                keys=[self._redis_key(key_id)],
+                keys=[redis_key],
                 args=[SUBMISSIONS_PER_KEY, SUBMISSION_WINDOW_SECONDS * 1000, request_id],
+            )
+        except RedisError as error:
+            raise ThrottleUnavailable from error
+        return Reservation(allowed=True) if allowed == 1 else blocked_for(wait_ms)
+
+
+class ReadQuota:
+    """D08 per-user read limit, one budget shared by every session-authenticated GET and every
+    process. Keyed by an HMAC of the user ID; there is no in-process fallback."""
+
+    def __init__(self, redis: Redis, hmac_key: bytes, namespace: str) -> None:
+        self._key = hmac_key
+        self._prefix = f"kavach:{namespace}:ratelimit:read:user"
+        self._acquire = redis.register_script(SLIDING_WINDOW_SCRIPT)
+
+    def _redis_key(self, user_id: str) -> str:
+        digest = hmac.new(self._key, f"read-user\0{user_id}".encode(), hashlib.sha256)
+        return f"{self._prefix}:{digest.hexdigest()}"
+
+    def acquire(self, user_id: str, request_id: str) -> Reservation:
+        try:
+            allowed, wait_ms = self._acquire(
+                keys=[self._redis_key(user_id)],
+                args=[READS_PER_USER, READ_WINDOW_SECONDS * 1000, request_id],
             )
         except RedisError as error:
             raise ThrottleUnavailable from error

@@ -10,13 +10,14 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict
 
-from kavach.auth.dependencies import require_role
+from kavach.auth.dependencies import reject_mixed_credentials, require_reader
 from kavach.auth.service import ActiveSession
 from kavach.models.sms_worker import SmsWorkerSupervisor
 
 router = APIRouter(prefix="/api/v1/system", tags=["system"])
 
-DashboardSession = Annotated[ActiveSession, Depends(require_role("viewer", "analyst", "admin"))]
+# Counted against the D08 read limit (MVP-1).
+DashboardSession = Annotated[ActiveSession, Depends(require_reader("viewer", "analyst", "admin"))]
 
 
 class SmsModelStatus(BaseModel):
@@ -41,7 +42,11 @@ class ModelsResponse(BaseModel):
     request_id: str
 
 
-@router.get("/models", response_model=ModelsResponse)
+@router.get(
+    "/models",
+    response_model=ModelsResponse,
+    dependencies=[Depends(reject_mixed_credentials)],
+)
 def models(request: Request, _: DashboardSession) -> ModelsResponse:
     supervisor: SmsWorkerSupervisor = request.app.state.sms_worker
     status = supervisor.status()
