@@ -8,6 +8,9 @@
     python -m sms_prep split     [--version 2]      create a proposed split version beside v1
     python -m sms_prep pilot                        create the blinded calibration pilot
     python -m sms_prep pilot-audit                  agreement and control accuracy of the pilot
+    python -m sms_prep solo-prepare                 blinded sheet for ONE reviewer (M4-Q)
+    python -m sms_prep solo-preflight               read-only readiness check, no model
+    python -m sms_prep solo-evaluate                compare the labels with the pretrained model
 
 Private outputs (raw files, the record store, review sheets) go under the data directory, which
 defaults to the ignored `data/m4/` at the repository root. Public outputs (aggregate reports and
@@ -26,7 +29,7 @@ from pathlib import Path
 from dataset_governance.fingerprints import REPO_ROOT, simulator_overlap
 from dataset_governance.manifest import DEFAULT_MANIFEST, MANIFESTS, load_manifest
 from sms_prep import pairs as pair_review
-from sms_prep import pilot, review, split_report, synthetic
+from sms_prep import pilot, review, solo, solo_preflight, split_report, synthetic
 from sms_prep.acquire import AcquisitionError, acquire, specs_from_manifest, verify_local
 from sms_prep.clusters import assign_clusters, build_cluster_infos, read_clusters, write_clusters
 from sms_prep.normalize import FEATURE_NORMALIZATION_VERSION
@@ -363,6 +366,141 @@ def cmd_pilot_audit(args: argparse.Namespace) -> int:
     return 0 if status["status"] != "INCOMPLETE" else 3
 
 
+def frozen_assignments(args: argparse.Namespace, version: int) -> list:
+    """A split version's assignments, only if they still match their recorded metadata."""
+    spec = VERSIONS[version]
+    meta = json.loads((args.meta_dir / spec.meta_name).read_text())
+    path = spec.assignments(args.data_dir)
+    if file_sha256(path) != meta["assignments_sha256"]:
+        raise BuildError(f"The split v{version} assignment file differs from its metadata")
+    return read_assignments(path)
+
+
+def solo_context(args: argparse.Namespace) -> tuple[solo.Revision, Path, Path]:
+    """(revision, private bundle folder, registered criteria file) for the chosen revision."""
+    revision = solo.REVISIONS[args.revision]
+    criteria = args.criteria or args.meta_dir / revision.criteria_file
+    return revision, args.data_dir / revision.folder, criteria
+
+
+def cmd_solo_prepare(args: argparse.Namespace) -> int:
+    """Create the blank solo sheet once. Nothing here writes a label or runs the model."""
+    revision, directory, criteria = solo_context(args)
+    records = read_records(args.data_dir / "work" / "records.jsonl")
+    v1, v2 = frozen_assignments(args, 1), frozen_assignments(args, 2)
+    keys = [json.loads((args.data_dir / d / "answer_key.json").read_text())
+            for d in ("review", "review_pilot")]  # fmt: skip
+    if (directory / solo.SHEET).exists() and solo.sheet_has_annotations(directory):
+        items, _ = solo.select_solo(records, v1, v2, keys, args.seed, revision.number)
+        planned = {i.item_id for i in items}
+        existing = set(json.loads((directory / solo.KEY).read_text()))
+        if (
+            planned != existing
+            or solo.sha256_file(criteria)
+            != json.loads((directory / solo.META).read_text())["criteria_sha256"]
+        ):
+            raise BuildError(
+                "Labels exist and the sample or criteria would change; not overwriting"
+            )
+        print(f"solo sheet already has labels ({len(existing)} rows); left unchanged")
+        return 0
+    meta = solo.build_solo(records, v1, v2, keys, criteria, directory, args.seed, revision.number)
+    print(f"solo sheet: {meta['rows']} rows ({meta['items_by_kind']})")
+    print(f"strata: {meta['items_by_stratum']}")
+    print(f"sheet: {directory / solo.SHEET} (blank; only you write labels)")
+    return 0
+
+
+class LazyScorer:
+    """Loads the verified pinned model on first use; any problem is a refusal, never a score."""
+
+    def __init__(self) -> None:
+        self.candidate = None
+        self.classifier = None
+
+    def info(self) -> dict:
+        from pretrained.candidates import selected
+
+        c = selected()
+        return {"candidate": c.key, "repo": c.repo, "revision": c.revision,
+                "weights_sha256": c.weights.sha256, "device": "cpu", "offline": True}  # fmt: skip
+
+    def __call__(self, texts: list[str]) -> list[list[float]]:
+        try:
+            from pretrained.candidates import selected
+            from pretrained.inference import ModelUnavailable, load_classifier, predict
+        except ImportError:
+            raise solo.SoloError(
+                "The pretrained group is not installed (torch, transformers)"
+            ) from None
+        if self.classifier is None:
+            self.candidate = selected()
+            try:
+                self.classifier = load_classifier(self.candidate)
+            except ModelUnavailable as error:
+                raise solo.SoloError(f"The pretrained model is unavailable: {error}") from None
+        assert self.candidate is not None
+        if tuple(self.candidate.labels) != solo.MODEL_LABELS:
+            raise solo.SoloError("The model's label order differs from the registered order")
+        out: list[list[float]] = []
+        for start in range(0, len(texts), 16):
+            for result in predict(self.classifier, self.candidate, texts[start : start + 16]):
+                if result.status != "ok" or result.probabilities is None:
+                    raise solo.SoloError("The model returned no result; nothing was scored")
+                out.append([result.probabilities[label] for label in solo.MODEL_LABELS])
+        return out
+
+
+def cmd_solo_preflight(args: argparse.Namespace) -> int:
+    """Read-only: counts and PASS / FAIL / NOT EVALUATED only. No model, no text, no IDs."""
+    _, directory, criteria_path = solo_context(args)
+    by_id = {r.record_id: r for r in read_records(args.data_dir / "work" / "records.jsonl")}
+    checks = solo_preflight.preflight(
+        directory, criteria_path, lambda record_id: review.display_text(by_id[record_id].text)
+    )
+    for check in checks:
+        print(f"{check.status:14} {check.detail}")
+    print(solo_preflight.summary_line(checks))
+    return 0 if solo_preflight.ready(checks) else 3
+
+
+def cmd_solo_evaluate(args: argparse.Namespace) -> int:
+    revision, directory, criteria_path = solo_context(args)
+    status_path = args.reports_dir / revision.status_file
+    key, meta, criteria, problems = solo.load_bundle(directory, criteria_path)
+    labels, progress = solo.read_labels(directory, key)
+    done = len(labels) / len(key) >= criteria["completeness"]["min_labeled_share"]
+    if problems or progress["problems"] or not done:
+        status = {"status": "INCOMPLETE", "progress": progress, "integrity_problems": problems,
+                  "note": "Nothing was scored; no model output exists yet."}  # fmt: skip
+        write_json(status_path, status)
+        print(f"Solo evaluation: INCOMPLETE ({progress['labeled']}/{progress['rows']} labeled)")
+        for text in problems + progress["problems"]:
+            print(f"  {text}")
+        return 3
+    by_id = {r.record_id: r for r in read_records(args.data_dir / "work" / "records.jsonl")}
+    raw = {i: by_id[e["record_id"]].text for i, e in key.items() if e["kind"] != "repeat"}
+    shown = {i: review.display_text(t) for i, t in raw.items()}
+    scorer = LazyScorer()
+    try:
+        report = solo.evaluate_solo(directory, criteria_path, scorer, shown, raw, scorer.info())
+    except solo.SoloError as error:
+        print(f"Stopped: {error}", file=sys.stderr)
+        return 4
+    write_json(status_path, report)
+    decision = report["decision"]
+    print(f"Solo evaluation: {report['status']} - {decision['meaning']}")
+    fraud = report["collected"]["per_class_one_vs_rest"]["fraud"]
+    print(f"  fraud recall {fraud['recall']['rate']} {fraud['recall']['wilson95']}, "
+          f"precision {fraud['precision']['rate']} {fraud['precision']['wilson95']}")  # fmt: skip
+    for check in decision["go_checks"]:
+        print(f"  {'ok  ' if check['passed'] else 'FAIL'} {check['check']}: {check['value']} "
+              f"(limit {check['threshold']})")  # fmt: skip
+    for line in decision["no_go_rules_fired"] + decision["caps"]:
+        print(f"  note: {line}")
+    return 0
+
+
 def cmd_split(args: argparse.Namespace) -> int:
     """Create a proposed split version (2 or later) beside v1. v1 is never rewritten."""
     if args.version not in VERSIONS or args.version == 1:
@@ -456,7 +594,9 @@ def write_registry(meta_dir: Path) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m sms_prep", description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("acquire", "verify", "build", "audit", "pairs", "split", "pilot", "pilot-audit"):
+    names = ("acquire", "verify", "build", "audit", "pairs", "split", "pilot", "pilot-audit",
+             "solo-prepare", "solo-preflight", "solo-evaluate")  # fmt: skip
+    for name in names:
         command = sub.add_parser(name)
         command.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
         command.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
@@ -469,6 +609,12 @@ def build_parser() -> argparse.ArgumentParser:
             command.add_argument("--sample-seed", type=int, default=20261106)
         if name == "pilot":
             command.add_argument("--seed", type=int, default=DEFAULT_SEED)
+        if name.startswith("solo-"):
+            command.add_argument("--revision", type=int, choices=sorted(solo.REVISIONS),
+                                 default=solo.CURRENT_REVISION)  # fmt: skip
+            command.add_argument("--criteria", type=Path, default=None)
+        if name == "solo-prepare":
+            command.add_argument("--seed", type=int, default=solo.SOLO_SEED)
         if name == "split":
             command.add_argument("--version", type=int, default=2)
             command.add_argument("--seed", type=int, default=DEFAULT_SEED)
@@ -489,10 +635,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         "split": cmd_split,
         "pilot": cmd_pilot,
         "pilot-audit": cmd_pilot_audit,
+        "solo-prepare": cmd_solo_prepare,
+        "solo-preflight": cmd_solo_preflight,
+        "solo-evaluate": cmd_solo_evaluate,
     }
     try:
         return handlers[args.command](args)
-    except (AcquisitionError, BuildError, OSError) as error:
+    except (AcquisitionError, BuildError, solo.SoloError, OSError) as error:
         print(f"Stopped: {error}", file=sys.stderr)
         return 1
 

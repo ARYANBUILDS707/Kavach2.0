@@ -6,13 +6,14 @@ Offline dataset governance, preparation and (from M4.3) training for KAVACH mode
 | --- | --- |
 | `manifests/sms_datasets.v2.json` | The current dataset manifest: sources, checksums, licenses, label policy, the owner's D04 decisions, the synthetic set, the promotion gate. `…v1.json` is the earlier, immutable record. |
 | `manifests/sms_split.v1.meta.json` | Frozen split metadata: seed, algorithm, input hashes, the SHA-256 of the full assignment file, counts. |
+| `manifests/sms_solo_eval_criteria.v2.json`, `…v1.json` | The pre-registered GO / CONDITIONAL / NO-GO rules for the solo evaluation (M4-Q). v2 keeps every v1 threshold and raises only the minimum label counts (35 collected legitimate, 16 synthetic benign); v1 is preserved unchanged. Hashed into the bundle; changing it after labeling is refused. |
 | `manifests/sms_split.v2.meta.json`, `manifests/sms_splits.json` | The *proposed* campaign-level split v2 (Jaccard 0.4) and the index of split versions. v1 is never edited. |
 | `reports/` | Aggregate data-quality, split-v2, pair-review, label-audit and pilot status reports (counts and hashes only). |
 | `dataset_governance/` | Manifest schema and validator; matching normalization, fingerprints and the simulator-fixture exclusion. |
 | `sms_prep/` | The M4.2 pipeline: acquisition, feature normalization, clustering, records, synthetic hard negatives, label-audit bundle and evaluation, splits and the held-out guard, quality report, CLI. |
 | `pretrained/` | Separate pretrained-classifier track ([docs/M4_PRETRAINED_EVALUATION.md](../docs/M4_PRETRAINED_EVALUATION.md)): audited candidates pinned by revision and hash, verified fetch, offline safetensors-only CPU inference on 14 fictional demo messages. Third-party weights, not a KAVACH-trained model. |
 | `audit/dataset_audit.py` | Recomputes the M4.1 manifest's measured values (checksums + counts) from local copies. |
-| `tests/` | 221 deterministic tests on small synthetic fixtures (no network, no torch, no real weights). |
+| `tests/` | 275 deterministic tests on small synthetic fixtures (no network, no torch, no real weights). |
 
 Read [docs/DATASET_GOVERNANCE.md](../docs/DATASET_GOVERNANCE.md), [docs/M4_EVALUATION_PLAN.md](../docs/M4_EVALUATION_PLAN.md) and [docs/M4_2_DATA_PREPARATION_REPORT.md](../docs/M4_2_DATA_PREPARATION_REPORT.md) first.
 
@@ -36,6 +37,9 @@ uv sync --project . --locked --group pretrained               # opt-in: torch + 
 uv run --project . --locked --group pretrained python -m pretrained candidates
 uv run --project . --locked --group pretrained python -m pretrained fetch    # ~1.3 GB into ../data/models/ (ignored)
 uv run --project . --locked --group pretrained python -m pretrained run      # fictional demo set only; exit 3 if unavailable
+uv run --project . --locked python -m sms_prep solo-prepare        # M4-Q revision 2: blank 183-row sheet for ONE reviewer (see docs/M4_Q_SOLO_EVALUATION.md)
+uv run --project . --locked python -m sms_prep solo-preflight       # M4-Q: read-only readiness check of the labeled sheet; no model; exit 3 until READY
+uv run --project . --locked --group pretrained python -m sms_prep solo-evaluate   # after labeling: progress until complete, then the verdict
 uv run --project . --locked pytest tests
 uv run --project . --locked ruff check . && uv run --project . --locked ruff format --check .
 ```
