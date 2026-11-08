@@ -1,0 +1,51 @@
+/* DESIGN.md tokens (D09, approved 9 Nov 2026). Change values only through DESIGN.md. */
+:root {
+  --color-canvas: #f5f7f9;
+  --color-surface: #ffffff;
+  --color-text-primary: #17212b;
+  --color-text-secondary: #475569;
+  --color-border-subtle: #cbd5e1;
+  --color-border-control: #64748b;
+  --color-action: #174ea6;
+  --color-action-hover: #123d82;
+  --color-focus: #1d4ed8;
+
+  --color-low-text: #166534;
+  --color-low-bg: #f0fdf4;
+  --color-medium-text: #854d0e;
+  --color-medium-bg: #fefce8;
+  --color-high-text: #9a3412;
+  --color-high-bg: #fff7ed;
+  --color-critical-text: #991b1b;
+  --color-critical-bg: #fef2f2;
+  --color-unknown-text: #475569;
+  --color-unknown-bg: #f1f5f9;
+
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --text-body: 16px;
+  --leading-body: 24px;
+  --text-meta: 14px;
+  --leading-meta: 20px;
+  --text-page-title: 28px;
+  --leading-page-title: 36px;
+  --text-section-title: 20px;
+  --leading-section-title: 28px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+
+  --radius: 8px;
+  --header-height: 64px;
+  --content-max: 1440px;
+  --form-max: 640px;
+  --login-max: 400px;
+  --target-min: 44px;
+  --transition: 150ms;
+}
