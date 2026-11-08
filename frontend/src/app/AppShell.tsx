@@ -1,12 +1,21 @@
-// Header (KAVACH, environment label, the user's name and role, sign-out), skip link and main
-// landmark (DESIGN.md "App shell"). Navigation items arrive with the pages they lead to.
+// Header (KAVACH, environment label, SMS model status, the user's name and role, sign-out),
+// navigation, skip link and main landmark (DESIGN.md "App shell"). Only pages that exist are in
+// the navigation; `/analyze` arrives with MVP-F3.
 import { useState } from "react";
-import { Outlet } from "react-router";
+import { NavLink, Outlet } from "react-router";
 
 import { Banner } from "../components/Banner";
 import { Button } from "../components/Button";
+import { ModelStatePill } from "../components/ModelStatePill";
 import type { ApiError } from "../lib/api/errors";
+import { ModelStatusProvider } from "./ModelStatusProvider";
 import { useSession } from "./SessionProvider";
+
+const NAV_ITEMS = [
+  { to: "/", label: "Overview", end: true },
+  { to: "/incidents", label: "Incidents", end: false },
+  { to: "/system", label: "System", end: false },
+] as const;
 
 const ROLE_LABELS = { viewer: "Viewer", analyst: "Analyst", admin: "Admin" } as const;
 
@@ -26,13 +35,14 @@ export function AppShell() {
   }
 
   return (
-    <>
+    <ModelStatusProvider>
       <a className="skip-link" href="#main">
         Skip to main content
       </a>
       <header className="shell-header">
         <span className="shell-brand">KAVACH</span>
         <span className="demo-label">Controlled demonstration</span>
+        <ModelStatePill />
         <span className="shell-meta">
           {user.display_name} · {ROLE_LABELS[user.role]}
         </span>
@@ -47,6 +57,18 @@ export function AppShell() {
           Sign out
         </Button>
       </header>
+      <div className="shell-body">
+      <nav className="shell-nav" aria-label="Main">
+        <ul>
+          {NAV_ITEMS.map((item) => (
+            <li key={item.to}>
+              <NavLink to={item.to} end={item.end}>
+                {item.label}
+              </NavLink>
+            </li>
+          ))}
+        </ul>
+      </nav>
       <main id="main" className="shell-main" tabIndex={-1}>
         {expiringSoon ? (
           <Banner>
@@ -61,6 +83,7 @@ export function AppShell() {
         ) : null}
         <Outlet />
       </main>
-    </>
+      </div>
+    </ModelStatusProvider>
   );
 }

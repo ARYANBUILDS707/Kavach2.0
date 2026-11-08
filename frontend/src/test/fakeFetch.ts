@@ -38,6 +38,43 @@ export const SESSION = {
   request_id: "req-session",
 } as const;
 
+/** Dispatches by path (without query). Each path takes its scripted responses in order and
+ * repeats the last one; an unscripted path fails the test loudly. */
+export function router(routes: Record<string, Scripted | Scripted[]>): Scripted {
+  const calls = new Map<string, number>();
+  return (request) => {
+    const path = request.url.split("?")[0] ?? request.url;
+    const route = routes[path];
+    if (route === undefined) throw new Error(`fakeFetch: unscripted path ${path}`);
+    const steps = Array.isArray(route) ? route : [route];
+    const index = calls.get(path) ?? 0;
+    calls.set(path, index + 1);
+    const step = steps[Math.min(index, steps.length - 1)];
+    if (step === undefined) throw new Error(`fakeFetch: no response for ${path}`);
+    return step(request);
+  };
+}
+
+export const MODELS_DISABLED = {
+  data: {
+    sms_classifier: {
+      state: "disabled",
+      detail: "disabled",
+      reason: null,
+      model_version: null,
+      score_semantics: "uncalibrated_softmax",
+      validated_on_kavach_data: false,
+    },
+  },
+  request_id: "req-models",
+} as const;
+
+export const EMPTY_PAGE = {
+  data: [],
+  page: { next_cursor: null, has_more: false },
+  request_id: "req-list",
+} as const;
+
 export function fakeFetch(...script: Scripted[]) {
   const requests: RecordedRequest[] = [];
   let index = 0;

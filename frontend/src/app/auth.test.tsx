@@ -27,10 +27,12 @@ afterEach(() => {
 describe("session restore on load", () => {
   it("restores an existing session from GET /auth/session", async () => {
     const { requests } = renderApp("/", [() => json(200, SESSION)]);
-    expect(await screen.findByRole("heading", { name: "Signed in" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     expect(screen.getByText(/Test Admin · Admin/)).toBeInTheDocument();
     expect(screen.getByText("Controlled demonstration")).toBeInTheDocument();
-    expect(requests.map((r) => r.url)).toEqual(["/api/v1/auth/session"]);
+    expect(requests.filter((r) => r.url.startsWith("/api/v1/auth/")).map((r) => r.url)).toEqual([
+      "/api/v1/auth/session",
+    ]);
   });
 
   it("sends a signed-out visitor to the login page", async () => {
@@ -40,11 +42,11 @@ describe("session restore on load", () => {
 
   it("never schedules an expiry beyond the browser timer limit (the server still enforces it)", async () => {
     renderApp("/", [() => json(200, SESSION)], () => Date.parse("2026-01-01T00:00:00Z"));
-    expect(await screen.findByRole("heading", { name: "Signed in" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
     });
-    expect(screen.getByRole("heading", { name: "Signed in" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Overview" })).toBeInTheDocument();
   });
 
   it("shows an unavailable state with a retry when the session check fails (503)", async () => {
@@ -57,7 +59,7 @@ describe("session restore on load", () => {
     ]);
     expect(await screen.findByText("Service temporarily unavailable")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Try again" }));
-    expect(await screen.findByRole("heading", { name: "Signed in" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
   });
 });
 
@@ -65,8 +67,8 @@ describe("sign in", () => {
   it("signs in, sends only the credentials, and clears the password", async () => {
     const { requests } = renderApp("/", [unauthenticated, () => json(200, SESSION)]);
     await signIn();
-    expect(await screen.findByRole("heading", { name: "Signed in" })).toBeInTheDocument();
-    const loginRequest = requests[1];
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    const loginRequest = requests.find((r) => r.url === "/api/v1/auth/login");
     expect(loginRequest?.method).toBe("POST");
     expect(JSON.parse(loginRequest?.body ?? "{}")).toEqual({
       username: "analyst.one",
@@ -78,7 +80,7 @@ describe("sign in", () => {
   it("returns to the requested page after sign-in", async () => {
     renderApp("/login?next=%2F", [unauthenticated, () => json(200, SESSION)]);
     await signIn();
-    expect(await screen.findByRole("heading", { name: "Signed in" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
   });
 
   it("shows one generic message for wrong credentials and clears the password", async () => {
@@ -115,9 +117,9 @@ describe("sign in", () => {
 describe("expiry and sign-out", () => {
   it("ends the session on any 401 SESSION_EXPIRED and returns to login with a notice", async () => {
     const { client } = renderApp("/", [() => json(200, SESSION), unauthenticated]);
-    expect(await screen.findByRole("heading", { name: "Signed in" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     await act(async () => {
-      await client.get("/api/v1/system/models").catch(() => undefined);
+      await client.get("/api/v1/auth/session").catch(() => undefined);
     });
     expect(await screen.findByText(/Your session ended/)).toBeInTheDocument();
     expect(screen.queryByText(/Test Admin/)).toBeNull();
@@ -127,7 +129,7 @@ describe("expiry and sign-out", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const deadline = Date.parse(SESSION.data.expires_at);
     renderApp("/", [() => json(200, SESSION)], () => deadline - 6 * 60 * 1000);
-    expect(await screen.findByRole("heading", { name: "Signed in" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(61 * 1000);
     });
@@ -146,7 +148,7 @@ describe("expiry and sign-out", () => {
     ]);
     await user.click(await screen.findByRole("button", { name: "Sign out" }));
     expect(await screen.findByText("You have signed out.")).toBeInTheDocument();
-    const logout = requests[1];
+    const logout = requests.find((r) => r.url === "/api/v1/auth/logout");
     expect(logout?.url).toBe("/api/v1/auth/logout");
     expect(logout?.headers["x-csrf-token"]).toBe("csrf-test-token");
   });
@@ -156,7 +158,7 @@ describe("expiry and sign-out", () => {
     renderApp("/", [() => json(200, SESSION), () => apiError(503, "DEPENDENCY_UNAVAILABLE")]);
     await user.click(await screen.findByRole("button", { name: "Sign out" }));
     expect(await screen.findByText(/session may still be active/)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Signed in" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Overview" })).toBeInTheDocument();
   });
 });
 
@@ -184,7 +186,7 @@ describe("guards and privacy", () => {
     const user = userEvent.setup();
     renderApp("/", [unauthenticated, () => json(200, SESSION), () => new Response(null, { status: 204 })]);
     await signIn();
-    await screen.findByRole("heading", { name: "Signed in" });
+    await screen.findByRole("heading", { name: "Overview" });
     await user.click(screen.getByRole("button", { name: "Sign out" }));
     await screen.findByText("You have signed out.");
     expect(window.localStorage.length).toBe(0);
@@ -195,6 +197,6 @@ describe("guards and privacy", () => {
   it("renders the not-found page for unknown routes without calling more than the session", async () => {
     const { requests } = renderApp("/does-not-exist", [unauthenticated]);
     expect(await screen.findByText("Page not found")).toBeInTheDocument();
-    expect(requests.length).toBeLessThanOrEqual(1);
+    expect(requests.filter((r) => !r.url.startsWith("/api/v1/auth/"))).toHaveLength(0);
   });
 });

@@ -202,3 +202,325 @@ a:hover {
     transition: none !important;
   }
 }
+
+/* --- MVP-F2: dashboard layout and evidence components (DESIGN.md tokens only) --- */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.shell-body {
+  max-width: var(--content-max);
+  margin: 0 auto;
+}
+
+.shell-nav ul {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2) var(--space-8);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.shell-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--target-min);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius);
+  text-decoration: none;
+}
+
+.shell-nav a[aria-current="page"] {
+  font-weight: 600;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-control);
+}
+
+@media (min-width: 1024px) {
+  .shell-body {
+    display: grid;
+    grid-template-columns: 224px minmax(0, 1fr);
+  }
+
+  .shell-nav ul {
+    flex-direction: column;
+    border-bottom: 0;
+    border-right: 1px solid var(--color-border-subtle);
+    padding: var(--space-8) var(--space-4);
+    min-height: 100%;
+  }
+
+  .shell-body .shell-main {
+    margin: 0;
+    max-width: none;
+  }
+}
+
+.page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius);
+  padding: var(--space-4) var(--space-6);
+  margin-bottom: var(--space-4);
+}
+
+.badge,
+.pill {
+  display: inline-block;
+  font-size: var(--text-meta);
+  line-height: var(--leading-meta);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border-control);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.badge-tier-unknown {
+  color: var(--color-unknown-text);
+  background: var(--color-unknown-bg);
+}
+.badge-tier-low {
+  color: var(--color-low-text);
+  background: var(--color-low-bg);
+}
+.badge-tier-medium {
+  color: var(--color-medium-text);
+  background: var(--color-medium-bg);
+}
+.badge-tier-high {
+  color: var(--color-high-text);
+  background: var(--color-high-bg);
+}
+.badge-tier-critical,
+.badge-model-unavailable,
+.pill-model-unavailable,
+.pill-model-unknown {
+  color: var(--color-critical-text);
+  background: var(--color-critical-bg);
+}
+
+.pill {
+  text-decoration: none;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
+  margin: 0 0 var(--space-4);
+}
+
+.facts dt {
+  font-weight: 600;
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.reason-code {
+  display: block;
+}
+
+.stage-list,
+.event-list,
+.summary-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.stage {
+  border-top: 1px solid var(--color-border-subtle);
+  padding-top: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+h3,
+h4 {
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  font-weight: 600;
+  margin: 0 0 var(--space-2);
+}
+
+.model-output {
+  border: 1px solid var(--color-border-control);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+  margin-top: var(--space-3);
+}
+
+.compact-table,
+.incident-table {
+  border-collapse: collapse;
+  width: 100%;
+  background: var(--color-surface);
+}
+
+.compact-table {
+  width: auto;
+  margin-bottom: var(--space-3);
+}
+
+.compact-table th,
+.compact-table td,
+.incident-table th,
+.incident-table td {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
+  vertical-align: top;
+}
+
+.incident-table tbody tr {
+  height: 48px;
+}
+
+.numeric {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.table-region {
+  overflow-x: auto;
+  margin-bottom: var(--space-4);
+}
+
+.filter-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0 var(--space-4);
+  align-items: end;
+  margin-bottom: var(--space-4);
+}
+
+.filter-bar select,
+.filter-bar input {
+  min-height: var(--target-min);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-control);
+  border-radius: var(--radius);
+  font: inherit;
+  background: var(--color-surface);
+}
+
+.filter-bar .field-hint,
+.filter-bar .field-error,
+.filter-actions {
+  grid-column: 1 / -1;
+}
+
+.filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.summary-value {
+  font-size: var(--text-section-title);
+  line-height: var(--leading-section-title);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 1024px) {
+  .detail-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    gap: var(--space-6);
+  }
+}
+
+@media (max-width: 767px) {
+  .shell-nav ul {
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+
+  .incident-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .incident-table,
+  .incident-table tbody,
+  .incident-table tr,
+  .incident-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .incident-table tr {
+    height: auto;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius);
+    margin-bottom: var(--space-3);
+    padding: var(--space-2) 0;
+  }
+
+  .incident-table td {
+    border-bottom: 0;
+  }
+
+  .incident-table td::before {
+    content: attr(data-label) ": ";
+    font-weight: 600;
+  }
+
+  .facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

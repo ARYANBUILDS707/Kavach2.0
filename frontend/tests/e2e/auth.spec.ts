@@ -21,7 +21,7 @@ async function signIn(page: Page, account: { username: string; password: string 
   await page.getByLabel("Username").fill(account.username);
   await page.getByLabel("Password").fill(account.password);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("heading", { name: "Signed in" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
 }
 
 test.describe("authentication against the real backend", () => {
@@ -40,7 +40,7 @@ test.describe("authentication against the real backend", () => {
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 
     await page.reload();
-    await expect(page.getByRole("heading", { name: "Signed in" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
 
     const storage = await page.evaluate(() => [
       window.localStorage.length,
