@@ -50,6 +50,7 @@ test("an admin submits once, sees the receipt and stored evidence, and the text 
   await page.getByRole("button", { name: "Submit" }).dblclick();
   await expect(page.getByRole("heading", { name: "Message stored" })).toBeVisible();
   expect(submissions).toHaveLength(1);
+  await expect(page.getByText("Event ID", { exact: true })).toHaveCount(1);
 
   await expect(page.getByLabel("Synthetic message text")).toHaveValue("");
   await expect(page.getByText("SMS model unavailable: stored without a model result")).toBeVisible();
@@ -79,8 +80,9 @@ test("a viewer has no submission page and the server refuses viewer, CSRF and Or
     page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Analyze SMS" }),
   ).toHaveCount(0);
   await page.goto("/analyze");
-  await expect(page.getByText("You don't have access")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "You don't have access" })).toBeVisible();
   await expect(page.getByLabel("Synthetic message text")).toHaveCount(0);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 
   const body = {
     event_id: `ui-${randomUUID()}`,

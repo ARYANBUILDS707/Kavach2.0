@@ -90,11 +90,15 @@ export function describeError(error: unknown): StateDescription {
 export function StateView({
   state,
   action,
+  pageHeading = false,
 }: {
   state: StateDescription;
   action?: ReactNode;
+  /** True when this state replaces the whole page, so its title is the page's h1. */
+  pageHeading?: boolean;
 }) {
   const isProblem = state.kind !== "loading" && state.kind !== "empty";
+  const Heading = pageHeading ? "h1" : "h2";
   return (
     <section
       className={`state-view${isProblem ? " state-view-error" : ""}`}
@@ -102,7 +106,7 @@ export function StateView({
       aria-busy={state.kind === "loading" || undefined}
       data-state={state.kind}
     >
-      <h2>{state.title}</h2>
+      <Heading>{state.title}</Heading>
       <p>{state.message}</p>
       {state.requestId ? <CopyableId label="Request ID" value={state.requestId} /> : null}
       {action ? <div>{action}</div> : null}

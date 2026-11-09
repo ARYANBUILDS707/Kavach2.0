@@ -39,6 +39,7 @@ export function RequireRole({ roles, children }: { roles: readonly Role[]; child
   if (state.status !== "signedIn" || !roles.includes(state.session.user.role)) {
     return (
       <StateView
+        pageHeading
         state={{
           kind: "forbidden",
           title: "You don't have access",

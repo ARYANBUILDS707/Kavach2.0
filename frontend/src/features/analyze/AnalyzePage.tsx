@@ -102,9 +102,9 @@ function ReceiptPanel({ receipt }: { receipt: AdminEventReceipt }) {
         </dd>
         <dt>Processing time</dt>
         <dd>{receipt.processing_ms} ms</dd>
-        <dt>Submission ID</dt>
+        <dt>Event ID</dt>
         <dd>
-          <CopyableId label="Event ID" value={receipt.external_event_id} />
+          <CopyableId value={receipt.external_event_id} />
         </dd>
         <dt>Incidents</dt>
         <dd>

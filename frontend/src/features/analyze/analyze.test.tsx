@@ -67,7 +67,9 @@ afterEach(() => {
 describe("access", () => {
   it.each(["viewer", "analyst"] as const)("a %s gets the forbidden state and no form", async (role) => {
     const { callsTo } = renderApp("/analyze", [sessionAs(role)]);
-    expect(await screen.findByText("You don't have access")).toBeInTheDocument();
+    // The forbidden state replaces the whole page, so its title is the page's only h1.
+    expect(await screen.findByRole("heading", { level: 1, name: "You don't have access" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
     expect(screen.queryByLabelText("Synthetic message text")).toBeNull();
     const nav = screen.getByRole("navigation", { name: "Main" });
     expect(within(nav).queryByRole("link", { name: "Analyze SMS" })).toBeNull();
@@ -110,6 +112,9 @@ describe("submission", () => {
     });
     await typeAndSubmit();
     expect(await screen.findByRole("heading", { name: "Message stored" })).toBeInTheDocument();
+    // One label for the identifier, not "Submission ID" plus "Event ID:" for the same value.
+    expect(screen.getAllByText("Event ID", { exact: true })).toHaveLength(1);
+    expect(screen.queryByText(/Submission ID/)).toBeNull();
     const [request] = callsTo("/api/v1/events/sms");
     expect(request?.method).toBe("POST");
     expect(request?.headers["x-csrf-token"]).toBe("csrf-test-token");
