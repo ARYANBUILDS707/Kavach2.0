@@ -1,14 +1,15 @@
-// MVP-F2 routes. `/analyze` (MVP-F3, after MVP-B4) is not registered yet, so no route or
-// navigation item implies a feature that does not exist.
+// MVP-F3 routes. `/analyze` is admin-only in the UI; the server enforces the role, CSRF,
+// Origin and source on every submission regardless (MVP-B4).
 import { Route, Routes } from "react-router";
 
+import { AnalyzePage } from "../features/analyze/AnalyzePage";
 import { LoginPage } from "../features/auth/LoginPage";
 import { IncidentDetailPage } from "../features/incidents/IncidentDetailPage";
 import { IncidentListPage } from "../features/incidents/IncidentListPage";
 import { OverviewPage } from "../features/overview/OverviewPage";
 import { SystemPage } from "../features/system/SystemPage";
 import { AppShell } from "./AppShell";
-import { RequireSession } from "./guards";
+import { RequireRole, RequireSession } from "./guards";
 import { NotFoundPage } from "./NotFoundPage";
 
 export function AppRouter() {
@@ -26,6 +27,14 @@ export function AppRouter() {
         <Route path="incidents" element={<IncidentListPage />} />
         <Route path="incidents/:incidentId" element={<IncidentDetailPage />} />
         <Route path="system" element={<SystemPage />} />
+        <Route
+          path="analyze"
+          element={
+            <RequireRole roles={["admin"]}>
+              <AnalyzePage />
+            </RequireRole>
+          }
+        />
       </Route>
       <Route path="*" element={<NotFoundPage />} />
     </Routes>

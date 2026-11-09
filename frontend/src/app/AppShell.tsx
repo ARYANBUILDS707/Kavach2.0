@@ -1,6 +1,6 @@
 // Header (KAVACH, environment label, SMS model status, the user's name and role, sign-out),
-// navigation, skip link and main landmark (DESIGN.md "App shell"). Only pages that exist are in
-// the navigation; `/analyze` arrives with MVP-F3.
+// navigation, skip link and main landmark (DESIGN.md "App shell"). Only pages the user may open
+// are in the navigation: "Analyze SMS" appears for admins only.
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router";
 
@@ -12,9 +12,10 @@ import { ModelStatusProvider } from "./ModelStatusProvider";
 import { useSession } from "./SessionProvider";
 
 const NAV_ITEMS = [
-  { to: "/", label: "Overview", end: true },
-  { to: "/incidents", label: "Incidents", end: false },
-  { to: "/system", label: "System", end: false },
+  { to: "/", label: "Overview", end: true, adminOnly: false },
+  { to: "/incidents", label: "Incidents", end: false, adminOnly: false },
+  { to: "/system", label: "System", end: false, adminOnly: false },
+  { to: "/analyze", label: "Analyze SMS", end: false, adminOnly: true },
 ] as const;
 
 const ROLE_LABELS = { viewer: "Viewer", analyst: "Analyst", admin: "Admin" } as const;
@@ -60,7 +61,7 @@ export function AppShell() {
       <div className="shell-body">
       <nav className="shell-nav" aria-label="Main">
         <ul>
-          {NAV_ITEMS.map((item) => (
+          {NAV_ITEMS.filter((item) => !item.adminOnly || user.role === "admin").map((item) => (
             <li key={item.to}>
               <NavLink to={item.to} end={item.end}>
                 {item.label}

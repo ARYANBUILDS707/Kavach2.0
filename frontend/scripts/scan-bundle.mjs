@@ -14,6 +14,7 @@ const forbidden = [
   ["absolute API origin", /https?:\/\/[^"'\s]*\/api\//],
   ["loopback backend address", /127\.0\.0\.1:8000/],
   ["test module", /src\/test\/|__tests__|fakeFetch/],
+  ["fictional test message", /CANARY/],
 ];
 
 function files(directory) {

@@ -32,3 +32,9 @@ export type Channel = IncidentEvent["channel"];
 export type IncidentListQuery = NonNullable<
   operations["list_incidents_api_v1_incidents_get"]["parameters"]["query"]
 >;
+
+export type AdminReceiptResponse = Schemas["AdminReceiptResponse"];
+export type AdminEventReceipt = Schemas["AdminEventReceipt"];
+/** Exactly the SMSEvent body the contract accepts (no extra fields: additionalProperties false). */
+export type SmsSubmission =
+  operations["ingest_sms_api_v1_events_sms_post"]["requestBody"]["content"]["application/json"];

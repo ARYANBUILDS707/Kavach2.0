@@ -110,13 +110,13 @@ describe("overview", () => {
 });
 
 describe("navigation and read budget", () => {
-  it("lists only the pages that exist and marks the current one", async () => {
+  it("lists only the pages the user may open and marks the current one", async () => {
+    // SESSION is an admin, so the admin-only "Analyze SMS" page is listed (MVP-F3).
     renderApp("/system", signedIn);
     const nav = await screen.findByRole("navigation", { name: "Main" });
     const links = within(nav).getAllByRole("link").map((link) => link.textContent);
-    expect(links).toEqual(["Overview", "Incidents", "System"]);
+    expect(links).toEqual(["Overview", "Incidents", "System", "Analyze SMS"]);
     expect(within(nav).getByRole("link", { name: "System" })).toHaveAttribute("aria-current", "page");
-    expect(screen.queryByText(/Analyze/i)).toBeNull();
   });
 
   it("shares one model-status request between the header and the page", async () => {

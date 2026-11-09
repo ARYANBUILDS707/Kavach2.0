@@ -2,12 +2,14 @@
 // cookie is the only credential.
 import type { ApiClient } from "./client";
 import type {
+  AdminReceiptResponse,
   IncidentDetailResponse,
   IncidentListQuery,
   IncidentListResponse,
   LoginRequest,
   ModelsResponse,
   SessionResponse,
+  SmsSubmission,
 } from "./types";
 
 function withSignal(signal: AbortSignal | undefined) {
@@ -52,4 +54,18 @@ export function getIncident(
     `/api/v1/incidents/${encodeURIComponent(incidentId)}`,
     withSignal(signal),
   );
+}
+
+/** MVP-B4 admin browser path: session cookie + CSRF token (the browser adds Origin). Never
+ * retried automatically; the caller reuses the same body for a manual retry. */
+export async function submitSms(
+  client: ApiClient,
+  body: SmsSubmission,
+  csrfToken: string,
+): Promise<AdminReceiptResponse> {
+  const response = await client.post<AdminReceiptResponse>("/api/v1/events/sms", body, {
+    csrfToken,
+  });
+  if (response === null) throw new Error("Submission returned no receipt");
+  return response;
 }

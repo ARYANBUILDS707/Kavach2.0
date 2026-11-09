@@ -524,3 +524,25 @@ h4 {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* --- MVP-F3: admin SMS analysis --- */
+
+.analyze-form textarea {
+  width: 100%;
+  min-height: 144px;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-control);
+  border-radius: var(--radius);
+  font: inherit;
+  background: var(--color-surface);
+  resize: vertical;
+}
+
+.analyze-form textarea[readonly] {
+  background: var(--color-unknown-bg);
+}
+
+.analyze-form .banner h2 {
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+}
