@@ -1,0 +1,60 @@
+{
+  "criteria_version": 1,
+  "registered": "2026-11-07, before any solo label exists and before the model was run on the evaluation sample",
+  "purpose": "Decide whether the pinned pretrained SMS model stays the EXPERIMENTAL evidence source for the three-day MVP, from one reviewer's labels on a small blinded sample. This never validates the model: a solo sample cannot replace the independent two-reviewer plus adjudicator label-approval gate (95% Wilson lower bound, cluster-weighted), which is unchanged and still BLOCKED.",
+  "change_rule": "These numbers may be changed only before the first label is written. The evaluation recomputes this file's SHA-256 and refuses to run if it differs from the copy recorded when the sample was prepared.",
+  "human_to_model_class": {
+    "phishing": "fraud",
+    "other_scam": "fraud",
+    "spam": "spam",
+    "benign": "legitimate"
+  },
+  "mapping_note": "A comparison mapping, not a calibration. The model's `fraud` label covers phishing and scams (its card), so both human scam labels count as fraud. `unclear` and blank rows are excluded from every matrix and counted separately.",
+  "primary_input": "The same masked display text the reviewer saw. The raw stored text is scored too and reported as a secondary table; it never decides the verdict.",
+  "pools": "Collected and synthetic data are never pooled. The verdict uses the collected pool; the synthetic pool (false alarms on legitimate transactional and OTP wording) can only lower it.",
+  "completeness": {
+    "min_labeled_share": 0.95,
+    "below_min": "INCOMPLETE: no verdict, nothing is scored",
+    "max_unclear_share": 0.10,
+    "above_max": "capped at CONDITIONAL"
+  },
+  "minimum_denominators_collected": {
+    "human_fraud": 40,
+    "human_spam": 25,
+    "human_legitimate": 25,
+    "below_min": "capped at CONDITIONAL, with the short class named"
+  },
+  "go": {
+    "all_required": {
+      "fraud_recall_wilson_lower_at_least": 0.70,
+      "fraud_precision_wilson_lower_at_least": 0.70,
+      "fraud_false_positive_rate_on_legitimate_wilson_upper_at_most": 0.10,
+      "synthetic_fraud_rate_on_benign_wilson_upper_at_most": 0.20,
+      "fraud_labeled_spam_rate_at_most": 0.30,
+      "spam_labeled_fraud_rate_at_most": 0.50,
+      "reviewer_repeat_agreement_at_least": 0.80
+    },
+    "meaning": "Keep the model as clearly labelled experimental evidence and carry it into the M4.3 comparison. Not validated, not calibrated, not production."
+  },
+  "no_go": {
+    "any_of": {
+      "fraud_recall_wilson_upper_below": 0.60,
+      "fraud_precision_wilson_upper_below": 0.60,
+      "fraud_false_positive_rate_on_legitimate_wilson_lower_above": 0.20,
+      "synthetic_fraud_rate_on_benign_wilson_lower_above": 0.30
+    },
+    "meaning": "Do not present this model's output as a fraud indicator in the MVP. Fall back to the unavailable state and the TF-IDF baseline plan."
+  },
+  "conditional": {
+    "meaning": "Neither GO nor NO-GO: use only as experimental evidence with the named shortfalls stated next to it, and collect more labels before relying on it.",
+    "applies_when": "No NO-GO rule fires, and any GO rule fails or a cap applies."
+  },
+  "interval": "Wilson score interval, 95%. Rates are one-versus-rest on the mapped classes. The unit is one message per campaign cluster, so rates are not prevalence estimates.",
+  "reviewer_repeat_agreement": "The sheet re-presents a few messages under new item IDs. Agreement is the share of such pairs where both labels exist and match. Fewer than 5 usable pairs counts as not met (cap at CONDITIONAL).",
+  "not_claimed": [
+    "production accuracy",
+    "calibrated probabilities",
+    "performance on live traffic, other languages, or other scam types",
+    "agreement between independent reviewers"
+  ]
+}

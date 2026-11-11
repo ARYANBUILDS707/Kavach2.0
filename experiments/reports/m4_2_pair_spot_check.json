@@ -1,0 +1,87 @@
+{
+  "criteria": {
+    "generic": "Different sentences that only share boilerplate wording or an everyday phrase.",
+    "templated": "Same message frame: the differences are limited to slot values (organisation or brand names, amounts, codes, URLs, dates), spelling or typing variation, fragments of the same message, or a short prefix or suffix.",
+    "unclear": "Too short or ambiguous to tell."
+  },
+  "findings": [
+    "Of the 845 IMC-involved cross-split pairs at Jaccard >= 0.6, all 33 hand-checked were templated campaign variants (Wilson 95% lower bound 0.896), so at least ~757 (87%) and probably ~98% are templated.",
+    "The 25 UCI-UCI pairs are mostly short conversational messages sharing an everyday phrase (4 of 11 hand-checked were templated spam variants).",
+    "The same campaign families (for example 'update your PAN card, account will be blocked', electricity disconnection, Paytm KYC, SIM verification) continue below 0.6: 30 of 30 pairs in the 0.5-0.6 band and 24 of 24 in the 0.4-0.5 band were templated.",
+    "Sequence ratio, word-trigram overlap and character Jaccard separate templated from generic pairs only weakly (templated pairs span sequence ratios 0.60-0.94; the generic ones scored 0.78-0.85), so no similarity score is used as the classifier.",
+    "Below the v2 threshold the share of templated pairs falls sharply: 10 of 24 v2 cross-split pairs in the 0.3-0.4 band were templated (Wilson 95% 0.245-0.612), against 54 of 54 in the 0.4-0.6 bands. The rest were short chat, unrelated notices from the same brand, or one-time codes."
+  ],
+  "limits": [
+    "A small sample judged by one reader; the result is strong for IMC campaign variants and weak for UCI.",
+    "Test-involved pairs (453 of 870) were not read; the finding is extended to them because the pairs come from the same generating process.",
+    "Below Jaccard 0.3 nothing was examined."
+  ],
+  "provenance": {
+    "blind_to_similarity_metrics_when_judging": true,
+    "is_a_human_annotation": false,
+    "judged_by": "the AI assistant (Claude) during the M4.2 data-quality review, 5 November 2026",
+    "note": "These are quality-review judgments about whether two messages are variants of the same message frame. They say nothing about whether any message is phishing, and they are not used for labels, training or model selection.",
+    "part_of_the_label_audit": false,
+    "test_split_text_was_never_displayed": true
+  },
+  "samples": {
+    "all_uci_uci_train_validation_pairs": {
+      "generic": 6,
+      "pairs": 11,
+      "templated": 4,
+      "unclear": 1
+    },
+    "jaccard_0.4_to_0.5_train_validation": {
+      "generic": 0,
+      "pairs": 24,
+      "reproduce": "jaccard_band_sample(..., (0.4, 0.5), seed=20261108, size=24)",
+      "templated": 24,
+      "unclear": 0,
+      "wilson_95": [
+        0.862,
+        1.0
+      ]
+    },
+    "jaccard_0.5_to_0.6_train_validation": {
+      "generic": 0,
+      "pairs": 30,
+      "reproduce": "jaccard_band_sample(..., (0.5, 0.6), seed=20261107, size=30)",
+      "templated": 30,
+      "unclear": 0,
+      "wilson_95": [
+        0.886,
+        1.0
+      ]
+    },
+    "train_validation_by_sequence_ratio_band": {
+      "generic": 2,
+      "imc_pairs": {
+        "judged": 33,
+        "templated": 33,
+        "wilson_95": [
+          0.896,
+          1.0
+        ]
+      },
+      "pairs": 36,
+      "reproduce": "python -m sms_prep pairs --sample 9  (seed 20261106)",
+      "templated": 33,
+      "uci_pairs": {
+        "judged": 3,
+        "templated": 0
+      },
+      "unclear": 1
+    },
+    "v2_jaccard_0.3_to_0.4_train_validation": {
+      "generic": 12,
+      "pairs": 24,
+      "reproduce": "on sms_split.v2 assignments: cross_split_pairs(items, 0.3) then jaccard_band_sample(..., (0.3, 0.4), seed=20261109, size=24)",
+      "templated": 10,
+      "unclear": 2,
+      "wilson_95_templated": [
+        0.245,
+        0.612
+      ]
+    }
+  }
+}

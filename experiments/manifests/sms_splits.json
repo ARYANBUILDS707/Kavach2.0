@@ -1,0 +1,19 @@
+{
+  "rule": "A split version is never edited. The test split of an adopted version is read only through HeldOutGuard; once a model has been evaluated on it, it cannot be replaced.",
+  "versions": [
+    {
+      "assignments_sha256": "ef452e8c219a20f3f02248d94e919b5454f0dd3a4418f7c8d7db879a6099ba0a",
+      "meta": "sms_split.v1.meta.json",
+      "status": "frozen",
+      "threshold": 0.7,
+      "version": 1
+    },
+    {
+      "assignments_sha256": "b5b5d9e958aee7589b3dadf731b826e3f7109a58567b8555285975b50ec4966b",
+      "meta": "sms_split.v2.meta.json",
+      "status": "proposed",
+      "threshold": 0.4,
+      "version": 2
+    }
+  ]
+}

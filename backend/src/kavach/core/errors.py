@@ -6,6 +6,19 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
 
+class ApiError(Exception):
+    """An expected failure with a documented error code and a message that is safe to return."""
+
+    def __init__(
+        self, status: int, code: str, message: str, headers: dict[str, str] | None = None
+    ) -> None:
+        super().__init__(code)
+        self.status = status
+        self.code = code
+        self.message = message
+        self.headers = headers or {}
+
+
 def error_response(request: Request, status: int, code: str, message: str) -> JSONResponse:
     request_id = str(request.state.request_id)
     return JSONResponse(
@@ -30,6 +43,12 @@ async def http_error(request: Request, exc: HTTPException) -> JSONResponse:
     )
     if exc.status_code == 405 and exc.headers and "Allow" in exc.headers:
         response.headers["Allow"] = exc.headers["Allow"]
+    return response
+
+
+async def api_error(request: Request, exc: ApiError) -> JSONResponse:
+    response = error_response(request, exc.status, exc.code, exc.message)
+    response.headers.update(exc.headers)
     return response
 
 

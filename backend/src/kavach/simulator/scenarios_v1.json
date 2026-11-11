@@ -1,0 +1,262 @@
+{
+  "catalog_version": 1,
+  "synthetic": true,
+  "source": "simulator",
+  "scenarios": [
+    {
+      "id": "S01",
+      "version": 1,
+      "name": "Legitimate SMS",
+      "description": "A single benign one-time-code SMS from a fictional bank to one synthetic subscriber.",
+      "expected_summary": "Stored once (201); SMS analysis unavailable because no model is deployed; indexed as a candidate; no conclusion.",
+      "truth": "benign",
+      "provisional": [],
+      "steps": [
+        {
+          "action": "submit", "step": "sms", "kind": "sms", "subscriber": "alpha", "offset_seconds": -60,
+          "text": "[SIMULATED] Your KAVACH demo bank one-time code is 482913. It expires in 10 minutes. Never share it with anyone, including our staff.",
+          "sender_id": "SIMBANK", "truth": "legitimate_sms",
+          "expect": {"status": 201, "indexed": true, "late": false}
+        }
+      ],
+      "candidate_pairs": []
+    },
+    {
+      "id": "S02",
+      "version": 1,
+      "name": "Phishing SMS",
+      "description": "A single synthetic credential-phishing SMS pointing at a reserved .invalid domain.",
+      "expected_summary": "Stored once (201); the phishing label is simulation-only ground truth, not a model output; analysis unavailable.",
+      "truth": "fraudulent",
+      "provisional": [],
+      "steps": [
+        {
+          "action": "submit", "step": "sms", "kind": "sms", "subscriber": "alpha", "offset_seconds": -60,
+          "text": "[SIMULATED] Your account will be suspended today. Confirm your card details at http://verify-account.example.invalid/login to avoid closure.",
+          "sender_id": "SIMALERT", "truth": "phishing_sms",
+          "expect": {"status": 201, "indexed": true, "late": false}
+        }
+      ],
+      "candidate_pairs": []
+    },
+    {
+      "id": "S03",
+      "version": 1,
+      "name": "Legitimate call",
+      "description": "A metadata-only call (no audio) that the scenario author labels benign.",
+      "expected_summary": "Stored once (201); transcription, voice-intent and synthesis are unavailable (no audio, no models).",
+      "truth": "benign",
+      "provisional": [],
+      "steps": [
+        {
+          "action": "submit", "step": "call", "kind": "call", "subscriber": "alpha", "offset_seconds": -60,
+          "truth": "legitimate_call",
+          "expect": {"status": 201, "indexed": true, "late": false}
+        }
+      ],
+      "candidate_pairs": []
+    },
+    {
+      "id": "S04",
+      "version": 1,
+      "name": "Scam-intent call",
+      "description": "A metadata-only call that the scenario author labels as scam intent. Without audio and models nothing distinguishes it from S03 at ingestion.",
+      "expected_summary": "Identical handling to S03: stored, all voice stages unavailable, no risk conclusion.",
+      "truth": "fraudulent",
+      "provisional": [],
+      "steps": [
+        {
+          "action": "submit", "step": "call", "kind": "call", "subscriber": "alpha", "offset_seconds": -60,
+          "truth": "scam_intent_call",
+          "expect": {"status": 201, "indexed": true, "late": false}
+        }
+      ],
+      "candidate_pairs": []
+    },
+    {
+      "id": "S05",
+      "version": 1,
+      "name": "Coordinated SMS followed by call",
+      "description": "A phishing SMS and, five minutes later, a scam-intent call to the same synthetic subscriber.",
+      "expected_summary": "Two standalone incidents; both events share one candidate set within the 30-minute window. Candidate proximity is not correlation and establishes no fraud.",
+      "truth": "coordinated_fraud_journey",
+      "provisional": ["D05"],
+      "steps": [
+        {
+          "action": "submit", "step": "sms", "kind": "sms", "subscriber": "alpha", "offset_seconds": -360,
+          "text": "[SIMULATED] Delivery failed. Pay the redelivery fee at http://parcel-fee.example.invalid/pay within 2 hours or the parcel is returned.",
+          "sender_id": "SIMPOST", "truth": "phishing_sms",
+          "expect": {"status": 201, "indexed": true, "late": false}
+        },
+        {
+          "action": "submit", "step": "call", "kind": "call", "subscriber": "alpha", "offset_seconds": -60,
+          "truth": "scam_intent_call",
+          "expect": {"status": 201, "indexed": true, "late": false}
+        }
+      ],
+      "candidate_pairs": [{"between": ["sms", "call"], "linked": true}]
+    },
+    {
+      "id": "S06",
+      "version": 1,
+      "name": "Unrelated events, different subscribers",
+      "description": "A phishing SMS to one synthetic subscriber and a benign call to another, two minutes apart.",
+      "expected_summary": "Two standalone incidents in separate candidate sets; timing alone never links different subscribers.",
+      "truth": "unrelated_events",
+      "provisional": ["D05"],
+      "steps": [
+        {
+          "action": "submit", "step": "sms", "kind": "sms", "subscriber": "alpha", "offset_seconds": -300,
+          "text": "[SIMULATED] You have won a reward voucher. Claim it at http://reward-claim.example.invalid/now before midnight.",
+          "truth": "phishing_sms",
+          "expect": {"status": 201, "indexed": true, "late": false}
+        },
+        {
+          "action": "submit", "step": "call", "kind": "call", "subscriber": "bravo", "offset_seconds": -180,
+          "truth": "legitimate_call",
+          "expect": {"status": 201, "indexed": true, "late": false}
+        }
+      ],
+      "candidate_pairs": [{"between": ["sms", "call"], "linked": false}]
+    },
+    {
+      "id": "S07",
+      "version": 1,
+      "name": "Out-of-order delivery",
+      "description": "The call (event time two minutes ago) is delivered before the SMS that preceded it (event time eight minutes ago, eight minutes late).",
+      "expected_summary": "Both stored; candidates are ordered by event time, not arrival, so the pair is found regardless of delivery order. The SMS is within the provisional 10-minute lateness allowance.",
+      "truth": "coordinated_fraud_journey",
+      "provisional": ["D05"],
+      "steps": [
+        {
+          "action": "submit", "step": "call", "kind": "call", "subscriber": "alpha", "offset_seconds": -120,
+          "truth": "scam_intent_call",
+          "expect": {"status": 201, "indexed": true, "late": false}
+        },
+        {
+          "action": "submit", "step": "sms", "kind": "sms", "subscriber": "alpha", "offset_seconds": -480,
+          "text": "[SIMULATED] Your electricity connection will be cut tonight. Settle the bill at http://power-bill.example.invalid/settle immediately.",
+          "truth": "phishing_sms",
+          "expect": {"status": 201, "indexed": true, "late": false}
+        }
+      ],
+      "candidate_pairs": [{"between": ["call", "sms"], "linked": true}]
+    },
+    {
+      "id": "S08",
+      "version": 1,
+      "name": "Identical duplicate replay",
+      "description": "The same SMS is submitted twice with the same event ID and identical payload, as a client retry after a lost response would.",
+      "expected_summary": "First 201, then 200 with replayed=true and the original receipt; one event row, one candidate member.",
+      "truth": "protocol_check",
+      "provisional": [],
+      "steps": [
+        {
+          "action": "submit", "step": "sms", "kind": "sms", "subscriber": "alpha", "offset_seconds": -60,
+          "text": "[SIMULATED] Your monthly statement is ready to view in the KAVACH demo bank app.",
+          "truth": "legitimate_sms",
+          "expect": {"status": 201, "indexed": true, "late": false}
+        },
+        {"action": "replay", "step": "retry", "of": "sms", "expect": {"status": 200}}
+      ],
+      "candidate_pairs": []
+    },
+    {
+      "id": "S09",
+      "version": 1,
+      "name": "Conflicting replay with the same event ID",
+      "description": "An SMS is submitted, then its event ID is reused with different text.",
+      "expected_summary": "First 201, then 409 EVENT_ID_CONFLICT; the original event and receipt are unchanged.",
+      "truth": "protocol_check",
+      "provisional": [],
+      "steps": [
+        {
+          "action": "submit", "step": "sms", "kind": "sms", "subscriber": "alpha", "offset_seconds": -60,
+          "text": "[SIMULATED] Your appointment is confirmed for tomorrow at the demo clinic.",
+          "truth": "legitimate_sms",
+          "expect": {"status": 201, "indexed": true, "late": false}
+        },
+        {
+          "action": "conflict", "step": "altered", "of": "sms",
+          "text": "[SIMULATED] Your appointment is cancelled. Rebook at http://clinic-rebook.example.invalid/pay with a deposit.",
+          "expect": {"status": 409, "code": "EVENT_ID_CONFLICT"}
+        }
+      ],
+      "candidate_pairs": []
+    },
+    {
+      "id": "S10",
+      "version": 1,
+      "name": "Delayed events and window boundaries",
+      "description": "Events placed around the provisional D05 limits: one older than the 40-minute candidate horizon, one late SMS 36 minutes old, and two calls 32 and 28 minutes after it.",
+      "expected_summary": "All four stored. The 45-minute-old SMS is never indexed; the 36-minute-old SMS is indexed but late; it is a candidate for the call 28 minutes later, not for the one 32 minutes later.",
+      "truth": "protocol_check",
+      "provisional": ["D05"],
+      "steps": [
+        {
+          "action": "submit", "step": "sms_stale", "kind": "sms", "subscriber": "bravo", "offset_seconds": -2700,
+          "text": "[SIMULATED] Reminder: your library books are due back this week.",
+          "truth": "legitimate_sms",
+          "expect": {"status": 201, "indexed": false, "late": true}
+        },
+        {
+          "action": "submit", "step": "sms_early", "kind": "sms", "subscriber": "alpha", "offset_seconds": -2160,
+          "text": "[SIMULATED] Tax refund pending. Submit your bank login at http://refund-portal.example.invalid/claim today.",
+          "truth": "phishing_sms",
+          "expect": {"status": 201, "indexed": true, "late": true}
+        },
+        {
+          "action": "submit", "step": "call_outside", "kind": "call", "subscriber": "alpha", "offset_seconds": -240,
+          "truth": "scam_intent_call",
+          "expect": {"status": 201, "indexed": true, "late": false}
+        },
+        {
+          "action": "submit", "step": "call_inside", "kind": "call", "subscriber": "alpha", "offset_seconds": -480,
+          "truth": "scam_intent_call",
+          "expect": {"status": 201, "indexed": true, "late": false}
+        }
+      ],
+      "candidate_pairs": [
+        {"between": ["sms_early", "call_outside"], "linked": false},
+        {"between": ["sms_early", "call_inside"], "linked": true}
+      ]
+    },
+    {
+      "id": "S11",
+      "version": 1,
+      "name": "Forged source rejected",
+      "description": "An SMS claims a source other than the one the simulator key is scoped to.",
+      "expected_summary": "403 FORBIDDEN; nothing stored or indexed.",
+      "truth": "protocol_check",
+      "provisional": [],
+      "steps": [
+        {
+          "action": "submit", "step": "sms", "kind": "sms", "subscriber": "alpha", "offset_seconds": -60,
+          "source": "partner-feed",
+          "text": "[SIMULATED] This message claims to come from a partner feed.",
+          "truth": "legitimate_sms",
+          "expect": {"status": 403, "code": "FORBIDDEN"}
+        }
+      ],
+      "candidate_pairs": []
+    },
+    {
+      "id": "S12",
+      "version": 1,
+      "name": "Unapproved audio reference rejected",
+      "description": "A call names an audio sample that is not in an approved sample manifest (none is approved yet).",
+      "expected_summary": "422 UNKNOWN_AUDIO_REFERENCE; nothing stored or indexed; no audio is read.",
+      "truth": "protocol_check",
+      "provisional": [],
+      "steps": [
+        {
+          "action": "submit", "step": "call", "kind": "call", "subscriber": "alpha", "offset_seconds": -60,
+          "audio_reference": "sim_sample_unapproved",
+          "truth": "legitimate_call",
+          "expect": {"status": 422, "code": "UNKNOWN_AUDIO_REFERENCE"}
+        }
+      ],
+      "candidate_pairs": []
+    }
+  ]
+}

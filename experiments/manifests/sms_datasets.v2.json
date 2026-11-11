@@ -1,0 +1,597 @@
+{
+  "manifest_version": 2,
+  "created": "2026-11-05",
+  "task": {
+    "id": "sms_phishing_risk",
+    "name": "SMS phishing (smishing) risk",
+    "definition": "Whether an SMS tries to make the recipient click, call, reply, pay or reveal credentials or personal data under false pretences. This is not generic spam: unsolicited marketing, prize-draw spam and nuisance messages are labelled spam and kept distinct. The scored label is phishing.",
+    "target_labels": [
+      "benign",
+      "spam",
+      "phishing",
+      "needs_review",
+      "excluded"
+    ],
+    "scored_label": "phishing",
+    "languages_first": [
+      "english"
+    ]
+  },
+  "policy": {
+    "raw_data_in_git": false,
+    "raw_text_in_logs_or_reports": false,
+    "storage": "Raw files live only in an operator-controlled directory outside the repository (the ignored data/ directory or another path), are acquired by the documented procedure, and are verified against the SHA-256 values below before use. Nothing in this manifest is a local path.",
+    "reports": "Logs, reports and error analyses show counts, record identifiers and fingerprints, never message text. Manual review happens on the operator's machine with phone numbers and account-like digits masked.",
+    "held_out_set": "The held-out test set is assigned once from the approved collected data, recorded as a split manifest with the SHA-256 of its full assignment file, and never used for training, tuning, threshold selection or feature work. It is evaluated once per final candidate through the access guard, which logs each use. Changing the data, labels or split creates a new split version. Synthetic data is never part of the real-world test set.",
+    "simulator_exclusion": {
+      "catalog": "backend/src/kavach/simulator/scenarios_v1.json",
+      "catalog_version": 1,
+      "rule": "No simulator S01-S12 message may appear in training, validation or held-out data. The pipeline compares normalized fingerprints with experiments/dataset_governance/fingerprints.simulator_overlap and fails on any match."
+    },
+    "real_world_test_excludes_synthetic": true,
+    "promotion_gate": {
+      "statistic": "wilson_lower_bound",
+      "confidence": 0.95,
+      "minimum": 0.95,
+      "reviewers_per_item": 2,
+      "target_sample_per_class": 200,
+      "status_when_incomplete": "BLOCKED",
+      "note": "An IMC class is promoted to phishing only when its independently reviewed, adjudicated positive-label precision has a 95% Wilson lower confidence bound of at least 0.95. Classes that fail stay excluded or flagged for further review. With every sampled item correct, 73 items are the least that can reach the bound, so smaller classes cannot be promoted."
+    }
+  },
+  "datasets": [
+    {
+      "id": "imc25_smishing_reports",
+      "title": "Labeled Smishing Dataset for IMC 2025 paper - Fishing for Smishing",
+      "creators": [
+        "Sharad Agarwal",
+        "Antonis Papasavva",
+        "Guillermo Suarez-Tangil",
+        "Marie Vasek"
+      ],
+      "published": "2025-09-12",
+      "version": "GitHub main at commit a6175560b57387199871e51fbef6bc523d2516b4 (latest commit 2025-09-12)",
+      "doi": "10.1145/3730567.3764431",
+      "source_url": "https://github.com/reportsmishing/Smishing-Dataset-IMC25",
+      "download_url": "https://raw.githubusercontent.com/reportsmishing/Smishing-Dataset-IMC25/a6175560b57387199871e51fbef6bc523d2516b4/dataset/final_dataset_output.csv",
+      "citation": "Agarwal, S., Papasavva, A., Suarez-Tangil, G., Vasek, M. Fishing for Smishing: Understanding SMS Phishing Infrastructure and Strategies by Mining Public User Reports. Proceedings of the 2025 ACM Internet Measurement Conference (IMC '25). DOI 10.1145/3730567.3764431 (the DOI is the paper's; the dataset has none).",
+      "retrieved_on": "2026-11-04",
+      "files": [
+        {
+          "name": "final_dataset_output.csv",
+          "sha256": "1bbd1e9e82c3ea023112207b80da268a5c4a07d2353c2b0898360ab037fa9a64",
+          "size_bytes": 9462365,
+          "rows": 33869,
+          "note": "Columns: time, sender_id, telephone_number_type, original_network_name, original_network_country, text, translation, language, url_shortener, named_entity, scam_type, lure_principles. time_day.csv exists in the repository and was not acquired.",
+          "path_in_download": "final_dataset_output.csv"
+        }
+      ],
+      "license": {
+        "spdx": "CC-BY-4.0",
+        "evidence_url": "https://github.com/reportsmishing/Smishing-Dataset-IMC25",
+        "caveats": [
+          "The README states CC BY 4.0 and the repository has a LICENSE.txt that was not read. The grant covers the compilers' dataset; the message text was posted by third parties on public forums.",
+          "Text was extracted from user-posted screenshots by OpenAI's vision model (paper, appendix D.1), so it can contain recognition errors."
+        ]
+      },
+      "origin": "user_reported_forum",
+      "label_provenance": "llm_assigned_validated_sample",
+      "languages": [
+        "english",
+        "spanish",
+        "dutch",
+        "french",
+        "german",
+        "italian",
+        "indonesian",
+        "portuguese",
+        "japanese",
+        "hindi",
+        "other"
+      ],
+      "source_labels": {
+        "banking": 15277,
+        "others": 6922,
+        "delivery": 3810,
+        "government": 3248,
+        "telecom": 2226,
+        "spam": 1710,
+        "wrong number": 332,
+        "hey mum/dad": 263,
+        "(empty)": 81
+      },
+      "label_mapping": {
+        "banking": {
+          "target": "needs_review",
+          "rule": "Candidate phishing. scam_type was assigned by GPT-4o and checked by humans on 150 English texts only (kappa 0.93 for scam type), and forum reports are unverified. Promote to phishing only after the stratified manual precision audit passes for this class.",
+          "review_plan": "M4.2 blinded double review of a stratified sample; promoted to phishing only if the adjudicated precision's 95% Wilson lower bound is at least 0.95 (decision 6)."
+        },
+        "delivery": {
+          "target": "needs_review",
+          "rule": "Candidate phishing (fake parcel or redelivery-fee lures). Same label provenance as banking.",
+          "review_plan": "M4.2 blinded double review of a stratified sample; promoted to phishing only if the adjudicated precision's 95% Wilson lower bound is at least 0.95 (decision 6)."
+        },
+        "government": {
+          "target": "needs_review",
+          "rule": "Candidate phishing (fake tax, fine or benefit notices). Same label provenance as banking.",
+          "review_plan": "M4.2 blinded double review of a stratified sample; promoted to phishing only if the adjudicated precision's 95% Wilson lower bound is at least 0.95 (decision 6)."
+        },
+        "telecom": {
+          "target": "needs_review",
+          "rule": "Candidate phishing (carrier impersonation). Same label provenance as banking.",
+          "review_plan": "M4.2 blinded double review of a stratified sample; promoted to phishing only if the adjudicated precision's 95% Wilson lower bound is at least 0.95 (decision 6)."
+        },
+        "wrong number": {
+          "target": "needs_review",
+          "rule": "Social-engineering fraud, not credential phishing. By owner decision 5 it never counts as phishing automatically; it stays needs_review and joins the audit only to measure what it contains.",
+          "review_plan": "Reviewed in the M4.2 audit under the same gate; excluded unless its audited precision clears it."
+        },
+        "hey mum/dad": {
+          "target": "needs_review",
+          "rule": "Impersonation of a relative to request money. By owner decision 5 it never counts as phishing automatically; it stays needs_review.",
+          "review_plan": "Reviewed in the M4.2 audit under the same gate. Its English pool is too small to reach the gate, so it stays excluded."
+        },
+        "others": {
+          "target": "needs_review",
+          "rule": "Heterogeneous residual category; may include benign messages that reporters misjudged.",
+          "review_plan": "Same review and gate; it stays excluded unless it clears them."
+        },
+        "spam": {
+          "target": "spam",
+          "rule": "Reported unsolicited messages the labeler judged spam. Kept as the spam class and never counted as phishing."
+        },
+        "(empty)": {
+          "target": "excluded",
+          "rule": "No scam_type; unusable as supervised data."
+        }
+      },
+      "observed": {
+        "rows": 33869,
+        "rows_english": 22078,
+        "rows_non_english": 11791,
+        "unique_normalized_texts": 23567,
+        "unique_normalized_texts_english": 14875,
+        "exact_duplicate_rows": 8540,
+        "normalized_duplicate_rows": 10302,
+        "english_unique_texts_with_conflicting_scam_type": 157,
+        "english_rows_with_url_placeholder": 9401,
+        "overlap_unique_with_uci": 0,
+        "overlap_unique_with_mishra": 1,
+        "overlap_unique_with_munoz": 0,
+        "rows_phone_like_text": 427,
+        "rows_email_like_text": 6
+      },
+      "privacy": {
+        "risk": "medium",
+        "notes": [
+          "Per the paper's ethics appendix, sender IDs are released only as a type (phone number, email or alphanumeric) and the university ethics committee approved the study.",
+          "Text can still hold names, partial numbers or account fragments, typed by scammers or left by reporters (427 phone-like and 6 email-like strings among 33,869 texts).",
+          "URLs are replaced by a <URL> placeholder in about 43% of English rows, so URL features are unavailable from this source."
+        ],
+        "required_handling": [
+          "Use the text column only; never load sender, network or telephone columns into features, logs or artifacts.",
+          "Normalize every URL and URL placeholder to one token in all sources before feature extraction.",
+          "Keep raw rows out of Git, logs and reports."
+        ]
+      },
+      "status": "candidate_primary",
+      "permitted_use": [
+        "training",
+        "validation",
+        "held_out_evaluation"
+      ],
+      "limitations": [
+        "Positives only: it contains no benign messages, so it needs negatives from other sources, which creates source and era confounding (coverage gap G2).",
+        "Non-English rows (11,791) stay out of the M4 baseline and form an experimental pool.",
+        "All labels come from an LLM validated on 150 English texts; precision per class is unmeasured until the M4.2 audit.",
+        "Text extracted by a vision LLM may differ from the original SMS."
+      ],
+      "approval": {
+        "decision": "approved",
+        "reference": "Owner decisions of 5 November 2026 (M4.2 instruction), decision 1: provisional phishing positives, subject to manual label audits"
+      },
+      "allowed_download_hosts": [
+        "raw.githubusercontent.com"
+      ]
+    },
+    {
+      "id": "uci_sms_spam_collection",
+      "title": "SMS Spam Collection",
+      "creators": [
+        "Tiago A. Almeida",
+        "Jose Maria Gomez Hidalgo"
+      ],
+      "published": "2012-06-21",
+      "version": "v.1 (5,574 messages)",
+      "doi": "10.24432/C5CC84",
+      "source_url": "https://archive.ics.uci.edu/dataset/228/sms+spam+collection",
+      "download_url": "https://archive.ics.uci.edu/static/public/228/sms+spam+collection.zip",
+      "citation": "Almeida, T. & Hidalgo, J. (2011). SMS Spam Collection [Dataset]. UCI Machine Learning Repository. https://doi.org/10.24432/C5CC84. Introductory paper: Almeida, Gomez Hidalgo, Yamakami (2011), Contributions to the study of SMS spam filtering: new collection and results, ACM DocEng.",
+      "retrieved_on": "2026-11-04",
+      "files": [
+        {
+          "name": "SMSSpamCollection",
+          "sha256": "7d039a24a6083ed9ef0f806ebad56bbb976e3aeb8de05669173bfdc4996c239d",
+          "size_bytes": 477907,
+          "rows": 5574,
+          "note": "One message per line: label, tab, text.",
+          "path_in_download": "SMSSpamCollection"
+        },
+        {
+          "name": "readme",
+          "sha256": "8753cd2d3cab68f80c8257851b8c2037778c267f55accb6fd1b5a2e32d36a84e",
+          "size_bytes": 5868,
+          "note": "Bundled terms and compilation notes.",
+          "path_in_download": "readme"
+        }
+      ],
+      "license": {
+        "spdx": "CC-BY-4.0",
+        "evidence_url": "https://archive.ics.uci.edu/dataset/228/sms+spam+collection",
+        "caveats": [
+          "The UCI page states CC BY 4.0. The bundled readme states older terms: free use with no limitations except the authors' copyright, a request to cite the paper and web page, and a request to email the authors on use, with no warranty. Both are recorded; follow the citation request."
+        ]
+      },
+      "origin": "human_collected",
+      "label_provenance": "source_defined",
+      "languages": [
+        "english"
+      ],
+      "source_labels": {
+        "ham": 4827,
+        "spam": 747
+      },
+      "label_mapping": {
+        "ham": {
+          "target": "benign",
+          "rule": "Legitimate personal messages: volunteer messages from a Singapore university corpus, a UK thesis and an earlier corpus. Not transactional SMS."
+        },
+        "spam": {
+          "target": "spam",
+          "rule": "Unsolicited UK-forum spam (mostly premium-rate and prize offers). Never mapped to phishing automatically; spam rows with a URL or a request for personal data are sampled in the M4.2 audit."
+        }
+      },
+      "observed": {
+        "rows": 5574,
+        "unique_normalized_texts": 5099,
+        "exact_duplicate_rows": 403,
+        "normalized_duplicate_rows": 475,
+        "rows_non_ascii": 483,
+        "rows_phone_like_text": 440,
+        "rows_email_like_text": 7,
+        "rows_url_like_text": 153,
+        "overlap_unique_with_mishra": 4924,
+        "overlap_unique_with_munoz": 3469
+      },
+      "privacy": {
+        "risk": "medium",
+        "notes": [
+          "Ham messages are real private conversations from volunteers who knew they would be published, so they can hold names and places.",
+          "440 texts match a phone-like pattern, almost all spam (premium-rate and callback numbers); 2 ham texts do."
+        ],
+        "required_handling": [
+          "Mask digit runs, emails and URLs before any human inspection or error analysis.",
+          "Keep raw rows out of Git, logs and reports."
+        ]
+      },
+      "status": "candidate_primary",
+      "permitted_use": [
+        "training",
+        "validation",
+        "held_out_evaluation"
+      ],
+      "limitations": [
+        "Collected 2003-2011, mostly UK and Singapore English; not representative of 2024-2026 smishing or of transactional SMS.",
+        "No modern benign OTP, bank-alert or delivery messages (coverage gap G1).",
+        "Spam here is premium-rate and prize spam, not phishing."
+      ],
+      "approval": {
+        "decision": "approved",
+        "reference": "Owner decisions of 5 November 2026 (M4.2 instruction), decision 2: primary benign ham source; spam kept separate"
+      },
+      "allowed_download_hosts": [
+        "archive.ics.uci.edu"
+      ]
+    },
+    {
+      "id": "mishra_soni_2022",
+      "title": "SMS PHISHING DATASET FOR MACHINE LEARNING AND PATTERN RECOGNITION",
+      "creators": [
+        "Sandhya Mishra",
+        "Devpriya Soni"
+      ],
+      "published": "2022-06-20",
+      "version": "1",
+      "doi": "10.17632/f45bkkt8pr.1",
+      "source_url": "https://data.mendeley.com/datasets/f45bkkt8pr/1",
+      "download_url": "https://data.mendeley.com/public-api/zip/f45bkkt8pr/download/1",
+      "citation": "Mishra, S. & Soni, D. (2022). SMS PHISHING DATASET FOR MACHINE LEARNING AND PATTERN RECOGNITION, Mendeley Data, V1, doi:10.17632/f45bkkt8pr.1. The record lists Mishra & Soni (2020, 2021, 2022) papers and thanks T. A. Almeida for the messages.",
+      "retrieved_on": "2026-11-04",
+      "files": [
+        {
+          "name": "Dataset_5971.csv",
+          "sha256": "649844f1c62a6b27e145eaf17a65f7010c56c390e11a794ea8329993a05ba71e",
+          "size_bytes": 595987,
+          "rows": 5971,
+          "path_in_download": "SMS PHISHING DATASET FOR MACHINE LEARNING AND PATTERN RECOGNITION/Dataset_5971.zip!Dataset_5971.csv",
+          "note": "Columns: LABEL, TEXT, URL, EMAIL, PHONE. Nested inside Dataset_5971.zip."
+        },
+        {
+          "name": "Dataset_5971.zip",
+          "sha256": "9bbf3188fdad81495d8e82825648b9b63b53fc86841a3d26c02629990b233cc3",
+          "size_bytes": 244698,
+          "path_in_download": "SMS PHISHING DATASET FOR MACHINE LEARNING AND PATTERN RECOGNITION/Dataset_5971.zip",
+          "extract": false,
+          "note": "Inner archive; verified in memory."
+        },
+        {
+          "name": "data_conversion.pdf",
+          "sha256": "cb1ef9a00ede15b5ca6a133443dd877c6f4eff937067d72613472faad3e5cc3c",
+          "size_bytes": 39037,
+          "path_in_download": "SMS PHISHING DATASET FOR MACHINE LEARNING AND PATTERN RECOGNITION/data_conversion.pdf",
+          "extract": false,
+          "note": "Authors' conversion notes; verified, not used."
+        },
+        {
+          "name": "Frequency.pdf",
+          "sha256": "39e5e8e15c11cd98560da1ad23b7c4839e5dc1b92a3e7dddcec0eccd35f37d92",
+          "size_bytes": 124138,
+          "path_in_download": "SMS PHISHING DATASET FOR MACHINE LEARNING AND PATTERN RECOGNITION/Frequency.pdf",
+          "extract": false,
+          "note": "Verified, not used."
+        },
+        {
+          "name": "data_visual.pdf",
+          "sha256": "4ba0e8358d4edf51769371256ab068ade0d21d9971f504f0709886ec87a09f30",
+          "size_bytes": 127626,
+          "path_in_download": "SMS PHISHING DATASET FOR MACHINE LEARNING AND PATTERN RECOGNITION/data_visual.pdf",
+          "extract": false,
+          "note": "Verified, not used."
+        },
+        {
+          "name": "Http_extract.py",
+          "sha256": "ee827137b76bef64950f1e24cb05f7ffea16988f348d68cae5c586757ed7c62a",
+          "size_bytes": 502,
+          "path_in_download": "SMS PHISHING DATASET FOR MACHINE LEARNING AND PATTERN RECOGNITION/Http_extract.py",
+          "extract": false,
+          "note": "Authors' script; verified, never run."
+        },
+        {
+          "name": "Email_extract.py",
+          "sha256": "77673ce15c24080bb2c731e895f98ed0ba242839efc9b73178aad2d28f17d5c8",
+          "size_bytes": 673,
+          "path_in_download": "SMS PHISHING DATASET FOR MACHINE LEARNING AND PATTERN RECOGNITION/Email_extract.py",
+          "extract": false,
+          "note": "Authors' script; verified, never run."
+        },
+        {
+          "name": "Phone_extract.py",
+          "sha256": "d8257ead00016f45de9c9f8ffeabd4c0afb77712c370ff47727a3a140214772a",
+          "size_bytes": 489,
+          "path_in_download": "SMS PHISHING DATASET FOR MACHINE LEARNING AND PATTERN RECOGNITION/Phone_extract.py",
+          "extract": false,
+          "note": "Authors' script; verified, never run."
+        }
+      ],
+      "license": {
+        "spdx": "CC-BY-4.0",
+        "evidence_url": "https://data.mendeley.com/datasets/f45bkkt8pr/1",
+        "caveats": [
+          "86% of its unique texts also occur in the UCI corpus, whose authors hold the copyright on that material, so this record's CC BY 4.0 does not replace the UCI terms for it."
+        ]
+      },
+      "origin": "derived_from_other_dataset",
+      "label_provenance": "author_assigned_undocumented",
+      "languages": [
+        "english"
+      ],
+      "source_labels": {
+        "ham": 4844,
+        "spam": 489,
+        "smishing": 638
+      },
+      "label_mapping": {
+        "ham": {
+          "target": "benign",
+          "rule": "Only after exact and near-duplicate removal against the UCI corpus; the 461 unique texts not in UCI have an undocumented origin."
+        },
+        "spam": {
+          "target": "spam",
+          "rule": "Spam stays spam. 327 of its 466 unique texts are UCI spam."
+        },
+        "smishing": {
+          "target": "needs_review",
+          "rule": "Not clean phishing ground truth: of 448 unique smishing texts, 267 are UCI spam relabeled smishing (premium-rate and prize offers), and 37 texts carry both smishing and spam labels. Only the 181 unique texts absent from UCI are candidates.",
+          "review_plan": "If the dataset is reconsidered, the 181 non-UCI unique texts enter the manual audit; the 267 relabeled UCI texts stay spam."
+        }
+      },
+      "observed": {
+        "rows": 5971,
+        "unique_normalized_texts": 5704,
+        "exact_duplicate_rows": 22,
+        "normalized_duplicate_rows": 267,
+        "texts_with_conflicting_labels": 37,
+        "overlap_unique_with_uci": 4924,
+        "smishing_rows": 638,
+        "smishing_unique_texts": 448,
+        "smishing_unique_in_uci_as_spam": 267,
+        "smishing_unique_not_in_uci": 181,
+        "spam_unique_not_in_uci": 139,
+        "ham_unique_not_in_uci": 461,
+        "rows_phone_like_text": 735,
+        "rows_email_like_text": 23
+      },
+      "privacy": {
+        "risk": "medium",
+        "notes": [
+          "Mostly the same messages as the UCI corpus, with the same personal-conversation risk, plus images-to-text conversions of unknown origin."
+        ],
+        "required_handling": [
+          "Mask digit runs, emails and URLs before any human inspection.",
+          "Keep raw rows out of Git, logs and reports."
+        ]
+      },
+      "status": "audit_reference_only",
+      "permitted_use": [
+        "overlap_audit_reference"
+      ],
+      "limitations": [
+        "It is largely UCI plus a small addition, not an independent sample.",
+        "Its smishing label is partly UCI spam renamed, so it cannot be trusted as phishing ground truth.",
+        "Collection and labeling are described only as images converted to text and 'label by extraction source'; the label guidelines are not documented."
+      ],
+      "approval": {
+        "decision": "approved",
+        "reference": "Owner decisions of 5 November 2026 (M4.2 instruction), decision 3: audit reference only"
+      },
+      "allowed_download_hosts": [
+        "data.mendeley.com",
+        "prod-dcd-datasets-cache-zipfiles.s3.eu-west-1.amazonaws.com"
+      ]
+    },
+    {
+      "id": "munoz_islam_2025",
+      "title": "A Balanced Dataset for Spam and Smishing Detection using Large Language Models (LLMs)",
+      "creators": [
+        "Miriam Munoz",
+        "Muhammad Islam"
+      ],
+      "published": "2025-07-04",
+      "version": "1",
+      "doi": "10.17632/vmg875v4xs.1",
+      "source_url": "https://data.mendeley.com/datasets/vmg875v4xs/1",
+      "download_url": "https://data.mendeley.com/public-api/zip/vmg875v4xs/download/1",
+      "citation": "Munoz, M. & Islam, M. (2025). A Balanced Dataset for Spam and Smishing Detection using Large Language Models (LLMs), Mendeley Data, V1, doi:10.17632/vmg875v4xs.1. The record gives no formatted citation.",
+      "retrieved_on": "2026-11-04",
+      "files": [
+        {
+          "name": "Dataset_10191.csv",
+          "sha256": "68f464b4276d6c7e6967fccadb48e443cf3330dd529bd750ff237db98c33d08e",
+          "size_bytes": 1370873,
+          "rows": 10191,
+          "note": "Columns: LABEL, TEXT, URL, EMAIL, PHONE."
+        },
+        {
+          "name": "URL_Email_Phone_Rules.ipynb",
+          "sha256": "d74735f429fb29dd6f1fefdc41a7de40db3a306cc9e997bccfc9578f7de722c2",
+          "size_bytes": 3167,
+          "note": "Flag-extraction notebook; not used."
+        }
+      ],
+      "license": {
+        "spdx": "CC-BY-4.0",
+        "evidence_url": "https://data.mendeley.com/datasets/vmg875v4xs/1",
+        "caveats": [
+          "Derived from the Mishra & Soni data, which in turn is largely the UCI corpus; the upstream terms still apply."
+        ]
+      },
+      "origin": "llm_generated_or_mixed",
+      "label_provenance": "derived_from_other_dataset",
+      "languages": [
+        "unspecified"
+      ],
+      "source_labels": {
+        "ham": 3397,
+        "spam": 3397,
+        "smishing": 3397
+      },
+      "label_mapping": {
+        "ham": {
+          "target": "excluded",
+          "rule": "Every ham row also occurs in the Mishra data (and mostly in UCI); it adds no independent benign data."
+        },
+        "spam": {
+          "target": "excluded",
+          "rule": "Excluded with the dataset; 1,696 spam rows repeat texts found in Mishra."
+        },
+        "smishing": {
+          "target": "excluded",
+          "rule": "Largely LLM-generated variants of the Mishra smishing class; only 336 of 2,237 unique smishing texts are exact Mishra smishing texts, so evaluating on it would test memorized templates."
+        }
+      },
+      "observed": {
+        "rows": 10191,
+        "unique_normalized_texts": 7274,
+        "exact_duplicate_rows": 2200,
+        "normalized_duplicate_rows": 2917,
+        "texts_with_conflicting_labels": 36,
+        "overlap_unique_with_mishra": 4030,
+        "overlap_unique_with_uci": 3469,
+        "near_duplicates_of_mishra_unique_texts": 1402,
+        "near_duplicates_of_uci_unique_texts": 1071,
+        "smishing_unique_texts": 2237,
+        "smishing_unique_exact_in_mishra_smishing": 336,
+        "ham_rows_also_in_mishra": 3397,
+        "rows_phone_like_text": 4310
+      },
+      "privacy": {
+        "risk": "medium",
+        "notes": [
+          "Reuses Mishra/UCI messages; 4,310 of 10,191 texts match a phone-like pattern."
+        ],
+        "required_handling": [
+          "Not to be loaded by the pipeline; no handling beyond keeping the file out of Git."
+        ]
+      },
+      "status": "excluded",
+      "permitted_use": [],
+      "limitations": [
+        "The record says a trained LLM produced the data but does not name the model or say how many rows are generated.",
+        "The balanced 1:1:1 class mix is an artifact and does not reflect real prevalence.",
+        "Heavy overlap and near-duplication with Mishra and UCI would leak between any train and test split.",
+        "Language and generation procedure are not stated. It may be reconsidered only as a clearly separated augmentation experiment, never for validation or evaluation."
+      ],
+      "approval": {
+        "decision": "rejected",
+        "reference": "Owner decisions of 5 November 2026 (M4.2 instruction), decision 3: excluded"
+      }
+    }
+  ],
+  "coverage_gaps": [
+    "G1: No verified collected dataset holds modern benign transactional SMS. M4.2 adds an explicitly synthetic hard-negative set (decision 4); it is reported separately and cannot show how the model treats real transactional messages.",
+    "G2: Source and era confounding: positives come from 2017-2024 forum reports and negatives from 2003-2011 conversations, so a model can learn the source instead of the threat.",
+    "G3: IMC replaces URLs with a placeholder in about 43% of English rows, while production messages carry real URLs.",
+    "G4: English only. Hindi and Hinglish have no verified candidate and stay experimental.",
+    "G5: Only public data is available, so evaluation says nothing certain about the distribution KAVACH would see in use."
+  ],
+  "decisions": {
+    "d04_sms": "approved",
+    "d04_reference": "Owner decisions of 5 November 2026 (M4.2 instruction), decisions 1-7 (scoped to SMS data)",
+    "open_questions": [
+      "L1: Human label review is incomplete, so every IMC class is BLOCKED; no class has been promoted to phishing.",
+      "L2: A source of real benign transactional SMS remains unavailable; the synthetic set is a stress test, not evidence about real traffic.",
+      "L3: Source and era confounding (G2) is unresolved and is not solved by grouped splitting."
+    ]
+  },
+  "synthetic_sets": [
+    {
+      "id": "kavach_synthetic_hard_negatives",
+      "title": "KAVACH synthetic benign alerts (OTP, transaction, account and delivery messages)",
+      "generator": "experiments/sms_prep/synthetic.py",
+      "generator_version": 1,
+      "seed": 20261105,
+      "label": "benign",
+      "corpus_sha256": "27bb08ff7dd2b5ac9c225ec47b18b2f51bf3d1a57a030d951014bc928d4c1e26",
+      "records": 720,
+      "template_families": 72,
+      "purpose": "Benign messages that share surface cues with phishing (links, urgency, 'if this was not you') so the model and its evaluation face legitimate transactional wording that no collected source provides (coverage gap G1).",
+      "rules": [
+        "Entirely synthetic: fictional institutions, couriers, merchants and clinics; no real brand, person, account or code.",
+        "Links use the reserved .invalid TLD; phone numbers use the fictional 555-01xx range; codes are random digits.",
+        "Template families are the split groups, so held-out templates test generalization to unseen wording.",
+        "Never contains or derives from the simulator S01-S12 texts (checked by fingerprint).",
+        "Carries origin=synthetic in every record and is reported separately from real-world evaluation."
+      ],
+      "reporting": "Every metric on synthetic data is labeled synthetic and kept apart from real-world results. It never joins the real-world held-out test set, and it cannot support any claim about real traffic.",
+      "permitted_use": [
+        "training",
+        "validation",
+        "synthetic_stress_test"
+      ],
+      "approval": {
+        "decision": "approved",
+        "reference": "Owner decisions of 5 November 2026 (M4.2 instruction), decision 4"
+      }
+    }
+  ]
+}
