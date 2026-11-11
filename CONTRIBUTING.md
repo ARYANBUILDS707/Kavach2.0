@@ -10,16 +10,23 @@ The installable package is `backend/src/kavach/`. Keep routes in `api/routes/`, 
 
 ## Environment and checks
 
-Follow [README.md](README.md) for Python/uv setup and recovery commands. Direct dependencies and build tooling are pinned in `backend/pyproject.toml`; Python is pinned in `backend/.python-version`. Generate and retain `backend/uv.lock` through a successful resolver run before treating the entire dependency graph as reproducible. Never handcraft a lockfile or claim a dependency resolution succeeded when it did not.
+Follow [README.md](README.md) for Python/uv setup and recovery commands. Direct dependencies and build tooling are pinned in `backend/pyproject.toml`; Python is pinned in `backend/.python-version`. `backend/uv.lock` (generated with uv 0.11.16) pins the full dependency graph; commit it together with any `pyproject.toml` dependency change, regenerated with `uv lock --project backend`. Never handcraft a lockfile or claim a dependency resolution succeeded when it did not. Ruff is pinned at 0.17.2 in both the manifest and the lockfile.
 
-After the initial lockfile has been generated, run from the project root:
+Run from the project root (these are the commands CI runs; note that they sync `backend/.venv` to the lockfile, see the README Setup section):
 
 ```sh
+uv lock --check --project backend
 uv sync --project backend --locked
 uv run --project backend --locked pytest backend/tests
 uv run --project backend --locked ruff check backend
 uv run --project backend --locked ruff format --check backend
 ```
+
+Integration tests (`-m integration`) need the development services from `deployment/compose.dev.yml` and the `TEST_DATABASE_URL`, `TEST_MIGRATION_DATABASE_URL`, `TEST_RETENTION_DATABASE_URL` and `TEST_REDIS_URL` variables (README, "Development services"); they fail rather than skip when those are missing, and they rebuild the schema in the disposable `kavach_test` database. Persistence and cache behavior must be tested against these real services, not mocks.
+
+Schema changes need a new Alembic revision under `backend/src/kavach/db/migrations/versions/` together with the model change; `alembic check` must stay clean and the grants, checks and triggers it cannot see need explicit tests. Never edit an applied revision, and never downgrade a database that is not a disposable `*_test` database.
+
+CI (`.github/workflows/backend-ci.yml`) runs the same commands on pushes to `backend`, `dev` and `main` and on pull requests into `dev` and `main`. Include local results in the milestone report, and do not describe CI as passing without a green GitHub Actions run.
 
 Use `uv run --project backend --locked ruff format backend` to format intentional code changes, then inspect the diff. Add behavioral tests for new validation, permissions and failures. Use synthetic data only; do not commit communications, secrets or model binaries. HTTP tests of ingestion DTOs use routes registered only in the test harness, never fake production ingestion endpoints.
 
@@ -27,12 +34,13 @@ Use `uv run --project backend --locked ruff format backend` to format intentiona
 
 Full procedure: [docs/GIT_WORKFLOW.md](docs/GIT_WORKFLOW.md). Milestones: [docs/MASTER_DEVELOPMENT_PLAN.md](docs/MASTER_DEVELOPMENT_PLAN.md). Done criteria: [docs/DEFINITION_OF_DONE.md](docs/DEFINITION_OF_DONE.md).
 
-- `main` is the stable release branch. `dev` is the integration branch (the intended GitHub default; that setting has not been changed). `backend` and `frontend` are long-lived layer branches. Short-lived `feature/<milestone>-<topic>` branches are allowed for bounded or cross-cutting work and are deleted after merge.
-- Backend and frontend work enters `dev` only through a pull request. Releases go from `dev` to `main` through a release PR ([docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)). Do not push directly to `main` or `dev`.
-- A PR names its milestone, lists changed files, states the exact verification commands and their actual results (or "not run" with the reason), notes any contract or schema change with the updated documents, and records open risks. Schema changes include a migration.
-- Merge `dev` into your branch before opening the PR and re-run the checks; use merge commits for the long-lived branches, never rebase or force-push shared branches.
+- `main` is the stable release branch. `dev` is the integration branch (the intended GitHub default; that setting has not been changed). `backend` carries all backend milestones M1.1 through M7a; `frontend` carries frontend work (M7b) independently. `feature/*` branches are not used for backend milestones.
+- Backend milestones are committed directly to `backend`; there is **no** pull request into `dev` per milestone. Each milestone needs its report, its acceptance evidence and a green CI run on the pushed `backend` commit.
+- Backend work reaches `dev` through a **single** `backend` → `dev` integration pull request, opened only after the complete backend (M1.1–M7a) passes acceptance testing. When the frontend integrates into `dev` is still an open decision. Releases go from `dev` to `main` through a release PR ([docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)). Do not push directly to `main` or `dev`.
+- Milestone reports and the integration/release PR descriptions state the milestone(s), changed files, exact verification commands and their actual results (or "not run" with the reason), contract or schema changes with the updated documents, and open risks. Schema changes include a migration.
+- If `dev` moves, merge it into `backend` (or `frontend`) and re-run the checks; use merge commits, never rebase or force-push shared branches.
+- **The user performs all Git operations** (staging, commits, pushes, merges, branch switches, pull requests) and deployments; agents use read-only Git commands only.
 - Required review and status checks apply once CI exists. Until then the pasted local `pytest` and `ruff` results are the gate. Branch protection is proposed for `main` and `dev` after CI is configured and has not been applied.
-- No commit, push, merge, tag or deploy happens without the owner's explicit approval for that action.
 
 ## Change discipline
 

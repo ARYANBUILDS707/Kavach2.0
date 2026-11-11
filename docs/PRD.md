@@ -47,7 +47,7 @@ Roles are proposed under D03. No role can alter model scores, erase review histo
 | --- | --- | --- |
 | FR01 | Accept authenticated SMS JSON and call metadata with an allowlisted sample reference | Validate identity, size, event ID, timestamp, source, and permissions; reject arbitrary paths/URLs |
 | FR02 | Deduplicate events | Same source/event ID and canonical payload returns original receipt; changed payload returns conflict |
-| FR03 | Score SMS with a versioned TF-IDF classifier | Return score, structured reason codes, model version, duration, and availability; raw text is not stored |
+| FR03 | Classify SMS with a versioned, locally run model (v2, amended 6 Nov 2026 by D04-A1; v1 read "Score SMS with a versioned TF-IDF classifier") | Return per-stage availability, model version, duration and structured reason codes. The pinned pretrained model's native outputs are stored as uncalibrated model evidence. `sms_score` is set only from a calibration validated on KAVACH data. Raw text is not stored. TF-IDF logistic regression remains the comparison baseline |
 | FR04 | Analyze call audio locally | Separate synthesis likelihood from semantic fraud intent; expose missing STT/acoustic analysis explicitly |
 | FR05 | Correlate eligible evidence | Require authorized shared subscriber identity, event-time eligibility, and contextual evidence; never link on brand/time alone |
 | FR06 | Use continuous fusion inputs | Do not require both independent scores to cross alert thresholds before considering a pair |
@@ -123,13 +123,37 @@ All proposed values below are design assumptions, not instructions found in the 
 | D01 | Single-organization local research MVP; synthetic or explicitly permitted datasets only | Application setup and data acquisition |
 | D02 | React/TypeScript/Vite, Python/FastAPI, PostgreSQL/SQLAlchemy/Alembic, Redis, Compose; bounded synchronous ingestion | Dependency installation and schema implementation |
 | D03 | Provisioned local accounts, Argon2id passwords, opaque server sessions; viewer/analyst/admin plus machine API keys | Authentication implementation |
-| D04 | TF-IDF logistic SMS baseline; local Whisper-tiny; versioned acoustic/intent baselines; exact datasets, licensing and artifact provenance still required | Training, downloading artifacts, or claiming model readiness |
+| D04 | TF-IDF logistic SMS baseline; local Whisper-tiny; versioned acoustic/intent baselines; exact datasets, licensing and artifact provenance still required. **SMS data approved 5 Nov 2026 (DATASET_GOVERNANCE.md); amended by D04-A1 on 6 Nov 2026** (below) | Training, downloading artifacts, or claiming model readiness |
 | D05 | 30-minute event window, 10-minute allowed lateness; standalone and pair incidents; base-risk floor policy described above | Correlation and policy implementation |
 | D06 | Demo tier bands: low <0.40, medium 0.40–<0.70, high 0.70–<0.90, critical ≥0.90; unknown for no base evidence | Alert policy implementation; recalibrate before any pilot |
 | D07 | Seven-day synthetic event/incident/review retention; 30-day security-audit retention with no evidence bodies; no raw communication retention | Persistence and deletion implementation; real-data policy needs separate review |
 | D08 | Login 5 failures/15 minutes/account+IP; reads 120/minute/user; ingestion 30/minute/key; 2 concurrent analyses and 30-second deadline | Capacity/rate-limit implementation; load-test and revise |
 | D09 | Light operational UI and tokens in DESIGN.md; English-first evaluation | UI implementation and public quality claims |
 | D10 | Local Compose first; pilot hosting/provider, hardware, data region, operating authority and backup budget undecided | External provisioning or live pilot |
+
+### Decision amendments
+
+| ID | Date | Amends | Decision (approved by the owner) |
+| --- | --- | --- | --- |
+| D04-A1 | 6 Nov 2026 | D04, FR03 (v1 → v2), ARCHITECTURE.md SMS row | **Pretrained-first research prototype track.** See below. |
+
+D04-A1 terms:
+
+1. **Permitted model.**
+   - Horizon-Labs/phishing-scam-detector-base, pinned to revision `fa686fc0d6a3634092ada93a7c6b89ab0746b8f8` with the file hashes in its Git-versioned manifest, is permitted for experimental SMS fraud classification.
+   - Its license is Apache-2.0, and the NOTICE is retained.
+   - It runs locally on CPU in a separate worker process. PyTorch and Transformers are never installed in the API environment.
+2. **Outputs.**
+   - The model's native `legitimate`/`spam`/`fraud` outputs are uncalibrated evidence.
+   - They are not `sms_score`, base risk, a fusion input or a tier, and they are not presented as probabilities of phishing.
+3. **Baseline.** TF-IDF + logistic regression remains the planned comparison baseline.
+4. **Unchanged.** The following still apply in full:
+   - DATASET_GOVERNANCE.md and its label gate (95% Wilson lower bound ≥ 0.95, cluster-weighted);
+   - the frozen splits and the held-out boundary;
+   - independent evaluation before any quality claim.
+5. **No validation claim.** No claim that the model is validated on KAVACH data may be made until that evaluation exists.
+6. **TD-18 controls first.** The admission, timeout and killable-worker controls in [M4_SMS_INFERENCE_ARCHITECTURE.md](M4_SMS_INFERENCE_ARCHITECTURE.md) must be implemented and tested before the model is connected to ingestion.
+7. **Scope of this decision.** It approves the design only. Implementation is a separate milestone (M4-I).
 
 ## Document map
 

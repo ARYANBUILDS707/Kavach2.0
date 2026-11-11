@@ -1,0 +1,604 @@
+{
+  "all_checks_passed": true,
+  "checks": [
+    {
+      "check": "no cluster or text in more than one split",
+      "detail": "0 clusters, 0 texts",
+      "passed": true
+    },
+    {
+      "check": "no cross-split pair at Jaccard >= 0.4",
+      "detail": "0 pairs",
+      "passed": true
+    },
+    {
+      "check": "synthetic template families stay whole",
+      "detail": "0 families split",
+      "passed": true
+    },
+    {
+      "check": "no simulator fixture text",
+      "detail": "0 matches",
+      "passed": true
+    },
+    {
+      "check": "every stratum is present in every split",
+      "detail": "all present",
+      "passed": true
+    },
+    {
+      "check": "test cells hold at least 30 unique texts (except imc:hey mum/dad)",
+      "detail": "all large enough",
+      "passed": true
+    },
+    {
+      "check": "largest stratum deviation from 70/15/15 <= 0.02",
+      "detail": "0.0019",
+      "passed": true
+    },
+    {
+      "check": "records lost to label conflicts <= 3% of the prior split",
+      "detail": "478 records (0.0171)",
+      "passed": true
+    },
+    {
+      "check": "no cluster exceeds the train share (70%) of its stratum",
+      "detail": "largest share 0.3858",
+      "passed": true
+    }
+  ],
+  "clusters": {
+    "assigned": 12604,
+    "excluded_label_conflict": 104,
+    "giants": [
+      {
+        "records": 5792,
+        "share_of_stratum_records": 0.525,
+        "share_of_stratum_unique_texts": 0.3858,
+        "split": "train",
+        "stratum": "imc:banking",
+        "unique_texts": 2507
+      },
+      {
+        "records": 15,
+        "share_of_stratum_records": 0.2,
+        "share_of_stratum_unique_texts": 0.2075,
+        "split": "train",
+        "stratum": "imc:hey mum/dad",
+        "unique_texts": 11
+      }
+    ],
+    "largest": [
+      {
+        "label_keys_mixed": true,
+        "rank": 1,
+        "records": 5792,
+        "share_of_stratum_records": 0.525,
+        "share_of_stratum_unique_texts": 0.3858,
+        "split": "train",
+        "stratum": "imc:banking",
+        "unique_texts": 2507
+      },
+      {
+        "label_keys_mixed": true,
+        "rank": 2,
+        "records": 513,
+        "share_of_stratum_records": 0.123,
+        "share_of_stratum_unique_texts": 0.1115,
+        "split": "train",
+        "stratum": "imc:others",
+        "unique_texts": 363
+      },
+      {
+        "label_keys_mixed": false,
+        "rank": 3,
+        "records": 442,
+        "share_of_stratum_records": 0.0401,
+        "share_of_stratum_unique_texts": 0.0392,
+        "split": "train",
+        "stratum": "imc:banking",
+        "unique_texts": 255
+      },
+      {
+        "label_keys_mixed": true,
+        "rank": 4,
+        "records": 357,
+        "share_of_stratum_records": 0.1758,
+        "share_of_stratum_unique_texts": 0.0804,
+        "split": "train",
+        "stratum": "imc:government",
+        "unique_texts": 105
+      },
+      {
+        "label_keys_mixed": true,
+        "rank": 5,
+        "records": 173,
+        "share_of_stratum_records": 0.0157,
+        "share_of_stratum_unique_texts": 0.0185,
+        "split": "train",
+        "stratum": "imc:banking",
+        "unique_texts": 120
+      },
+      {
+        "label_keys_mixed": true,
+        "rank": 6,
+        "records": 99,
+        "share_of_stratum_records": 0.0237,
+        "share_of_stratum_unique_texts": 0.0141,
+        "split": "train",
+        "stratum": "imc:others",
+        "unique_texts": 46
+      },
+      {
+        "label_keys_mixed": true,
+        "rank": 7,
+        "records": 97,
+        "share_of_stratum_records": 0.0478,
+        "share_of_stratum_unique_texts": 0.0697,
+        "split": "train",
+        "stratum": "imc:government",
+        "unique_texts": 91
+      },
+      {
+        "label_keys_mixed": true,
+        "rank": 8,
+        "records": 86,
+        "share_of_stratum_records": 0.0754,
+        "share_of_stratum_unique_texts": 0.0588,
+        "split": "train",
+        "stratum": "imc:telecom",
+        "unique_texts": 56
+      },
+      {
+        "label_keys_mixed": false,
+        "rank": 9,
+        "records": 83,
+        "share_of_stratum_records": 0.0409,
+        "share_of_stratum_unique_texts": 0.0038,
+        "split": "train",
+        "stratum": "imc:government",
+        "unique_texts": 5
+      },
+      {
+        "label_keys_mixed": true,
+        "rank": 10,
+        "records": 78,
+        "share_of_stratum_records": 0.0384,
+        "share_of_stratum_unique_texts": 0.0467,
+        "split": "train",
+        "stratum": "imc:government",
+        "unique_texts": 61
+      }
+    ],
+    "reference_only": 176,
+    "size_distribution": [
+      {
+        "clusters": 10150,
+        "records_per_cluster": "1",
+        "share_of_records": 0.3578
+      },
+      {
+        "clusters": 2042,
+        "records_per_cluster": "2-4",
+        "share_of_records": 0.1709
+      },
+      {
+        "clusters": 455,
+        "records_per_cluster": "5-19",
+        "share_of_records": 0.1354
+      },
+      {
+        "clusters": 56,
+        "records_per_cluster": "20-99",
+        "share_of_records": 0.0794
+      },
+      {
+        "clusters": 4,
+        "records_per_cluster": "100-999",
+        "share_of_records": 0.0523
+      },
+      {
+        "clusters": 1,
+        "records_per_cluster": "1000+",
+        "share_of_records": 0.2042
+      }
+    ],
+    "total": 12884
+  },
+  "comparison_with_previous_version": {
+    "assigned_records": 27554,
+    "changes_by_direction": {
+      "test->train": 1661,
+      "test->validation": 869,
+      "train->test": 1509,
+      "train->validation": 1643,
+      "validation->test": 946,
+      "validation->train": 1599
+    },
+    "previous_assigned_records": 28032,
+    "records_lost_vs_previous": 478,
+    "records_that_change_split": 8227,
+    "share_lost_vs_previous": 0.0171,
+    "share_that_change_split": 0.2986
+  },
+  "contamination": {
+    "clusters_in_more_than_one_split": 0,
+    "simulator_fixture_matches": 0,
+    "synthetic_template_families_in_more_than_one_split": 0,
+    "texts_in_more_than_one_split": 0
+  },
+  "distribution": {
+    "largest_stratum_deviation": 0.0019,
+    "provisional_label_share_by_split": {
+      "test": {
+        "benign": 0.2389,
+        "needs_review": 0.679,
+        "spam": 0.0821
+      },
+      "train": {
+        "benign": 0.187,
+        "needs_review": 0.7497,
+        "spam": 0.0633
+      },
+      "validation": {
+        "benign": 0.2353,
+        "needs_review": 0.6848,
+        "spam": 0.08
+      }
+    },
+    "records_by_split": {
+      "test": 3449,
+      "train": 20641,
+      "validation": 3464
+    },
+    "source_share_by_split": {
+      "test": {
+        "imc": 0.7306,
+        "synthetic": 0.0319,
+        "uci": 0.2375
+      },
+      "train": {
+        "imc": 0.7877,
+        "synthetic": 0.0242,
+        "uci": 0.1881
+      },
+      "validation": {
+        "imc": 0.7324,
+        "synthetic": 0.0318,
+        "uci": 0.2359
+      }
+    },
+    "strata": {
+      "imc:banking": {
+        "by_split": {
+          "test": {
+            "clusters": 777,
+            "records": 1140,
+            "unique_texts": 975
+          },
+          "train": {
+            "clusters": 843,
+            "records": 8710,
+            "unique_texts": 4548
+          },
+          "validation": {
+            "clusters": 777,
+            "records": 1183,
+            "unique_texts": 975
+          }
+        },
+        "deviation_from_target": {
+          "test": 0.0,
+          "train": -0.0001,
+          "validation": 0.0
+        },
+        "missing_from": [],
+        "test_cell_below_minimum": false
+      },
+      "imc:delivery": {
+        "by_split": {
+          "test": {
+            "clusters": 169,
+            "records": 202,
+            "unique_texts": 169
+          },
+          "train": {
+            "clusters": 393,
+            "records": 1092,
+            "unique_texts": 790
+          },
+          "validation": {
+            "clusters": 170,
+            "records": 204,
+            "unique_texts": 170
+          }
+        },
+        "deviation_from_target": {
+          "test": -0.0003,
+          "train": -0.0003,
+          "validation": 0.0006
+        },
+        "missing_from": [],
+        "test_cell_below_minimum": false
+      },
+      "imc:government": {
+        "by_split": {
+          "test": {
+            "clusters": 177,
+            "records": 240,
+            "unique_texts": 196
+          },
+          "train": {
+            "clusters": 262,
+            "records": 1554,
+            "unique_texts": 914
+          },
+          "validation": {
+            "clusters": 177,
+            "records": 237,
+            "unique_texts": 196
+          }
+        },
+        "deviation_from_target": {
+          "test": 0.0001,
+          "train": -0.0002,
+          "validation": 0.0001
+        },
+        "missing_from": [],
+        "test_cell_below_minimum": false
+      },
+      "imc:hey mum/dad": {
+        "by_split": {
+          "test": {
+            "clusters": 8,
+            "records": 13,
+            "unique_texts": 8
+          },
+          "train": {
+            "clusters": 24,
+            "records": 51,
+            "unique_texts": 37
+          },
+          "validation": {
+            "clusters": 8,
+            "records": 11,
+            "unique_texts": 8
+          }
+        },
+        "deviation_from_target": {
+          "test": 0.0009,
+          "train": -0.0019,
+          "validation": 0.0009
+        },
+        "missing_from": [],
+        "test_cell_below_minimum": true
+      },
+      "imc:others": {
+        "by_split": {
+          "test": {
+            "clusters": 488,
+            "records": 555,
+            "unique_texts": 488
+          },
+          "train": {
+            "clusters": 1271,
+            "records": 3064,
+            "unique_texts": 2280
+          },
+          "validation": {
+            "clusters": 489,
+            "records": 551,
+            "unique_texts": 489
+          }
+        },
+        "deviation_from_target": {
+          "test": -0.0002,
+          "train": 0.0,
+          "validation": 0.0001
+        },
+        "missing_from": [],
+        "test_cell_below_minimum": false
+      },
+      "imc:spam": {
+        "by_split": {
+          "test": {
+            "clusters": 144,
+            "records": 178,
+            "unique_texts": 144
+          },
+          "train": {
+            "clusters": 556,
+            "records": 784,
+            "unique_texts": 674
+          },
+          "validation": {
+            "clusters": 144,
+            "records": 165,
+            "unique_texts": 144
+          }
+        },
+        "deviation_from_target": {
+          "test": -0.0003,
+          "train": 0.0006,
+          "validation": -0.0003
+        },
+        "missing_from": [],
+        "test_cell_below_minimum": false
+      },
+      "imc:telecom": {
+        "by_split": {
+          "test": {
+            "clusters": 143,
+            "records": 156,
+            "unique_texts": 143
+          },
+          "train": {
+            "clusters": 451,
+            "records": 832,
+            "unique_texts": 666
+          },
+          "validation": {
+            "clusters": 143,
+            "records": 152,
+            "unique_texts": 143
+          }
+        },
+        "deviation_from_target": {
+          "test": 0.0002,
+          "train": -0.0004,
+          "validation": 0.0002
+        },
+        "missing_from": [],
+        "test_cell_below_minimum": false
+      },
+      "imc:wrong number": {
+        "by_split": {
+          "test": {
+            "clusters": 30,
+            "records": 36,
+            "unique_texts": 30
+          },
+          "train": {
+            "clusters": 108,
+            "records": 172,
+            "unique_texts": 139
+          },
+          "validation": {
+            "clusters": 30,
+            "records": 34,
+            "unique_texts": 30
+          }
+        },
+        "deviation_from_target": {
+          "test": 0.0008,
+          "train": -0.0015,
+          "validation": 0.0008
+        },
+        "missing_from": [],
+        "test_cell_below_minimum": false
+      },
+      "synthetic:synthetic_benign": {
+        "by_split": {
+          "test": {
+            "clusters": 11,
+            "records": 110,
+            "unique_texts": 106
+          },
+          "train": {
+            "clusters": 46,
+            "records": 500,
+            "unique_texts": 496
+          },
+          "validation": {
+            "clusters": 11,
+            "records": 110,
+            "unique_texts": 107
+          }
+        },
+        "deviation_from_target": {
+          "test": -0.0005,
+          "train": -0.0004,
+          "validation": 0.0009
+        },
+        "missing_from": [],
+        "test_cell_below_minimum": false
+      },
+      "uci:ham": {
+        "by_split": {
+          "test": {
+            "clusters": 673,
+            "records": 714,
+            "unique_texts": 673
+          },
+          "train": {
+            "clusters": 3004,
+            "records": 3359,
+            "unique_texts": 3141
+          },
+          "validation": {
+            "clusters": 673,
+            "records": 705,
+            "unique_texts": 673
+          }
+        },
+        "deviation_from_target": {
+          "test": -0.0,
+          "train": 0.0,
+          "validation": -0.0
+        },
+        "missing_from": [],
+        "test_cell_below_minimum": false
+      },
+      "uci:spam": {
+        "by_split": {
+          "test": {
+            "clusters": 89,
+            "records": 105,
+            "unique_texts": 89
+          },
+          "train": {
+            "clusters": 226,
+            "records": 523,
+            "unique_texts": 417
+          },
+          "validation": {
+            "clusters": 89,
+            "records": 112,
+            "unique_texts": 89
+          }
+        },
+        "deviation_from_target": {
+          "test": -0.0004,
+          "train": 0.0008,
+          "validation": -0.0004
+        },
+        "missing_from": [],
+        "test_cell_below_minimum": false
+      }
+    }
+  },
+  "leakage_profile": {
+    "cross_split_pairs_at_least": {
+      "0.3": 2435,
+      "0.35": 501,
+      "0.4": 0,
+      "0.5": 0,
+      "0.6": 0,
+      "0.7": 0
+    },
+    "test_banking_texts_with_a_train_neighbour_at_least": {
+      "0.3": 0.1641,
+      "0.35": 0.0656,
+      "0.4": 0.0,
+      "0.5": 0.0,
+      "0.6": 0.0,
+      "0.7": 0.0
+    },
+    "test_texts": 3021,
+    "test_texts_with_a_train_neighbour_at_least": {
+      "0.3": 0.1076,
+      "0.35": 0.0444,
+      "0.4": 0.0,
+      "0.5": 0.0,
+      "0.6": 0.0,
+      "0.7": 0.0
+    },
+    "validation_banking_texts_with_a_train_neighbour_at_least": {
+      "0.3": 0.1651,
+      "0.35": 0.0585,
+      "0.4": 0.0,
+      "0.5": 0.0,
+      "0.6": 0.0,
+      "0.7": 0.0
+    },
+    "validation_texts": 3024,
+    "validation_texts_with_a_train_neighbour_at_least": {
+      "0.3": 0.1128,
+      "0.35": 0.04,
+      "0.4": 0.0,
+      "0.5": 0.0,
+      "0.6": 0.0,
+      "0.7": 0.0
+    }
+  }
+}

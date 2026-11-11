@@ -21,10 +21,26 @@ def test_request_ids_are_generated_not_trusted(client: TestClient) -> None:
     assert first.json()["request_id"] != second.json()["request_id"]
 
 
-def test_production_application_has_no_ingestion_harness(client: TestClient) -> None:
-    assert set(client.get("/openapi.json").json()["paths"]) == {"/health", "/api/v1/health"}
-    for path in ["/api/v1/events/sms", "/api/v1/events/call", "/_test/sms"]:
+def test_production_application_has_no_test_harness(client: TestClient) -> None:
+    assert set(client.get("/openapi.json").json()["paths"]) == {
+        "/health",
+        "/api/v1/health",
+        "/api/v1/auth/login",
+        "/api/v1/auth/session",
+        "/api/v1/auth/logout",
+        "/api/v1/events/sms",
+        "/api/v1/events/call",
+        "/api/v1/events/{event_id}",
+        "/api/v1/incidents",
+        "/api/v1/incidents/{incident_id}",
+        "/api/v1/simulator/scenarios",
+        "/api/v1/system/models",
+    }
+    for path in ["/_test/sms", "/_test/call"]:
         assert client.post(path, json={}).status_code == 404
+    # The real ingestion routes exist (M3.1) but fail closed without configuration.
+    for path in ["/api/v1/events/sms", "/api/v1/events/call"]:
+        assert client.post(path, json={}).status_code == 503
 
 
 def test_health_rejects_mutations(client: TestClient) -> None:

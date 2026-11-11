@@ -6,7 +6,154 @@ The user authorized a backend-only foundation after the initial specification. T
 
 `SMSEvent` and `CallEvent` schemas are in `backend/src/kavach/api/schemas/events.py`. Their optional `kind` field defaults to `sms` or `call`; a conflicting value is rejected. Identifiers use bounded ASCII alphanumeric/underscore/hyphen syntax, with dot/colon also accepted for event and subscriber IDs. Call sample IDs exclude paths, extensions and URLs. Purely numeric/phone-like subscriber tokens are rejected as a syntax guard, not proof of authorized pseudonymization.
 
-Event POST routes are not exposed. Test-only HTTP handlers verify DTO validation without claiming ingestion, persistence, source authorization, sample-manifest membership or processing. No client-provided model scores or arbitrary feature objects are accepted. All endpoint contracts below describe later implementation unless explicitly identified above. The foundation was verified on 31 October 2026 in the local virtual environment (88 tests passed, Ruff clean); the dependency lockfile `backend/uv.lock` is still absent. See the root README and [MILESTONE_TRACKER.md](MILESTONE_TRACKER.md).
+**Authentication (M2.3, implemented).** `POST /api/v1/auth/login`, `GET /api/v1/auth/session` and `POST /api/v1/auth/logout` follow "Authentication formats" below. Implementation details that the contract left open:
+
+- Success bodies are `{"data": {"user": {"id", "display_name", "role"}, "expires_at", "csrf_token"}, "request_id"}`. `expires_at` is the earlier of the idle (30 min) and absolute (8 h) deadlines. Logout returns 204 and clears the cookie.
+- Cookie: `__Host-kavach_session` (HttpOnly, Secure, SameSite=Lax, Path=/, no Domain, Max-Age = absolute lifetime) when `APP_ORIGIN` is https. `kavach_dev_session` without Secure is used only when `APP_ENV=development` and `APP_ORIGIN` is a plain-http loopback origin; any other http origin fails startup.
+- The CSRF token is derived from the session token (HMAC), so `GET /auth/session` can return it without storing it; only its SHA-256 digest is stored. Login and logout require `Origin` to equal `APP_ORIGIN` exactly; logout also requires `X-CSRF-Token`. Either failure returns 403 `CSRF_REJECTED`.
+- A request with both a session cookie and an `Authorization` header, or a login request carrying `Authorization`, returns 401 `MIXED_CREDENTIALS` (new code, listed in the error table).
+- Order of checks: Origin, credential exclusivity, body validation, throttle reservation, password verification. Throttling is reserved atomically in Redis before the password is checked; if Redis cannot answer within its 0.5 s timeouts (no retries), login returns 503 `DEPENDENCY_UNAVAILABLE` without verifying the password. A database failure also returns 503.
+- Without the complete authentication configuration (`APP_ORIGIN`, `RATE_LIMIT_HMAC_KEY`, `AUDIT_HMAC_KEYS`, `AUDIT_HMAC_ACTIVE_VERSION`, `DATABASE_URL`, `REDIS_URL`) the auth routes return 503; `APP_ENV=pilot` refuses to start without it, and setting only part of it fails startup.
+
+**Ingestion API keys (M2.4, implemented; no ingestion route uses them yet).** The reusable `require_ingest_key` dependency accepts exactly `Authorization: Bearer kvk_...`. Malformed, unknown, expired and revoked keys all return the same 401 `INVALID_CREDENTIALS` ("Invalid or expired API key") with `WWW-Authenticate: Bearer`; a session cookie on the same request returns 401 `MIXED_CREDENTIALS`; a database failure returns 503 `DEPENDENCY_UNAVAILABLE`. `require_source` returns 403 `FORBIDDEN` when the request's source differs from the key's single source. Keys cannot open browser sessions. Rejections emit sanitized telemetry (reason only, never key material). Keys are created, rotated, revoked and listed only through the operator CLI (README "Operator commands").
+
+**Event ingestion (M3.1, implemented).** `POST /api/v1/events/sms`, `POST /api/v1/events/call` and `GET /api/v1/events/{id}` follow "Event requests and receipts" below, for **ingestion keys only**; the admin session path (`simulator` source with CSRF, and admin receipt reads) is deferred to the simulator work and is not exposed. Behavior:
+
+- Order of checks: API key (401 `INVALID_CREDENTIALS`/`MIXED_CREDENTIALS` before the body is read), body size (413 `PAYLOAD_TOO_LARGE` above 32 KiB, enforced on the bytes actually read), JSON and DTO validation against the server clock (422 `VALIDATION_ERROR`, no field paths or values echoed), source scope (403 `FORBIDDEN` when `source` differs from the key's source), audio reference (422 `UNKNOWN_AUDIO_REFERENCE` for any non-null reference: no sample manifest is approved yet), then idempotent storage.
+- Idempotency: the canonical payload (validated fields, timestamp normalized to UTC microseconds, absent optionals as null, text kept exactly) is fingerprinted with HMAC-SHA256 under `PAYLOAD_HMAC_KEYS[PAYLOAD_HMAC_ACTIVE_VERSION]`; the stored version is used when comparing, so retired versions must stay configured. First commit → 201 with `Location`; same fingerprint → 200 with the original receipt and `replayed: true`; different fingerprint → 409 `EVENT_ID_CONFLICT`. PostgreSQL's unique `(source, external_event_id)` arbitrates concurrent requests.
+- Receipts: `event_id`, `external_event_id`, `source`, `kind`, `analysis_status`, `received_at`, `processing_ms`, `replayed`, `warnings`. No subscriber, incident or content field is ever returned to an ingestor. `GET /events/{id}` returns `replayed: false` and the same 404 for a missing event, another source's event or a malformed ID.
+- No models are deployed: every stage is stored as unavailable with a reason, all scores are null, `analysis_status` is `unavailable`, warnings name each unavailable stage (for example `SMS_CLASSIFIER_UNAVAILABLE`), and the standalone incident's assessment has tier `unknown` with a null final score.
+- **SMS worker (M4-I.2, implemented; off unless `SMS_WORKER_ENABLED=true`).** Full contract: M4_SMS_INFERENCE_ARCHITECTURE.md §6.4 and §9; results: M4_I2_SMS_INTEGRATION_REPORT.md.
+  - **Order.** Key → submission quota → body size → validation → source scope → idempotency lookup → inference → commit. Replays (200) and conflicts (409) never reach the worker.
+  - **Rejected before anything is stored** (retry with the same event ID gets a fresh analysis):
+    - no analysis slot free: 429 `CAPACITY_EXCEEDED`, `Retry-After: 1`;
+    - worker starting or restarting: 503 `DEPENDENCY_UNAVAILABLE`, `Retry-After: 10`.
+  - **Successful inference:** 201 with `analysis_status: complete` and warning `SMS_SCORE_UNCALIBRATED`. The stored signals carry the model's native `legitimate`/`spam`/`fraud` outputs; `sms_score` stays null, and the assessment stays tier `unknown` with a null final score and `analysis_status: partial`. **The receipt never contains scores or labels.**
+  - **Attempted inference that fails, or a worker that is unavailable:** 201 with `analysis_status: unavailable` and `SMS_CLASSIFIER_UNAVAILABLE`. The stored reason is one of `model_not_deployed`, `model_unverified`, `worker_unavailable`, `inference_timeout`, `worker_crashed`, `invalid_model_output`, `deadline_exhausted`. A replay returns the stored result and never retries the model.
+  - **Calls** are unchanged (voice stages unavailable).
+- A database failure returns 503 `DEPENDENCY_UNAVAILABLE` with nothing stored; an unexpected failure (for example an audit write) returns 500 with nothing stored. Either can be retried with the same event ID. If the connection is lost *while committing*, the 503 is ambiguous: retry with the same event ID (200 replay if it was committed) or read the receipt.
+
+**Limits, deadline and Redis (M3.2, implemented).**
+
+- Submission limit (D08 proposal, adopted): **30 submissions per minute per ingestion key**, an exact sliding window on Redis server time shared by every backend process. It is checked after the key and before the body is read, so every authenticated submission counts, including identical replays and rejected bodies. Excess → 429 `RATE_LIMITED` with `Retry-After` (seconds). Receipt reads are not counted (D08 has no key read limit).
+- Invalid credentials: per client IP, at most **30 rejected Bearer credentials per 15 minutes** (mirrors the D08 login IP ceiling; no separate value is specified). Each presented key reserves an attempt before it is checked and a valid key refunds it. Requests without a credential get 401 and are not counted. Keys are HMAC'd; no key material reaches Redis.
+- Beyond the ceiling (TD-19 fix, M3.4), other clients' failures do not lock out a valid key. A well-formed key from the blocked IP is still checked against PostgreSQL in two cases:
+  - It authenticated within the last 24 hours (keyed marker; any failed check deletes it).
+  - Otherwise, within a budget of **10 lookups per IP per minute**.
+
+  Anything else (budget spent, malformed credential) gets 429 `RATE_LIMITED` with `Retry-After` and no database access. The rejected-credential counter is never refunded by such checks. A key unused for 24 hours may wait up to a minute while an attacker keeps spending the budget.
+- Redis is required for these limits: if it cannot confirm them (refused, timed out after 0.5 s, no retries), key-authenticated requests fail closed with 503 `DEPENDENCY_UNAVAILABLE` before anything is stored.
+- Deadline: `INFERENCE_TIMEOUT_SECONDS` (default 30, D08) bounds each submission from arrival to commit. The remaining time is applied as the transaction's `statement_timeout`; if it runs out before commit, nothing is stored and the response is 503 `PROCESSING_TIMEOUT` (retry with the same event ID). A committed event is never reported as timed out. `MAX_INFLIGHT_ANALYSES` is not implemented: it bounds model inference, which does not exist yet.
+- Client addresses for these throttles come from the server's peer address. Uvicorn must run with `--no-proxy-headers`, or with `--forwarded-allow-ips` naming only the real proxy; its default trusts `X-Forwarded-For` from loopback (M3.4 finding M34-M1, README).
+- Pathologically nested JSON is rejected as 422 `VALIDATION_ERROR` like any other unparsable body (M3.4).
+- After commit the event is added to the Redis candidate index (DATABASE.md "Redis keys"). If that fails the submission still succeeds (PostgreSQL is authoritative), an `operational_event candidate.index_deferred` is logged, and the index is repaired by an identical retry or by `python -m kavach.cli candidates rebuild`. Indexability is judged at the time of (re)indexing, so a replay after the event left the 40-minute horizon does not re-add it (M3.4). If a retired `PAYLOAD_HMAC_KEYS` version has been removed, a resubmission of an event signed with it returns 500 with nothing changed and logs `operational_event ingest.payload_key_missing`.
+
+**Controlled simulator (M3.3, implemented; C-03).**
+
+- `GET /api/v1/simulator/scenarios`: admin session only (viewer/analyst 403 `FORBIDDEN`; no or expired session 401 `SESSION_EXPIRED`; API keys cannot use it; cookie plus Bearer 401 `MIXED_CREDENTIALS`; 503 without the authentication configuration). Read-only; it creates no events or scores. `data` is `{catalog_version, synthetic: true, source, scenarios, samples}`. Each scenario has `id`, `version`, `name`, `description`, `expected_summary`, simulation-only `truth`, `provisional` (decisions its expectations depend on, such as `D05`), ordered `steps` and `candidate_pairs`. `samples` is always `[]` until an audio sample manifest is approved (TD-17). Reads count against the D08 read limit (MVP-B5, see below).
+- The catalog is the packaged, versioned file `backend/src/kavach/simulator/scenarios_v1.json`, validated strictly on load. Every step's expected HTTP outcome, Redis `indexed` state and D05 `late` flag are recomputed by the validator from the contract and the provisional D05 constants, so the catalog cannot silently drift from the code.
+- The runner (`python -m kavach.simulator`) is an ordinary API client. It submits with an ingestion key for source `simulator` through `POST /events/sms|call`, reads receipts with `GET /events/{id}`, and never touches PostgreSQL or Redis. It replaces scenario offsets with fresh timestamps (event time = scenario start + offset) and generates stable run-specific event IDs (`sim-<run_id>-<scenario>-<step>`) and subscriber tokens (derived from seed, run ID, scenario and alias). The scenario's `truth` labels are never sent to the API. They are simulation-only ground truth, not model outputs. Usage and safety limits are in the README ("Controlled simulator").
+
+**Audio sample manifest (proposed contract, not active; TD-17).** `AUDIO_SAMPLE_MANIFEST_PATH` is not read yet, and every non-null `audio_reference` is rejected with 422 `UNKNOWN_AUDIO_REFERENCE`. Activation needs an approved list of licensed synthetic samples (D04 provenance) and voice analysis (M5). The intended contract is an operator-controlled JSON file: `{"manifest_version": 1, "samples": [{"id", "label", "file", "sha256", "duration_seconds", "speech_origin", "license", "provenance"}]}`.
+- `id` uses the `audio_reference` syntax.
+- `file` is a bare WAV file name resolved only inside the manifest's own directory: no separators, `..`, URLs or absolute paths.
+- `sha256` is verified at startup, and limits are ≤10 MiB and ≤60 s.
+- `speech_origin` is `synthetic_tts` or `human_recorded_with_consent`.
+- The API exposes only `id` and `label` (as catalog `samples`). Any ID that is not listed stays 422.
+- An approved reference without a deployed voice model would still record every voice stage as unavailable. It never yields a score.
+
+Test-only HTTP handlers still verify DTO validation separately. No client-provided model scores or arbitrary feature objects are accepted. Endpoint contracts below that are not identified as implemented above describe later work. See the root README and [MILESTONE_TRACKER.md](MILESTONE_TRACKER.md).
+
+## SMS MVP-1 contract (approved 9 Nov 2026; not yet implemented)
+
+The owner approved an SMS-first MVP (decisions A–E, MASTER_DEVELOPMENT_PLAN.md C-12). This section is the exact contract the `frontend` branch builds against. It adds one query filter (`channel`) to the planned incident list and fixes the MVP subset of the planned routes; everything else below "Status and conventions" still applies. Nothing in this section exists in code until its tracker row says so. **Implemented locally (9 Nov 2026, uncommitted):** the incident reads (MVP-B3) and the read limit (MVP-B5). The generated OpenAPI document is pinned in `backend/contract/openapi.json` and checked against this section by `backend/tests/test_contract.py` (MVP-B6 draft); the frontend types against that file. The admin browser submission (MVP-B4) is **implemented locally (9 Nov 2026, uncommitted)**, with owner decisions B4-1 to B4-3.
+
+**Scope.** Implemented in MVP-1: `GET /incidents`, `GET /incidents/{id}`, the admin browser path of `POST /events/sms`, and the D08 read limit. Already implemented and unchanged: `/auth/*`, `GET /system/models`, `GET /simulator/scenarios`, the health aliases and key-authenticated ingestion. **Postponed beyond MVP-1:** `POST /incidents/{id}/review`, `GET /incidents/{id}/reviews`, the `review_status` filter, `WS /stream`, admin receipt reads (`GET /events/{id}` with a session), admin call submission and detailed `/health`.
+
+**Common rules for the session routes below.**
+
+- Browser session only. A request with a Bearer credential and no session gets 401 `SESSION_EXPIRED` (keys never read incidents); cookie plus Bearer gets 401 `MIXED_CREDENTIALS`; no, expired or revoked session gets 401 `SESSION_EXPIRED`; an inactive account is treated as no session. The role is re-read from the database on every request. 503 `DEPENDENCY_UNAVAILABLE` without the authentication configuration or when PostgreSQL fails.
+- Responses carry `Cache-Control: no-store` and `X-Request-ID`. Bodies use the envelopes in "Status and conventions".
+- **Read limit (D08, adopted for MVP-1):** 120 requests per minute per user, one shared budget across every session-authenticated `GET` (`/auth/session`, `/system/models`, `/simulator/scenarios`, `/incidents`, `/incidents/{id}`), an exact sliding window on Redis server time keyed by an HMAC of the user ID. Excess: 429 `RATE_LIMITED` with `Retry-After`. If Redis cannot confirm the limit (0.5 s, no retries), the read fails closed with 503 `DEPENDENCY_UNAVAILABLE`, matching login and ingestion; there is no in-process fallback.
+- `GET /system/models` now also rejects cookie plus Bearer with 401 `MIXED_CREDENTIALS`, like the other session routes (it previously ignored the Bearer header).
+- No response contains message text, sender IDs, subscriber tokens or digests, payload digests, HMAC key versions, external event IDs, sources, audit data or credentials. Message text is never stored (D07), so no route can return it.
+- Incidents whose `expires_at` has passed are never returned, even before the retention job removes them.
+
+**`GET /api/v1/incidents`** (viewer, analyst, admin)
+
+| Query | Rules |
+| --- | --- |
+| `limit` | integer 1–100, default 25 |
+| `cursor` | opaque, from `page.next_cursor`; bound to the sort tuple and the active filters. Malformed, tampered or used with different filters: 400 `INVALID_CURSOR` |
+| `channel` | **new:** `sms` or `call`; incidents linked to at least one event of that channel. The MVP frontend always sends `channel=sms` |
+| `kind` | `standalone` or `pair` (MVP-1 data is standalone only) |
+| `tier` | `unknown`, `low`, `medium`, `high`, `critical` (MVP-1 data is always `unknown`) |
+| `from`, `to` | RFC 3339 with explicit offset; `from` inclusive, `to` exclusive, on `occurred_at`; `from` ≥ `to` is 422 |
+
+Any other parameter, a repeated parameter or an invalid value: 422 `VALIDATION_ERROR` (field names only, values never echoed). Sort `occurred_at DESC, id DESC`. Pagination is not a snapshot: new incidents appear only on refresh.
+
+```json
+{"data": [{"id": "<uuid>", "kind": "standalone", "occurred_at": "2026-11-09T10:15:00Z",
+           "tier": "unknown", "final_score": null, "analysis_status": "partial",
+           "current_revision": 1, "version": 1, "latest_review": null,
+           "updated_at": "2026-11-09T10:15:01Z"}],
+ "page": {"next_cursor": "<opaque or null>", "has_more": false},
+ "request_id": "<uuid>"}
+```
+
+`tier`, `final_score` and `analysis_status` come from the incident's current assessment revision. `latest_review` is always `null` in MVP-1 (reviews postponed).
+
+**`GET /api/v1/incidents/{id}`** (viewer, analyst, admin). A malformed ID, a missing incident and an expired incident all return the same 404 `NOT_FOUND`.
+
+```json
+{"data": {
+   "id": "<uuid>", "kind": "standalone", "occurred_at": "…", "tier": "unknown",
+   "final_score": null, "analysis_status": "partial", "current_revision": 1, "version": 1,
+   "latest_review": null, "updated_at": "…",
+   "events": [{
+     "id": "<uuid>", "channel": "sms", "occurred_at": "…", "received_at": "…",
+     "analysis_status": "complete", "processing_ms": 412, "sms_score": null,
+     "reason_codes": ["sms_model_uncalibrated"],
+     "stages": {"sms_classifier": {
+       "status": "complete", "reason": null, "duration_ms": 41,
+       "model_output": {"labels": {"legitimate": 0.0123, "spam": 0.021, "fraud": 0.9667},
+                        "top_label": "fraud", "score_semantics": "uncalibrated_softmax",
+                        "truncated": false}}},
+     "model_versions": {"sms_classifier": "<model version>"}}],
+   "assessment": {"revision": 1, "tier": "unknown", "base_score": null, "fusion_score": null,
+                  "final_score": null, "analysis_status": "partial",
+                  "policy_version": "kavach-m4-uncalibrated-sms-evidence",
+                  "model_versions": {"sms_classifier": "<model version>"}, "created_at": "…"},
+   "related_incident_ids": [],
+   "reviews": {"items": [], "page": {"next_cursor": null, "has_more": false}}},
+ "request_id": "<uuid>"}
+```
+
+- `stages` holds exactly the stored stage entries. A stage that did not complete has `model_output: null` and a `reason` from the M4-I.2 list (`model_not_deployed`, `model_unverified`, `worker_unavailable`, `inference_timeout`, `worker_crashed`, `invalid_model_output`, `deadline_exhausted`) or the M3 reason for signals-v1 events. Call events carry their voice stages, each `unavailable`.
+- `model_output.labels` are the model's **native uncalibrated softmax outputs**, rounded to 4 decimals. They are not probabilities, not `sms_score` and not a risk tier; `sms_score`, `base_score`, `fusion_score` and `final_score` stay `null` and the tier stays `unknown` until a calibration validated on KAVACH data is approved. Clients must display them with that label and must not derive a tier, a colour scale or a "safe" state from them.
+- `reviews` is always the empty page in MVP-1.
+
+**`POST /api/v1/events/sms` — admin browser path** (decision A)
+
+- Credential: admin session cookie only; `Origin` must equal `APP_ORIGIN` and `X-CSRF-Token` must be valid (403 `CSRF_REJECTED`); viewer or analyst 403 `FORBIDDEN`; cookie plus Bearer 401 `MIXED_CREDENTIALS`. The key-authenticated path is unchanged. The browser never holds an ingestion key.
+- Body: `SMSEvent` exactly as for ingestors, with `source` required to be `simulator` (anything else 403 `FORBIDDEN`). **Server-validated (B4-1):** `event_id` must be `ui-` plus a lowercase version-4 UUID and `subscriber_token` must be `ui-sub-` plus a lowercase version-4 UUID; anything else is 422 `VALIDATION_ERROR`. The client generates them with `crypto.randomUUID()` (never `Math.random`), once per submission, and reuses them for retries. These are synthetic UI namespaces, **not** trusted subscriber identities: M6 must never treat a `ui-sub-` token as real-world identity evidence.
+- Order (verified by an ASGI-level test that the body is not pulled before a rejection): mixed credentials (401) → exact `Origin` (403 `CSRF_REJECTED`) → valid session of an active account (401) → admin role (403) → CSRF token (403) → per-admin limit → body read → validation → source and identifier rules → ingestion. The route declares no body parameter, because FastAPI 0.162 reads a declared body before resolving dependencies; the schema is documented through `openapi_extra`. No credential at all keeps 401 `INVALID_CREDENTIALS` (B4-3).
+- Submission limit: 30 per minute **per admin user** (D08 "or admin"), Redis sliding window in its own keyspace (separate from ingestion keys, and not part of the 120 per minute read budget, B4-2), checked after authentication and before the body is read; 429 `RATE_LIMITED` with `Retry-After`; Redis unavailable fails closed with 503.
+- Then the ingestion order and outcomes are identical to the key path: body size 413, validation 422, source 403, idempotency lookup (201/200/409 within the `simulator` source, shared with the key-authenticated simulator runner), inference, commit. 429 `CAPACITY_EXCEEDED` and 503 `DEPENDENCY_UNAVAILABLE` / `PROCESSING_TIMEOUT` behave as in M4-I.2. The audit actor is the user (`actor_kind = user`).
+- Response: the standard receipt plus `incident_ids` (admin only):
+
+```json
+{"data": {"event_id": "<uuid>", "external_event_id": "ui-<uuid>", "source": "simulator",
+          "kind": "sms", "analysis_status": "complete", "received_at": "…",
+          "processing_ms": 412, "replayed": false,
+          "warnings": ["SMS_SCORE_UNCALIBRATED"], "incident_ids": ["<uuid>"]},
+ "request_id": "<uuid>"}
+```
+
+  The receipt never contains labels or scores; the client opens `/incidents/{incident_ids[0]}` to see them. Browser receipts carry **no `Location` header** (new or replayed), because receipt reads are key-only; ingestion-key receipts keep `Location` on 201 as before. With the model disabled (the MVP default until the M4-Q decision, MASTER_DEVELOPMENT_PLAN.md C-12 D), every submission is stored with `analysis_status: unavailable`, reason `model_not_deployed` and warning `SMS_CLASSIFIER_UNAVAILABLE`.
+- The text exists only in the request and the worker's memory; it is never stored, logged or returned.
+
+**Unchanged contracts the frontend uses:** `POST /auth/login`, `GET /auth/session`, `POST /auth/logout` (M2.3 above) and `GET /system/models` (`{state, detail, reason, model_version, score_semantics, validated_on_kavach_data}`; `state` is `disabled`, `starting`, `ready` or `unavailable`; readiness is operational, never accuracy).
 
 ## Status and conventions
 
@@ -26,14 +173,15 @@ Browser: server session cookie plus CSRF token header `X-CSRF-Token` for mutatio
 | `/events/sms` | POST | Ingestor or admin + CSRF | Analyze and persist an SMS event |
 | `/events/call` | POST | Ingestor or admin + CSRF | Analyze allowlisted audio or metadata-only call |
 | `/events/{id}` | GET | Own-source ingestor or admin | Recover submission receipt |
-| `/incidents` | GET | Viewer, analyst, admin | Filtered incident records |
-| `/incidents/{id}` | GET | Viewer, analyst, admin | Evidence, assessment and initial review page |
-| `/incidents/{id}/reviews` | GET | Viewer, analyst, admin | Paginated immutable review history |
-| `/incidents/{id}/review` | POST | Analyst/admin + CSRF | Append review |
+| `/incidents` | GET | Viewer, analyst, admin | Filtered incident records (MVP-1, with the `channel` filter) |
+| `/incidents/{id}` | GET | Viewer, analyst, admin | Evidence, assessment and initial review page (MVP-1; empty review page) |
+| `/incidents/{id}/reviews` | GET | Viewer, analyst, admin | Paginated immutable review history (postponed beyond MVP-1) |
+| `/incidents/{id}/review` | POST | Analyst/admin + CSRF | Append review (postponed beyond MVP-1) |
 | `/simulator/scenarios` | GET | Admin | Read fixed scenario and sample catalog |
 | `/health/live` | GET | Public | Process liveness only |
-| `/health` | GET | Viewer, analyst, admin | Dependencies and model readiness |
-| `/stream` | WebSocket | Authenticated user; allowed Origin | Incident/system invalidations |
+| `/health` | GET | Viewer, analyst, admin | Dependencies and model readiness (planned; see C-07) |
+| `/api/v1/system/models` | GET | Viewer, analyst, admin | Implemented (M4-I.2): operational state of the SMS model: `disabled`, `starting`, `ready` or `unavailable`, with the supervisor `detail`, a safe `reason` code, `model_version`, `score_semantics: uncalibrated_softmax` and `validated_on_kavach_data: false`. Readiness is operational, never accuracy. Session only: ingestion keys get 401 |
+| `/stream` | WebSocket | Authenticated user; allowed Origin | Incident/system invalidations (postponed beyond MVP-1; the UI refreshes) |
 
 No public registration, account management API, arbitrary media upload/download, provider webhook, call-control or training endpoint is in scope. Provisioning is a secured operator command with an audit record.
 
@@ -66,7 +214,7 @@ Inference failure within the deadline may return a committed partial/unavailable
 
 ## Incident read formats
 
-List query parameters: `limit` integer 1–100, default 25; optional opaque `cursor`; `tier` enum including unknown; `review_status` enum `unreviewed`, `true_fraud`, `false_alarm`, `needs_investigation`; `kind` standalone/pair; `from` inclusive and `to` exclusive RFC 3339 event-time bounds. Reject invalid ranges. No subscriber lookup or unrestricted text search in MVP.
+List query parameters: `limit` integer 1–100, default 25; optional opaque `cursor`; `tier` enum including unknown; `review_status` enum `unreviewed`, `true_fraud`, `false_alarm`, `needs_investigation` (added with reviews, after MVP-1); `kind` standalone/pair; `channel` `sms`/`call` (approved 9 Nov 2026, MVP-1); `from` inclusive and `to` exclusive RFC 3339 event-time bounds. Reject invalid ranges. No subscriber lookup or unrestricted text search in MVP.
 
 Sort by `occurred_at DESC, id DESC`. Cursor binds this tuple and active filters; validate schema and bounds, never interpolate it into SQL. Feed ordering is stable because occurred_at is immutable. New rows require refresh; review-status changes can alter filtered membership, which the UI must explain. Pagination is not a transactional historical snapshot.
 
@@ -95,7 +243,7 @@ Simulator catalog returns synthetic scenario ID/name/description, ordered SMS/ca
 | HTTP | Code examples | Client behavior |
 | --- | --- | --- |
 | 400 | INVALID_CURSOR | Correct request; preserve filters |
-| 401 | INVALID_CREDENTIALS, SESSION_EXPIRED | Authenticate; clear protected client state |
+| 401 | INVALID_CREDENTIALS, SESSION_EXPIRED, MIXED_CREDENTIALS | Authenticate; clear protected client state; send exactly one credential type |
 | 403 | FORBIDDEN, CSRF_REJECTED | Explain access restriction; no retry loop |
 | 404 | NOT_FOUND | Resource unavailable/expired |
 | 409 | EVENT_ID_CONFLICT, REVIEW_CONFLICT | Resolve conflict; never overwrite silently |
@@ -105,7 +253,7 @@ Simulator catalog returns synthetic scenario ID/name/description, ordered SMS/ca
 | 500 | INTERNAL_ERROR | Request ID and safe retry guidance |
 | 503 | DEPENDENCY_UNAVAILABLE, PROCESSING_TIMEOUT | Backoff; same-ID retry for writes |
 
-D08 proposal: failed login 5/15 minutes per account+IP plus IP ceiling 30/15 minutes; reads 120/minute/user; ingestion 30/minute/key or admin; reviews 30/minute/user; WebSocket 2 concurrent connections/user. Trusted proxy IP handling must be configured explicitly. Redis counters store short-lived keyed identifiers, not raw IP histories. Redis outage uses conservative in-process limits for this single-process MVP or rejects writes if enforcement cannot be assured. Revisit before multiple replicas.
+D08 proposal: failed login 5/15 minutes per account+IP plus IP ceiling 30/15 minutes; reads 120/minute/user; ingestion 30/minute/key or admin; reviews 30/minute/user; WebSocket 2 concurrent connections/user. Trusted proxy IP handling must be configured explicitly. Redis counters store short-lived keyed identifiers (HMAC with `RATE_LIMIT_HMAC_KEY`), not raw IP histories. **Login (C-06, approved 31 October 2026):** login throttling is always shared through Redis; if Redis cannot validate throttle state, `POST /auth/login` fails closed with 503 `DEPENDENCY_UNAVAILABLE` before any password check, and there is no in-process fallback. For the other limits (reads, ingestion, reviews) a Redis outage rejects writes if enforcement cannot be assured; whether reads may use conservative in-process limits is decided in M3. Revisit before multiple replicas.
 
 ## External integrations and webhooks
 
@@ -117,20 +265,24 @@ Required services are local PostgreSQL, Redis and model artifacts. Runtime audio
 | --- | --- | --- |
 | APP_ENV | Server | development, test or pilot |
 | APP_ORIGIN | Server/proxy | Exact browser origin and redirect/Origin allowlist |
-| DATABASE_URL | Secret server config | Runtime PostgreSQL credentials |
+| DATABASE_URL | Secret server config | Runtime PostgreSQL credentials; `postgresql+psycopg://` URL for the least-privilege runtime role (validated when set since M2.1) |
 | MIGRATION_DATABASE_URL | Secret operator config | Separate migration credentials |
 | RETENTION_DATABASE_URL | Secret job config | Restricted expiry job credentials |
-| REDIS_URL | Secret server config | Private Redis endpoint/auth |
+| REDIS_URL | Secret server config | Private Redis endpoint/auth; `redis://` or `rediss://` URL (validated when set since M2.1) |
+| RATE_LIMIT_HMAC_KEY | Secret server config | Key for the keyed identifiers in Redis throttle counters; required once login throttling exists (M2.3) |
 | SUBSCRIBER_HMAC_KEYS / SUBSCRIBER_HMAC_ACTIVE_VERSION | Secret server config | Versioned identity digest keys and selected version |
 | PAYLOAD_HMAC_KEYS / PAYLOAD_HMAC_ACTIVE_VERSION | Secret server config | Versioned idempotency digest keys |
-| AUDIT_HMAC_KEYS / AUDIT_HMAC_ACTIVE_VERSION | Secret server/job config | Versioned audit signing/verification keys |
+| AUDIT_HMAC_KEYS / AUDIT_HMAC_ACTIVE_VERSION | Secret server/job config | Versioned audit signing/verification keys; JSON object `{"<version>": "<32+ character secret>"}` (M2.3) |
 | MODEL_DIR / MODEL_MANIFEST_PATH | Server | Trusted local model assets |
-| AUDIO_SAMPLE_MANIFEST_PATH | Server | Allowlisted controlled samples |
+| AUDIO_SAMPLE_MANIFEST_PATH | Server | Allowlisted controlled samples (contract above; not read until TD-17 is approved) |
+| KAVACH_SIMULATOR_API_KEY | Operator shell (simulator client only) | Ingestion key for `python -m kavach.simulator`; alternatively piped with `--key-stdin`; never stored in a file or passed as an argument |
 | POLICY_PATH | Server | Approved versioned thresholds/window configuration |
 | INFERENCE_DEVICE | Server | Explicit CPU/GPU selection |
-| MAX_INFLIGHT_ANALYSES / INFERENCE_TIMEOUT_SECONDS | Server | Bounded admission/deadline |
+| MAX_INFLIGHT_ANALYSES / INFERENCE_TIMEOUT_SECONDS | Server | Bounded admission/deadline; `INFERENCE_TIMEOUT_SECONDS` (default 30) is the ingestion deadline since M3.2, `MAX_INFLIGHT_ANALYSES` (default 2, 1–2 while one worker exists) is enforced for SMS since M4-I.2 |
+| SMS_WORKER_ENABLED / SMS_WORKER_PYTHON | Server | Implemented (M4-I.2): enable the SMS worker (default `false`) and the absolute path of its separate environment's interpreter. Enabling requires `SMS_WORKER_PYTHON`, `MODEL_DIR`, `MODEL_MANIFEST_PATH` (all absolute) and the event ingestion configuration; `INFERENCE_DEVICE` accepts only `cpu`. An unusable manifest, interpreter or model directory makes the model `unverified` (refuses startup in `APP_ENV=pilot`) |
+| SMS_INFERENCE_TIMEOUT_MS / SMS_WORKER_THREADS / SMS_WORKER_MAX_RSS_MB / SMS_WORKER_START_TIMEOUT_SECONDS | Server | Implemented (M4-I.2): per-request timeout (default 2000; 100–10000 and, with the 2 s commit reserve, below `INFERENCE_TIMEOUT_SECONDS`), torch threads (2), memory ceiling for between-request restart (1536), readiness bound (90) |
 | EVENT_RETENTION_DAYS / AUDIT_RETENTION_DAYS | Server/job | Approved expiry policies |
-| SESSION_IDLE_MINUTES / SESSION_MAX_HOURS | Server | Approved session limits |
+| SESSION_IDLE_MINUTES / SESSION_MAX_HOURS | Server | Approved session limits; defaults 30 and 8 (M2.3) |
 | LOG_LEVEL | Server | Structured safe logging verbosity |
 
 Use a documented JSON map or secret-file references for versioned key sets; never include real values in examples. API keys and account passwords are provisioned securely, not hardcoded environment defaults. Relative same-origin browser URLs require no frontend secrets. Bootstrap secret input must not appear in command history or logs.

@@ -19,7 +19,8 @@ Proposed architecture under PRD decisions D01–D10. Follow [PRD.md](PRD.md) and
 | Backend | Python, FastAPI, Pydantic, Uvicorn | Typed request contracts and local Python inference |
 | Durable data | PostgreSQL, SQLAlchemy, Alembic, psycopg | Transactions, constraints, migrations and durable review history |
 | Temporary state | Redis | Expiring candidate cache and shared rate counters |
-| SMS/fusion | scikit-learn | Reproducible TF-IDF logistic baseline and logistic fusion |
+| SMS classification | Pinned pretrained transformer (Horizon-Labs, PyTorch + Transformers) in a separate worker process with its own lockfile (D04-A1) | Experimental local SMS fraud evidence; uncalibrated, never a tier input |
+| SMS baseline/fusion | scikit-learn | Reproducible TF-IDF logistic comparison baseline and logistic fusion |
 | Voice | Librosa, local Whisper-tiny, versioned classical classifiers | Separate acoustic and semantic inference without hosted transmission |
 | Authentication | Argon2id library, opaque database-backed sessions | Small provisioned-user deployment; no custom password cryptography |
 | Local deployment | Docker Compose with reverse proxy | Reproducible frontend/API/database/cache setup |
@@ -33,7 +34,14 @@ Use one backend deployment, one API process, a bounded inference executor, Postg
 
 Ingestion is synchronous and bounded for the controlled MVP: an accepted request returns only after its sanitized result is durably committed. There is no `202 Accepted` job queue or promise of crash-proof raw-payload processing. If the process crashes before commit, the client retries the same event ID; after commit the same ID returns the existing receipt. A bounded, killable inference worker must enforce the total deadline; an HTTP timeout alone does not cancel computation. Start with one model-owning worker and at most two admitted analyses, including queued admission. Busy requests are rejected rather than accumulated indefinitely.
 
-Model memory is multiplied by worker processes; measure memory before adding workers. [FastAPI deployment concepts](https://fastapi.tiangolo.com/deployment/concepts/)
+Model memory is multiplied by worker processes; measure memory before adding workers.
+
+**SMS worker (D04-A1, design approved 6 Nov 2026; not implemented).** The bounded inference executor for SMS is concretely:
+- one `sms-worker` child process, spawned and supervised by the API process over anonymous stdin/stdout pipes, with no listening socket;
+- its own locked environment, so torch is never imported by the API;
+- at most two admitted analyses (one executing, one waiting), a per-request timeout enforced by SIGKILL of the worker, and restart with backoff and a circuit breaker.
+
+An API deployment that serves the model must run as **one** process. A file lock prevents a second model copy, and a second process reports the worker as unavailable. Full contract: [M4_SMS_INFERENCE_ARCHITECTURE.md](M4_SMS_INFERENCE_ARCHITECTURE.md). [FastAPI deployment concepts](https://fastapi.tiangolo.com/deployment/concepts/)
 
 ## Data flow
 
@@ -75,6 +83,11 @@ Incident assessments are append-only revisions. MVP creates initial assessments 
 ## Model lifecycle
 
 Keep training offline under `experiments/`; runtime only loads trusted, checksummed artifacts from an operator-controlled directory. Never deserialize user-uploaded pickle/joblib files. Record artifact digest, dataset/split version, preprocessing, feature order/units, coefficients, calibration method, thresholds, license, supported languages and measured limitations in each manifest. Distinguish SMS logistic classification from logistic fusion.
+- **Third-party pretrained models (D04-A1).**
+  - The manifest is versioned in Git and pins the revision and every file hash.
+  - Only safetensors and JSON are loaded, with no remote code.
+  - The worker verifies artifacts under `MODEL_DIR` and passes a self-test before reporting ready.
+  - The native outputs are model evidence, kept separate from calibrated `sms_score`.
 
 Use three-second audio chunks with a proposed one-second stride, aggregating chunk results through a documented, evaluated rule. This stride/aggregation is a D04 implementation proposal, not a verified V4 detail. Report audio collection time separately from model time. Acoustic classifier training and voice-intent model selection require actual datasets; if artifacts are missing, report unavailable rather than install a fake predictor. Test doubles stay test-only.
 
@@ -122,7 +135,8 @@ Use validated server settings with fail-fast required secrets. Document names in
 - Model boundary treats input as untrusted data. No executing text instructions, arbitrary file loading, outbound URL fetching, or shell interpolation.
 - Persistence boundary allowlists structured output and uses parameterized queries. Redaction alone is insufficient.
 - External error responses expose a safe code/request ID; internal logs exclude raw content, credentials, subscriber digests and transcript-derived free text.
-- Database outage: fail writes with 503 and no successful receipt. Redis outage: durable correlation fallback; conservative local throttling or fail-closed for writes if limits cannot be enforced.
+- Database outage: fail writes with 503 and no successful receipt. Redis outage: durable correlation fallback; password login fails closed with 503 (shared throttle state cannot be validated; no in-process fallback, C-06); other writes fail closed if limits cannot be enforced; any conservative in-process limit for reads is an M3 decision.
+- Model saturation or a starting/restarting worker: reject before storing (429 `CAPACITY_EXCEEDED` / 503 `DEPENDENCY_UNAVAILABLE`) so a same-ID retry is analyzed. Failure of an attempted inference (timeout, crash, invalid output) is committed as an unavailable stage with its reason; never a substitute score (M4_SMS_INFERENCE_ARCHITECTURE.md §6.4).
 - Model failure: persist explicit partial/unavailable stage results if metadata processing succeeds; system status indicates loss of capability.
 - Audit write/sign failure on an audited mutation: roll back mutation. HMAC protects detectable modification, not removal of records by a privileged database operator.
 
