@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+
+import { axeViolations } from "./axe";
 
 // MVP-F2 journeys against the REAL local backend (no mocks). The test creates one synthetic SMS
 // through the admin browser-session API (MVP-B4) so the detail page has a known record; the
@@ -45,7 +46,7 @@ test("overview, history, detail and system show real data honestly", async ({ pa
   await page.getByRole("button", { name: "Refresh" }).click();
   await expect(page.getByRole("table", { name: "Most recent SMS incidents" })).toBeVisible();
   await expect(page.getByRole("region", { name: "SMS model readiness" })).toBeVisible();
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect(await axeViolations(page)).toEqual([]);
 
   // History with a filter in the URL, then the detail page through the list link.
   await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Incidents" }).click();
@@ -53,14 +54,14 @@ test("overview, history, detail and system show real data honestly", async ({ pa
   await page.getByRole("button", { name: "Apply filters" }).click();
   await expect(page).toHaveURL(/\/incidents\?tier=unknown$/);
   await expect(page.getByRole("table", { name: "Incident records" })).toBeVisible();
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect(await axeViolations(page)).toEqual([]);
 
   await page.goto(`/incidents/${incidentId}`);
   await expect(page.getByRole("heading", { name: `Incident ${incidentId.slice(0, 8)}` })).toBeVisible();
   await expect(page.getByText(/Message text is not retained/)).toBeVisible();
   await expect(page.getByText("Model not enabled")).toBeVisible();
   await expect(page.getByText("Risk tier: Unknown (no calibrated signal)").first()).toBeVisible();
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect(await axeViolations(page)).toEqual([]);
 
   // System: the worker is disabled until the M4-Q decision.
   await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "System" }).click();

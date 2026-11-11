@@ -1,7 +1,7 @@
 // Sign in (FRONTEND_MVP1_PLAN.md section 5, DESIGN.md "Sign in"). Generic credential errors,
 // a Retry-After countdown when throttled, and the password cleared after every attempt.
 import { useEffect, useState, type SyntheticEvent } from "react";
-import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router";
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router";
 
 import { safeNext } from "../../app/routes";
 import { useSession } from "../../app/SessionProvider";
@@ -9,6 +9,9 @@ import { Banner } from "../../components/Banner";
 import { Button } from "../../components/Button";
 import { CopyableId } from "../../components/CopyableId";
 import { Field } from "../../components/Field";
+import { SiteFooter } from "../../components/SiteFooter";
+import { ThemeToggle } from "../../components/ThemeToggle";
+import { Wordmark } from "../../components/Wordmark";
 import { isApiError } from "../../lib/api/errors";
 
 interface Failure {
@@ -85,60 +88,89 @@ export function LoginPage() {
   }
 
   return (
-    <main id="main" className="login">
-      <h1>Sign in to KAVACH</h1>
-      <p className="shell-meta">Controlled demonstration. Accounts are provided by the operator.</p>
-      {reason === "expired" ? <Banner>Your session ended. Sign in again to continue.</Banner> : null}
-      {reason === "signedOut" ? <Banner>You have signed out.</Banner> : null}
-      {failure ? (
-        <Banner tone="error">
-          {failure.message}
-          {waitSeconds > 0 ? ` You can try again in ${String(waitSeconds)} seconds.` : null}
-          {failure.requestId ? (
-            <>
-              {" "}
-              <CopyableId label="Request ID" value={failure.requestId} />
-            </>
+    <div className="login-page">
+      <header className="login-top">
+        <Link to="/welcome" className="wordmark-link" aria-label="About KAVACH">
+          <Wordmark />
+        </Link>
+        <ThemeToggle />
+      </header>
+      <main id="main" className="login-layout">
+        <section className="login-intro" aria-labelledby="login-intro-heading">
+          <p className="eyebrow">SMS fraud intelligence · MVP-1</p>
+          <h2 id="login-intro-heading">
+            <span className="hl hl-sun">Evidence first.</span> Judgement second.
+          </h2>
+          <p>
+            Review stored SMS evidence, incident history and the honest state of the SMS model, in
+            one analyst workspace.
+          </p>
+          <ul className="chip-list">
+            <li>No public sign-up</li>
+            <li>Message text is never stored</li>
+            <li>Role-based access</li>
+          </ul>
+        </section>
+        <section className="card login" aria-labelledby="login-heading">
+          <h1 id="login-heading">Sign in to KAVACH</h1>
+          <p className="shell-meta">Controlled demonstration. Accounts are provided by the operator.</p>
+          {reason === "expired" ? <Banner>Your session ended. Sign in again to continue.</Banner> : null}
+          {reason === "signedOut" ? <Banner>You have signed out.</Banner> : null}
+          {failure ? (
+            <Banner tone="error">
+              {failure.message}
+              {waitSeconds > 0 ? ` You can try again in ${String(waitSeconds)} seconds.` : null}
+              {failure.requestId ? (
+                <>
+                  {" "}
+                  <CopyableId label="Request ID" value={failure.requestId} />
+                </>
+              ) : null}
+            </Banner>
           ) : null}
-        </Banner>
-      ) : null}
-      <form
-        onSubmit={(event) => {
-          void handleSubmit(event);
-        }}
-      >
-        <Field
-          label="Username"
-          name="username"
-          autoComplete="username"
-          required
-          maxLength={80}
-          value={username}
-          onChange={(event) => {
-            setUsername(event.target.value);
-          }}
-        />
-        <Field
-          label="Password"
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          required
-          maxLength={256}
-          value={password}
-          onChange={(event) => {
-            setPassword(event.target.value);
-          }}
-        />
-        <Button
-          type="submit"
-          pending={pending}
-          pendingLabel="Signing in…"
-          disabled={waitSeconds > 0}
-        >
-          Sign in
-        </Button>
-      </form>
-    </main>
+          <form
+            onSubmit={(event) => {
+              void handleSubmit(event);
+            }}
+          >
+            <Field
+              label="Username"
+              name="username"
+              autoComplete="username"
+              required
+              maxLength={80}
+              value={username}
+              onChange={(event) => {
+                setUsername(event.target.value);
+              }}
+            />
+            <Field
+              label="Password"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              required
+              maxLength={256}
+              value={password}
+              onChange={(event) => {
+                setPassword(event.target.value);
+              }}
+            />
+            <Button
+              type="submit"
+              pending={pending}
+              pendingLabel="Signing in…"
+              disabled={waitSeconds > 0}
+            >
+              Sign in
+            </Button>
+          </form>
+          <p className="login-foot">
+            New here? <Link to="/welcome">Learn what KAVACH does</Link>
+          </p>
+        </section>
+      </main>
+      <SiteFooter compact />
+    </div>
   );
 }

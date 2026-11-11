@@ -1,5 +1,6 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+
+import { axeViolations } from "./axe";
 
 // Runs against the REAL local backend on 127.0.0.1:8000 (APP_ORIGIN=http://127.0.0.1:5173)
 // through the Vite proxy, with synthetic accounts. Credentials come only from the environment
@@ -33,11 +34,11 @@ test.describe("authentication against the real backend", () => {
   }) => {
     await page.goto("/");
     await expect(page).toHaveURL(/\/login$/);
-    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    expect(await axeViolations(page)).toEqual([]);
 
     await signIn(page, admin);
     await expect(page.getByText(/· Admin$/)).toBeVisible();
-    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    expect(await axeViolations(page)).toEqual([]);
 
     await page.reload();
     await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();

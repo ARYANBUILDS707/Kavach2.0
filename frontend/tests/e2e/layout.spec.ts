@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+
+import { axeViolations } from "./axe";
 
 // Responsive layout of the incident tables against the REAL local backend. jsdom does no layout,
 // so overlap can only be caught here, from actual DOM boxes. Credentials come from the environment.
@@ -120,7 +121,7 @@ for (const width of [390, 768]) {
       await expect(page.locator(".incident-table tbody tr").first()).toBeVisible();
       await expectSeparatedRows(page, label);
       await expectNoHorizontalOverflow(page, label);
-      expect((await new AxeBuilder({ page }).analyze()).violations, `${label}: axe`).toEqual([]);
+      expect(await axeViolations(page), `${label}: axe`).toEqual([]);
     }
   });
 }

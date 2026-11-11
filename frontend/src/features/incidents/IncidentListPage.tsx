@@ -5,6 +5,7 @@ import { useSearchParams } from "react-router";
 
 import { Banner } from "../../components/Banner";
 import { Button } from "../../components/Button";
+import { PageHeader } from "../../components/PageHeader";
 import { LOADING, StateView, describeError } from "../../components/StateView";
 import { isApiError } from "../../lib/api/errors";
 import { formatClockTime } from "../../lib/format";
@@ -195,10 +196,22 @@ export function IncidentListPage() {
     body = (
       <>
         <IncidentTable items={pages.items} caption="Incident records" returnTo={returnTo} />
-        <p className="shell-meta" aria-live="polite">
-          {pages.items.length} incident record{pages.items.length === 1 ? "" : "s"} loaded
-          {pages.hasMore ? "; more are available" : ""}.
-        </p>
+        <div className="list-status">
+          <p className="shell-meta" aria-live="polite">
+            {pages.items.length} incident record{pages.items.length === 1 ? "" : "s"} loaded
+            {pages.hasMore ? "; more are available" : ""}.
+          </p>
+          {pages.hasMore ? (
+            <Button
+              variant="secondary"
+              pending={pages.loadingMore}
+              pendingLabel="Loading more…"
+              onClick={pages.loadMore}
+            >
+              Load more
+            </Button>
+          ) : null}
+        </div>
         {pages.moreError ? (
           <Banner tone="error">
             {isApiError(pages.moreError) && pages.moreError.code === "INVALID_CURSOR"
@@ -209,38 +222,33 @@ export function IncidentListPage() {
             </Button>
           </Banner>
         ) : null}
-        {pages.hasMore ? (
-          <Button
-            variant="secondary"
-            pending={pages.loadingMore}
-            pendingLabel="Loading more…"
-            onClick={pages.loadMore}
-          >
-            Load more
-          </Button>
-        ) : null}
       </>
     );
   }
 
   return (
     <>
-      <div className="page-header">
-        <h1>Incident history</h1>
-        <div className="page-actions">
-          <span className="shell-meta">
-            {pages.updatedAt !== null ? `Last updated ${formatClockTime(pages.updatedAt)}` : null}
-          </span>
-          <Button variant="secondary" pending={pages.loading} pendingLabel="Refreshing…" onClick={pages.refresh}>
-            Refresh
-          </Button>
-        </div>
-      </div>
-      <p>
-        Standalone incident records, newest event first. Pair and standalone records can share
-        evidence. Message text is never retained.
-      </p>
-      <FilterBar key={params.toString()} applied={filters} onApply={apply} />
+      <PageHeader
+        eyebrow="Investigation"
+        title="Incident history"
+        lead="Standalone incident records, newest event first. Pair and standalone records can share evidence. Message text is never retained."
+        actions={
+          <>
+            <span className="shell-meta">
+              {pages.updatedAt !== null ? `Last updated ${formatClockTime(pages.updatedAt)}` : null}
+            </span>
+            <Button variant="secondary" pending={pages.loading} pendingLabel="Refreshing…" onClick={pages.refresh}>
+              Refresh
+            </Button>
+          </>
+        }
+      />
+      <section className="card filter-card" aria-labelledby="filter-heading">
+        <p className="eyebrow" id="filter-heading">
+          Filters
+        </p>
+        <FilterBar key={params.toString()} applied={filters} onApply={apply} />
+      </section>
       {pages.stale ? (
         <Banner tone="error">
           Couldn&apos;t refresh. Showing records from{" "}

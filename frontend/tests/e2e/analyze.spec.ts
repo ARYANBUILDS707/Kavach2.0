@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+
+import { axeViolations } from "./axe";
 
 // MVP-F3 against the REAL local backend (MVP-B4 admin path, worker disabled). The message is
 // fictional and must never appear in a URL, browser storage, the console or the page after the
@@ -44,7 +45,7 @@ test("an admin submits once, sees the receipt and stored evidence, and the text 
   await expect(page.getByRole("heading", { name: "Analyze a synthetic SMS" })).toBeVisible();
   // The worker is disabled until the M4-Q decision; the page says so instead of predicting.
   await expect(page.getByText(/disabled on this deployment.*no prediction is made/)).toBeVisible();
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect(await axeViolations(page)).toEqual([]);
 
   await page.getByLabel("Synthetic message text").fill(CANARY);
   await page.getByRole("button", { name: "Submit" }).dblclick();
@@ -56,7 +57,7 @@ test("an admin submits once, sees the receipt and stored evidence, and the text 
   await expect(page.getByText("SMS model unavailable: stored without a model result")).toBeVisible();
   await expect(page.getByText("Model not enabled")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Model output (uncalibrated)" })).toHaveCount(0);
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect(await axeViolations(page)).toEqual([]);
 
   expect(await page.content()).not.toContain("CANARY 7316");
   expect(page.url()).toMatch(/\/analyze$/);
@@ -82,7 +83,7 @@ test("a viewer has no submission page and the server refuses viewer, CSRF and Or
   await page.goto("/analyze");
   await expect(page.getByRole("heading", { level: 1, name: "You don't have access" })).toBeVisible();
   await expect(page.getByLabel("Synthetic message text")).toHaveCount(0);
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  expect(await axeViolations(page)).toEqual([]);
 
   const body = {
     event_id: `ui-${randomUUID()}`,

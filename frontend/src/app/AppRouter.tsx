@@ -6,6 +6,7 @@ import { AnalyzePage } from "../features/analyze/AnalyzePage";
 import { LoginPage } from "../features/auth/LoginPage";
 import { IncidentDetailPage } from "../features/incidents/IncidentDetailPage";
 import { IncidentListPage } from "../features/incidents/IncidentListPage";
+import { LandingPage } from "../features/landing/LandingPage";
 import { OverviewPage } from "../features/overview/OverviewPage";
 import { SystemPage } from "../features/system/SystemPage";
 import { AppShell } from "./AppShell";
@@ -16,6 +17,8 @@ export function AppRouter() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      {/* Public product page: no session, no API calls, no sign-up. */}
+      <Route path="/welcome" element={<LandingPage />} />
       <Route
         element={
           <RequireSession>

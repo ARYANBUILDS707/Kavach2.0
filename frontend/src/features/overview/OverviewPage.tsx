@@ -9,12 +9,14 @@ import { useModelStatus } from "../../app/ModelStatusProvider";
 import { ModelStateBadge } from "../../components/Badges";
 import { Banner } from "../../components/Banner";
 import { Button } from "../../components/Button";
+import { PageHeader, SectionHeading } from "../../components/PageHeader";
 import { LOADING, StateView, describeError } from "../../components/StateView";
 import { listIncidents } from "../../lib/api/endpoints";
 import type { IncidentSummary } from "../../lib/api/types";
 import { formatClockTime } from "../../lib/format";
 import { useResource } from "../../lib/useResource";
 import { IncidentTable } from "../incidents/IncidentTable";
+import { countByDay } from "./activity";
 
 export const SUMMARY_WINDOW = 25;
 export const RECENT_ROWS = 10;
@@ -22,7 +24,8 @@ export const RECENT_ROWS = 10;
 function ModelCard() {
   const { status, error, loading, refresh } = useModelStatus();
   return (
-    <section className="card" aria-labelledby="overview-model-heading">
+    <section className="card model-card" aria-labelledby="overview-model-heading">
+      <p className="eyebrow">Readiness</p>
       <h2 id="overview-model-heading">SMS model readiness</h2>
       {status !== null ? (
         <>
@@ -33,13 +36,45 @@ function ModelCard() {
             Readiness is operational only. Outputs are uncalibrated and the model is not validated
             on KAVACH data.
           </p>
-          <Link to="/system">System status</Link>
+          <p>
+            <Link to="/system">System status</Link>
+          </p>
         </>
       ) : loading ? (
         <StateView state={LOADING} />
       ) : (
         <StateView state={describeError(error)} action={<Button onClick={refresh}>Check again</Button>} />
       )}
+    </section>
+  );
+}
+
+/** Records per day across the loaded window: text first, the bar only illustrates the count. */
+function ActivityCard({ items }: { items: IncidentSummary[] }) {
+  const days = countByDay(items);
+  const peak = Math.max(1, ...days.map((day) => day.count));
+  return (
+    <section className="card activity-card" aria-labelledby="activity-heading">
+      <p className="eyebrow">Activity</p>
+      <h2 id="activity-heading">Records per day</h2>
+      <p className="shell-meta">
+        From the same {items.length} loaded records, by event time in your time zone. Days without
+        records are not listed.
+      </p>
+      <ol className="activity-list">
+        {days.map((day) => (
+          <li key={day.day}>
+            <span className="activity-day">{day.label}</span>
+            <span className="activity-bar" aria-hidden="true">
+              <span style={{ width: `${String((day.count / peak) * 100)}%` }} />
+            </span>
+            <span className="activity-count">
+              {day.count}
+              <span className="visually-hidden"> record{day.count === 1 ? "" : "s"}</span>
+            </span>
+          </li>
+        ))}
+      </ol>
     </section>
   );
 }
@@ -52,8 +87,10 @@ function SummaryCards({ items, hasMore }: { items: IncidentSummary[]; hasMore: b
     ? `Counted over the ${String(items.length)} most recent SMS incident records (more exist).`
     : `Counted over all ${String(items.length)} SMS incident records currently retained.`;
   return (
-    <section aria-labelledby="summary-heading">
-      <h2 id="summary-heading">Recent SMS records at a glance</h2>
+    <section className="section" aria-labelledby="summary-heading">
+      <SectionHeading id="summary-heading" eyebrow="At a glance">
+        Recent SMS records at a glance
+      </SectionHeading>
       <p className="shell-meta">{scope} These are record counts, not unique attacks.</p>
       <ul className="summary-cards">
         <li className="card summary">
@@ -83,7 +120,7 @@ function SummaryCards({ items, hasMore }: { items: IncidentSummary[]; hasMore: b
 
 export function OverviewPage() {
   const client = useApi();
-  // One request serves both the summary and the recent list.
+  // One request serves the summary, the activity and the recent list.
   const loader = useCallback(
     (signal: AbortSignal) =>
       listIncidents(client, { channel: "sms", limit: SUMMARY_WINDOW }, signal),
@@ -116,14 +153,18 @@ export function OverviewPage() {
     incidents = (
       <>
         <SummaryCards items={items} hasMore={recent.data.page.has_more} />
-        <section aria-labelledby="recent-heading">
-          <h2 id="recent-heading">Most recent SMS incidents</h2>
+        <section className="section" aria-labelledby="recent-heading">
+          <SectionHeading id="recent-heading" eyebrow="Latest">
+            Most recent SMS incidents
+          </SectionHeading>
           <IncidentTable
             items={items.slice(0, RECENT_ROWS)}
             caption="Most recent SMS incidents"
             returnTo="/incidents"
           />
-          <Link to="/incidents">View the full incident history</Link>
+          <div className="section-footer">
+            <Link to="/incidents">View the full incident history</Link>
+          </div>
         </section>
       </>
     );
@@ -131,24 +172,35 @@ export function OverviewPage() {
 
   return (
     <>
-      <div className="page-header">
-        <h1>Overview</h1>
-        <div className="page-actions">
-          <span className="shell-meta">
-            {recent.updatedAt !== null ? `Last updated ${formatClockTime(recent.updatedAt)}` : null}
-          </span>
-          <Button variant="secondary" pending={recent.loading} pendingLabel="Refreshing…" onClick={recent.reload}>
-            Refresh
-          </Button>
-        </div>
-      </div>
-      <ModelCard />
+      <PageHeader
+        eyebrow="Analyst workspace"
+        title="Overview"
+        lead="Recent SMS evidence and the state of the SMS model, from live records."
+        actions={
+          <>
+            <span className="shell-meta">
+              {recent.updatedAt !== null ? `Last updated ${formatClockTime(recent.updatedAt)}` : null}
+            </span>
+            <Button variant="secondary" pending={recent.loading} pendingLabel="Refreshing…" onClick={recent.reload}>
+              Refresh
+            </Button>
+          </>
+        }
+      />
       {recent.stale ? (
         <Banner tone="error">
           Couldn&apos;t refresh. Showing records from{" "}
           {recent.updatedAt !== null ? formatClockTime(recent.updatedAt) : "earlier"}.
         </Banner>
       ) : null}
+      {items.length > 0 ? (
+        <div className="overview-grid">
+          <ModelCard />
+          <ActivityCard items={items} />
+        </div>
+      ) : (
+        <ModelCard />
+      )}
       {incidents}
     </>
   );

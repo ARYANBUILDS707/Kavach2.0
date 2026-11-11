@@ -28,7 +28,7 @@ describe("session restore on load", () => {
   it("restores an existing session from GET /auth/session", async () => {
     const { requests } = renderApp("/", [() => json(200, SESSION)]);
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
-    expect(screen.getByText(/Test Admin · Admin/)).toBeInTheDocument();
+    expect(screen.getByText(/· Admin$/)).toHaveTextContent(/^Test Admin · Admin$/);
     expect(screen.getByText("Controlled demonstration")).toBeInTheDocument();
     expect(requests.filter((r) => r.url.startsWith("/api/v1/auth/")).map((r) => r.url)).toEqual([
       "/api/v1/auth/session",

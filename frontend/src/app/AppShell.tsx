@@ -1,12 +1,16 @@
-// Header (KAVACH, environment label, SMS model status, the user's name and role, sign-out),
-// navigation, skip link and main landmark (DESIGN.md "App shell"). Only pages the user may open
-// are in the navigation: "Analyze SMS" appears for admins only.
-import { useState } from "react";
-import { NavLink, Outlet } from "react-router";
+// Header (KAVACH, environment label, SMS model status, the user's name and role, theme and
+// sign-out), navigation, skip link and main landmark. Only pages the user may open are in the
+// navigation: "Analyze SMS" appears for admins only. Below 1200px the navigation and tools fold
+// behind a menu button, which closes again on navigation or Escape.
+import { useRef, useState } from "react";
+import { Link, NavLink, Outlet, useLocation } from "react-router";
 
 import { Banner } from "../components/Banner";
 import { Button } from "../components/Button";
 import { ModelStatePill } from "../components/ModelStatePill";
+import { SiteFooter } from "../components/SiteFooter";
+import { ThemeToggle } from "../components/ThemeToggle";
+import { Wordmark } from "../components/Wordmark";
 import type { ApiError } from "../lib/api/errors";
 import { ModelStatusProvider } from "./ModelStatusProvider";
 import { useSession } from "./SessionProvider";
@@ -22,10 +26,15 @@ const ROLE_LABELS = { viewer: "Viewer", analyst: "Analyst", admin: "Admin" } as 
 
 export function AppShell() {
   const { state, expiringSoon, signOut } = useSession();
+  const location = useLocation();
   const [pending, setPending] = useState(false);
   const [signOutError, setSignOutError] = useState<ApiError | null>(null);
+  // The menu is open only for the location it was opened on, so navigating closes it.
+  const [menuOpenAt, setMenuOpenAt] = useState<string | null>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
   if (state.status !== "signedIn") return null;
   const { user } = state.session;
+  const menuOpen = menuOpenAt === location.key;
 
   async function handleSignOut() {
     setPending(true);
@@ -40,36 +49,70 @@ export function AppShell() {
       <a className="skip-link" href="#main">
         Skip to main content
       </a>
-      <header className="shell-header">
-        <span className="shell-brand">KAVACH</span>
-        <span className="demo-label">Controlled demonstration</span>
-        <ModelStatePill />
-        <span className="shell-meta">
-          {user.display_name} · {ROLE_LABELS[user.role]}
-        </span>
-        <Button
-          variant="secondary"
-          pending={pending}
-          pendingLabel="Signing out…"
-          onClick={() => {
-            void handleSignOut();
-          }}
-        >
-          Sign out
-        </Button>
+      <header
+        className="shell-header"
+        onKeyDown={(event) => {
+          // Escape closes the open menu from the toggle or anywhere inside it.
+          if (event.key === "Escape" && menuOpen) {
+            setMenuOpenAt(null);
+            toggleRef.current?.focus();
+          }
+        }}
+      >
+        <div className="shell-bar">
+          <Link to="/" className="wordmark-link" aria-label="KAVACH home">
+            <Wordmark />
+          </Link>
+          <span className="demo-label">Controlled demonstration</span>
+          <button
+            ref={toggleRef}
+            type="button"
+            className="menu-toggle"
+            aria-expanded={menuOpen}
+            aria-controls="shell-panel"
+            onClick={() => {
+              setMenuOpenAt(menuOpen ? null : location.key);
+            }}
+          >
+            <span className="menu-toggle-bars" aria-hidden="true" />
+            Menu
+          </button>
+        </div>
+        <div id="shell-panel" className="shell-panel" data-open={menuOpen}>
+          <nav className="shell-nav" aria-label="Main">
+            <ul>
+              {NAV_ITEMS.filter((item) => !item.adminOnly || user.role === "admin").map((item) => (
+                <li key={item.to}>
+                  <NavLink to={item.to} end={item.end}>
+                    {item.label}
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+          </nav>
+          <div className="shell-tools">
+            <ModelStatePill />
+            <span className="shell-user">
+              <span className="shell-user-name" title={user.display_name}>
+                {user.display_name}
+              </span>{" "}
+              · {ROLE_LABELS[user.role]}
+            </span>
+            <ThemeToggle />
+            <Button
+              variant="secondary"
+              className="button-sm"
+              pending={pending}
+              pendingLabel="Signing out…"
+              onClick={() => {
+                void handleSignOut();
+              }}
+            >
+              Sign out
+            </Button>
+          </div>
+        </div>
       </header>
-      <div className="shell-body">
-      <nav className="shell-nav" aria-label="Main">
-        <ul>
-          {NAV_ITEMS.filter((item) => !item.adminOnly || user.role === "admin").map((item) => (
-            <li key={item.to}>
-              <NavLink to={item.to} end={item.end}>
-                {item.label}
-              </NavLink>
-            </li>
-          ))}
-        </ul>
-      </nav>
       <main id="main" className="shell-main" tabIndex={-1}>
         {expiringSoon ? (
           <Banner>
@@ -84,7 +127,7 @@ export function AppShell() {
         ) : null}
         <Outlet />
       </main>
-      </div>
+      <SiteFooter compact />
     </ModelStatusProvider>
   );
 }

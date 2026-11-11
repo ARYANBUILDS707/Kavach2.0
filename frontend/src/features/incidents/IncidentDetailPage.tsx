@@ -94,6 +94,7 @@ function EventCard({ event, index }: { event: IncidentEvent; index: number }) {
 function AssessmentSection({ assessment }: { assessment: Assessment }) {
   return (
     <section className="card" aria-labelledby="assessment-heading">
+      <p className="eyebrow">Current assessment</p>
       <h2 id="assessment-heading">Assessment (revision {assessment.revision})</h2>
       <p>
         <RiskBadge tier={assessment.tier} />
@@ -134,8 +135,9 @@ function Detail({ incident }: { incident: IncidentDetail }) {
   return (
     <>
       <div className="incident-header">
+        <p className="eyebrow">Incident record</p>
         <h1>Incident {shortId(incident.id)}</h1>
-        <p>
+        <p className="incident-id">
           <CopyableId label="Incident ID" value={incident.id} />
         </p>
         <p className="badge-row">
@@ -151,6 +153,7 @@ function Detail({ incident }: { incident: IncidentDetail }) {
       </Banner>
       <div className="detail-layout">
         <section aria-labelledby="events-heading" className="detail-evidence">
+          <p className="eyebrow">Event timeline</p>
           <h2 id="events-heading">Evidence</h2>
           <ol className="event-list">
             {incident.events.map((event, index) => (
@@ -165,7 +168,7 @@ function Detail({ incident }: { incident: IncidentDetail }) {
             {incident.related_incident_ids.length === 0 ? (
               <p>None. Cross-channel correlation is not part of this release.</p>
             ) : (
-              <ul>
+              <ul className="related-list">
                 {incident.related_incident_ids.map((id) => (
                   <li key={id}>
                     <Link to={`/incidents/${id}`}>
@@ -237,7 +240,7 @@ export function IncidentDetailPage() {
 
   return (
     <>
-      <nav aria-label="Breadcrumb" className="page-actions">
+      <nav aria-label="Breadcrumb" className="breadcrumb">
         {backLink}
         {valid && resource.data !== null ? (
           <Button variant="secondary" pending={resource.loading} pendingLabel="Refreshing…" onClick={resource.reload}>

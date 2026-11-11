@@ -11,6 +11,7 @@ import { StatusBadge } from "../../components/Badges";
 import { Banner } from "../../components/Banner";
 import { Button } from "../../components/Button";
 import { CopyableId } from "../../components/CopyableId";
+import { PageHeader } from "../../components/PageHeader";
 import { StageList } from "../../components/StageList";
 import { LOADING, StateView, describeError } from "../../components/StateView";
 import { Timestamp } from "../../components/Timestamp";
@@ -76,7 +77,7 @@ function StoredEvidence({ incidentId }: { incidentId: string }) {
 function ReceiptPanel({ receipt }: { receipt: AdminEventReceipt }) {
   const [first] = receipt.incident_ids;
   return (
-    <section className="card" aria-labelledby="receipt-heading" role="status">
+    <section className="card receipt" aria-labelledby="receipt-heading" role="status">
       <h2 id="receipt-heading">
         {receipt.replayed ? "Already stored: showing the original receipt" : "Message stored"}
       </h2>
@@ -189,62 +190,96 @@ export function AnalyzePage() {
 
   return (
     <>
-      <h1>Analyze a synthetic SMS</h1>
-      <p>
-        Admin only. Submit a fictional message to see how KAVACH stores and analyses it. Do not
-        paste real messages, phone numbers or personal data. The text is sent once and is not kept.
-      </p>
+      <PageHeader
+        eyebrow="Admin workspace"
+        title="Analyze a synthetic SMS"
+        lead="Admin only. Submit a fictional message to see how KAVACH stores and analyses it. Do not paste real messages, phone numbers or personal data. The text is sent once and is not kept."
+      />
       <ModelNotice />
-      <form className="card analyze-form" onSubmit={onSubmit} aria-label="Submit a synthetic SMS">
-        <div className="field">
-          <label htmlFor={textId}>Synthetic message text</label>
-          <span id={hintId} className="field-hint">
-            1 to {MAX_TEXT_CHARACTERS.toLocaleString("en")} characters. {count.toLocaleString("en")}{" "}
-            used.
-          </span>
-          <textarea
-            id={textId}
-            name="sms-text"
-            rows={6}
-            value={text}
-            readOnly={uncertain || submitting}
-            aria-readonly={uncertain || submitting || undefined}
-            aria-invalid={validation !== null || undefined}
-            aria-describedby={validation !== null ? `${hintId} ${errorId}` : hintId}
-            autoComplete="off"
-            spellCheck={false}
-            onChange={(event) => {
-              setText(event.target.value);
-              if (validation !== null) setValidation(validateText(event.target.value));
-            }}
-          />
-          {validation !== null ? (
-            <span id={errorId} className="field-error" role="alert">
-              {validation}
+      <div className="analyze-layout">
+        <form className="card analyze-form" onSubmit={onSubmit} aria-label="Submit a synthetic SMS">
+          <div className="field">
+            <label htmlFor={textId}>Synthetic message text</label>
+            <span id={hintId} className="field-hint">
+              1 to {MAX_TEXT_CHARACTERS.toLocaleString("en")} characters. {count.toLocaleString("en")}{" "}
+              used.
             </span>
-          ) : null}
-        </div>
-        {failed !== null ? (
-          <div className="banner banner-error" role="alert">
-            <h2>{failed.title}</h2>
-            <p>{failed.message}</p>
-            {failed.requestId !== null ? (
-              <CopyableId label="Request ID" value={failed.requestId} />
-            ) : null}
-            {uncertain ? (
-              <p className="filter-actions">
-                <Button variant="secondary" onClick={startOver}>
-                  Discard and start a new submission
-                </Button>
-              </p>
+            <textarea
+              id={textId}
+              name="sms-text"
+              rows={6}
+              value={text}
+              readOnly={uncertain || submitting}
+              aria-readonly={uncertain || submitting || undefined}
+              aria-invalid={validation !== null || undefined}
+              aria-describedby={validation !== null ? `${hintId} ${errorId}` : hintId}
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(event) => {
+                setText(event.target.value);
+                if (validation !== null) setValidation(validateText(event.target.value));
+              }}
+            />
+            {validation !== null ? (
+              <span id={errorId} className="field-error" role="alert">
+                {validation}
+              </span>
             ) : null}
           </div>
-        ) : null}
-        <Button type="submit" pending={submitting} pendingLabel="Submitting…">
-          {uncertain ? "Retry the same submission" : "Submit"}
-        </Button>
-      </form>
+          {failed !== null ? (
+            <div className="banner banner-error" role="alert">
+              <h2>{failed.title}</h2>
+              <p>{failed.message}</p>
+              {failed.requestId !== null ? (
+                <CopyableId label="Request ID" value={failed.requestId} />
+              ) : null}
+              {uncertain ? (
+                <p className="filter-actions">
+                  <Button variant="secondary" onClick={startOver}>
+                    Discard and start a new submission
+                  </Button>
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+          <div className="analyze-actions">
+            <Button type="submit" pending={submitting} pendingLabel="Submitting…">
+              {uncertain ? "Retry the same submission" : "Submit"}
+            </Button>
+          </div>
+        </form>
+      <HandlingPanel />
+      </div>
       {receipt !== null ? <ReceiptPanel receipt={receipt} /> : null}
     </>
+  );
+}
+
+/** What every submission carries, stated rather than editable: the server fixes the source and
+ * the browser creates the identifiers, so none of these are inputs. */
+function HandlingPanel() {
+  return (
+    <section className="card handling-card" aria-labelledby="handling-heading">
+      <p className="eyebrow">Submission details</p>
+      <h2 id="handling-heading">How this submission is handled</h2>
+      <dl className="facts">
+        <dt>Source</dt>
+        <dd>Simulator, fixed for browser submissions</dd>
+        <dt>Event identifier</dt>
+        <dd>
+          Created in your browser when you submit: <span className="copyable-id">ui-</span> and a
+          random UUID
+        </dd>
+        <dt>Subscriber token</dt>
+        <dd>
+          Synthetic and new for each submission: <span className="copyable-id">ui-sub-</span> and a
+          random UUID
+        </dd>
+        <dt>Event time</dt>
+        <dd>The moment you submit</dd>
+        <dt>Retries</dt>
+        <dd>Never automatic. After an unclear outcome you choose to resend the same submission.</dd>
+      </dl>
+    </section>
   );
 }
