@@ -139,3 +139,16 @@ Motion is short and physical: buttons scale to 0.97 when pressed, destination ca
 Target WCAG 2.2 AA: semantic landmarks/headings/tables, keyboard access, visible focus, no keyboard traps, 4.5:1 normal text contrast, 3:1 relevant non-text contrast, labeled controls, descriptive link names, 200% zoom, reflow at 320 CSS px, and textual errors linked to controls. Test with keyboard and a screen reader in addition to automated checks.
 
 At 320–767 px, use stacked filter fields and incident summaries that preserve all essential fields and a clear detail link. Horizontal scrolling is allowed for genuinely tabular evidence only within a labeled region. Below 1200 px the header uses the Menu disclosure; at 768–1023 px detail is single-column; ≥1024 px detail is split. Never hide risk, uncertainty, review result, or save controls because of viewport width.
+
+## Local public analyzer — 13 November 2026
+
+`/analyze` sits outside the session provider and uses existing public header, footer, button,
+field and card styles. It checks only the anonymous availability endpoint. The form stays disabled
+when hosting is not authorized; local fictional tests can submit without login. Pending submissions
+cannot be repeated; editing clears stale results; success clears text; errors retain the in-memory
+draft. No cookies, browser storage, text in URLs, automatic retries or score gauges. Predictions
+are labeled experimental/unvalidated, with truncation and stage/total timing. “Legitimate” never
+means safe. Hosted inference remains unavailable until C-15 and launch checks pass.
+
+Public scroll reveals translate content while preserving full opacity, so stopping mid-scroll
+never leaves readable text below its required contrast. Time-based page entrances are unchanged.

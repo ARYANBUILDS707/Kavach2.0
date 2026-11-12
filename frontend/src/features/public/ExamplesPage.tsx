@@ -107,8 +107,8 @@ export function ExamplesPage() {
         <section className="card example-notes" aria-labelledby="own-message-heading">
           <h2 id="own-message-heading">Want to try your own message?</h2>
           <p>
-            Not on this site. Analysing visitors&apos; messages publicly would need its own
-            authorization, privacy review and abuse limits first, and none of that exists yet.
+            Hosted analysis is not enabled. The Analyze SMS page supports authorized local fictional
+            testing; public use still requires owner approval and privacy, security and release checks.
             Today, live analysis is a local research feature that works on fictional messages only.
           </p>
         </section>

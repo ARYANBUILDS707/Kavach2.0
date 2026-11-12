@@ -1,6 +1,7 @@
-// Every internal path lives here. The public site (`/`, `/examples`) is static and makes no API
-// calls; the operator console and its sign-in live under `/admin`, which nothing public links to.
+// Public analysis has its own anonymous API; no public page restores an admin session.
+// The operator console and its sign-in live under `/admin`.
 export const PUBLIC_HOME = "/";
+export const PUBLIC_ANALYZE = "/analyze";
 export const EXAMPLES = "/examples";
 
 export const ADMIN_HOME = "/admin";

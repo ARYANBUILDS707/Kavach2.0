@@ -258,3 +258,12 @@ Backups have a documented finite retention; expired sensitive records may remain
 Use reviewed Alembic migrations with a fresh-database path and an upgrade path. Test constraints and rollback on a disposable database. Prefer forward repair for deployed data; never drop data automatically to fix a failed migration. Seed synthetic users/events only via explicit development commands with operator-supplied passwords, not embedded defaults. Keep evaluation corpora out of production seeds.
 
 Before a pilot: encrypted daily backups, isolated access, key recovery procedures, proposed RPO 24 hours/RTO 4 hours, and a recorded restore drill verifying incidents, reviews, constraints, HMAC verification, retention and session revocation. Local Compose volumes are persistence, not backups. Key rotation must keep old verification keys protected for the retention window; subscriber HMAC rotation requires a planned overlap or deliberate correlation-window reset.
+
+## Anonymous analyzer quota namespace — 13 November 2026
+
+No schema change or migration. The analyzer never writes PostgreSQL, incidents or audit rows.
+`kavach:{APP_ENV}:ratelimit:public:ip:{HMAC}` and `...:public:global` are sorted sets of random
+request IDs with Redis-time scores and 60-second expiry. An atomic Lua script prunes old entries,
+checks both budgets, then reserves both or neither. No message, score or raw IP is stored.
+Use a separate Redis service for an eventual public host; disable persistence and set a resource
+limit. This does not claim memory zeroization or cover platform edge-log retention.

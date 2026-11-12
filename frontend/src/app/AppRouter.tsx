@@ -1,4 +1,4 @@
-// Two separate areas. The public site (`/`, `/examples`) is static: no session, no API calls, no
+// Two separate areas. The public site (`/`, `/examples`) has no session or
 // accounts. The operator console lives under `/admin`: sign-in, session restore and every page
 // behind it, with `/admin/analyze` limited to admins. The UI guards are convenience only; the
 // server enforces the session, role, CSRF, Origin and source on every request (API.md).
@@ -10,6 +10,7 @@ import { IncidentDetailPage } from "../features/incidents/IncidentDetailPage";
 import { IncidentListPage } from "../features/incidents/IncidentListPage";
 import { LandingPage } from "../features/landing/LandingPage";
 import { OverviewPage } from "../features/overview/OverviewPage";
+import { PublicAnalyzerPage } from "../features/public/PublicAnalyzerPage";
 import { ExamplesPage } from "../features/public/ExamplesPage";
 import { SystemPage } from "../features/system/SystemPage";
 import { AppShell } from "./AppShell";
@@ -33,6 +34,7 @@ export function AppRouter({ now }: { now?: () => number } = {}) {
   return (
     <Routes>
       <Route index element={<LandingPage />} />
+      <Route path="analyze" element={<PublicAnalyzerPage />} />
       <Route path="examples" element={<ExamplesPage />} />
       {/* Old addresses keep working without leading anywhere public that requires a login. */}
       <Route path="welcome" element={<Navigate to={PUBLIC_HOME} replace />} />

@@ -291,3 +291,41 @@ Use a documented JSON map or secret-file references for versioned key sets; neve
 ## Verification
 
 Contract tests must cover every role/endpoint, malformed values, null scores, limits, duplicate/concurrent ingestion, stale review/idempotent retry, session expiry/CSRF, cursor filters, disconnect recovery, privacy-safe responses and dependency failures. Generate OpenAPI from implemented DTOs and compare against this contract; document any approved change before dependent clients ship.
+
+## Anonymous SMS analyzer — local implementation, hosted gate closed
+
+Owner-authorized implementation: 13 November 2026. C-15 remains proposed. These are the only new
+anonymous routes; existing incident, ingestion, system and authentication permissions are unchanged.
+
+- `GET /api/v1/public/analyzer`: `{data: {enabled, max_chars, experimental: true}, request_id}`.
+  Enabled means configured for use, not worker readiness or model validation.
+- `POST /api/v1/public/analyze`: JSON `{text: string}`, no extra fields. Default maximum 500
+  Unicode code points (configurable 1–4096), nonblank, valid Unicode; entire body ≤32 KiB,
+  received within five seconds. Exact `Origin: APP_ORIGIN`, `Content-Type: application/json`
+  and `X-Kavach-Analyzer: 1` required. No credentials required or used; browser sends none.
+- Success: `{data: {prediction: "fraud" | "spam" | "legitimate", experimental: true,
+  truncated: boolean, model_ms: integer, total_ms: integer}, request_id}`. `model_ms` measures
+  model execution; `total_ms` measures the inference call including worker admission/wait.
+  No raw text, scores, tier, subscriber, event ID or incident ID is returned.
+- Standard safe errors: 403 `FORBIDDEN`; 408 `REQUEST_TIMEOUT`; 413 `PAYLOAD_TOO_LARGE`;
+  415 `UNSUPPORTED_MEDIA_TYPE`; 422 `VALIDATION_ERROR`; 429 `RATE_LIMITED` or
+  `CAPACITY_EXCEEDED`; 503 `ANALYZER_DISABLED`, `DEPENDENCY_UNAVAILABLE` or
+  `PROCESSING_TIMEOUT`. Rate/capacity rejections carry `Retry-After`.
+- Every response is `Cache-Control: no-store`; no session cookie or CORS grant.
+- Redis sliding windows (server time) reserve both per-IP and global budgets atomically before
+  reading a body; defaults 5/IP/minute and 60/global/minute. Failed attempts consume reservations.
+  Redis failure fails closed. Request-body and inference admission is bounded to two; inference
+  reuses the existing kill/restart timeout. No background inference job is left running on timeout.
+- Peer IP only, normalized with `ipaddress`; untrusted forwarding headers are ignored. The supplied
+  Uvicorn command disables proxy header trust. Behind a proxy this conservatively shares the IP
+  budget across visitors until trusted-edge behavior is separately verified before launch.
+
+New settings: `PUBLIC_ANALYZER_ONLY` (false), `PUBLIC_ANALYZER_MODE` (`disabled`),
+`PUBLIC_ANALYZER_MAX_CHARS` (500), `PUBLIC_ANALYZER_IP_LIMIT_PER_MINUTE` (5),
+`PUBLIC_ANALYZER_GLOBAL_LIMIT_PER_MINUTE` (60), `PUBLIC_FRONTEND_DIR` (unset),
+`SMS_WORKER_LOCK_PATH` (unset; defaults to the existing model-directory lock).
+`PUBLIC_ANALYZER_HOSTED_APPROVAL` is reserved and **cannot enable hosted inference** in this release.
+`local-experimental` requires the C-13 authorization, development, loopback origin, real worker,
+Redis and HMAC key. `PUBLIC_ANALYZER_ONLY=true` refuses database/admin configuration and registers
+only health/public routes; optional built static files expose `/`, `/examples` and `/analyze`.
+The operator service retains its existing all-or-nothing configuration validation.

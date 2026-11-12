@@ -1,18 +1,14 @@
 # OpenAPI Contract Source
 
-Source branch: backend
-Source commit: 50431e994a7436fda69e96810568645aee0682d2
+Source branch: feature/public-live-analyzer
+Source commit: 41a8f02ed6180aedf6f71228d8e736028b48b757
 Source file: backend/contract/openapi.json
 
+This snapshot is generated from the source commit above plus the public analyzer changes in this
+PR. Backend test_contract.py verifies it against the application; both snapshots are identical.
+
 SHA-256:
-fb9b8344cbf9bf44cfb2ed2eb517d9fbbbfc3ab467a22f1d555b5a4b51634188
+850572035a199b4e12259a2c0b12b89170b4729146edd7e01e40cbecbe7b8e52
 
-## Regeneration
-
-From the repository root:
-
-git show 50431e994a7436fda69e96810568645aee0682d2:backend/contract/openapi.json > frontend/contract/openapi.json
-
-Then verify:
-
-shasum -a 256 frontend/contract/openapi.json
+Regenerate backend using KAVACH_WRITE_OPENAPI_SNAPSHOT=1 on test_contract.py, copy the snapshot here,
+update this digest, then run npm run api:types. Never hand-edit the generated schema.
