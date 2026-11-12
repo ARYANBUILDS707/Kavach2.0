@@ -46,7 +46,7 @@ interface Detail {
 }
 
 async function signIn(page: Page) {
-  await page.goto("/login");
+  await page.goto("/admin/login");
   await page.getByLabel("Username").fill(admin.username);
   await page.getByLabel("Password").fill(admin.password);
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -117,7 +117,7 @@ test.describe("experimental mode: honest failure states", () => {
   test("a failed analysis is stored and shown as unavailable, never as a prediction", async ({ page }) => {
     test.setTimeout(120_000);
     await signIn(page);
-    await page.goto("/analyze");
+    await page.goto("/admin/analyze");
     // A long message makes the 100 ms inference budget run out; offline fails before inference.
     const text = mode === "timeout" ? `FICTIONAL E2E TIMEOUT: ${"please verify your account details today. ".repeat(90)}`.slice(0, 4000) : MESSAGES[0]?.text ?? "";
     const { detail } = await submit(page, text);

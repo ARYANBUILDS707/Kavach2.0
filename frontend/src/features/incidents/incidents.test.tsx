@@ -22,7 +22,7 @@ function queryOf(url: string): Record<string, string> {
 
 describe("incident history", () => {
   it("loads SMS incidents newest first with the documented query", async () => {
-    const { callsTo } = renderApp("/incidents", signedIn, undefined, {
+    const { callsTo } = renderApp("/admin/incidents", signedIn, undefined, {
       "/api/v1/incidents": () => json(200, page([summary(2), summary(1)])),
     });
     const table = await screen.findByRole("table", { name: "Incident records" });
@@ -35,7 +35,7 @@ describe("incident history", () => {
 
   it("applies kind, tier, channel and date filters through the URL and the API query", async () => {
     const user = userEvent.setup();
-    const { callsTo } = renderApp("/incidents", signedIn, undefined, {
+    const { callsTo } = renderApp("/admin/incidents", signedIn, undefined, {
       "/api/v1/incidents": () => json(200, page([summary(1)])),
     });
     await screen.findByRole("table");
@@ -57,7 +57,7 @@ describe("incident history", () => {
 
   it("refuses a start after the end without calling the API", async () => {
     const user = userEvent.setup();
-    const { callsTo } = renderApp("/incidents", signedIn, undefined, {
+    const { callsTo } = renderApp("/admin/incidents", signedIn, undefined, {
       "/api/v1/incidents": () => json(200, page([summary(1)])),
     });
     await screen.findByRole("table");
@@ -69,14 +69,14 @@ describe("incident history", () => {
   });
 
   it("drops malformed filter values from the URL instead of sending them", async () => {
-    const { callsTo } = renderApp("/incidents?tier=severe&from=yesterday&review_status=x", signedIn);
+    const { callsTo } = renderApp("/admin/incidents?tier=severe&from=yesterday&review_status=x", signedIn);
     await screen.findByText("No SMS incidents in the last 7 days");
     expect(queryOf(callsTo("/api/v1/incidents")[0]?.url ?? "")).toEqual({ limit: "25", channel: "sms" });
   });
 
   it("pages with the server cursor and appends the next page", async () => {
     const user = userEvent.setup();
-    const { callsTo } = renderApp("/incidents", signedIn, undefined, {
+    const { callsTo } = renderApp("/admin/incidents", signedIn, undefined, {
       "/api/v1/incidents": [
         () => json(200, page([summary(3), summary(2)], "cursor-1")),
         () => json(200, page([summary(1)])),
@@ -92,7 +92,7 @@ describe("incident history", () => {
 
   it("offers a restart when the cursor is rejected (400 INVALID_CURSOR)", async () => {
     const user = userEvent.setup();
-    const { callsTo } = renderApp("/incidents", signedIn, undefined, {
+    const { callsTo } = renderApp("/admin/incidents", signedIn, undefined, {
       "/api/v1/incidents": [
         () => json(200, page([summary(2)], "cursor-1")),
         () => apiError(400, "INVALID_CURSOR"),
@@ -110,12 +110,12 @@ describe("incident history", () => {
   });
 
   it("explains an empty list differently with and without filters", async () => {
-    renderApp("/incidents", signedIn);
+    renderApp("/admin/incidents", signedIn);
     expect(await screen.findByText("No SMS incidents in the last 7 days")).toBeInTheDocument();
   });
 
   it("keeps filters and offers to clear them when nothing matches", async () => {
-    renderApp("/incidents?tier=high", signedIn);
+    renderApp("/admin/incidents?tier=high", signedIn);
     expect(await screen.findByText("No incidents match these filters")).toBeInTheDocument();
     expect(screen.getByLabelText("Risk tier")).toHaveValue("high");
     expect(screen.getByRole("button", { name: "Clear filters" })).toBeInTheDocument();
@@ -127,7 +127,7 @@ describe("incident history", () => {
       [429, "RATE_LIMITED", "Too many requests"],
       [403, "FORBIDDEN", "You don't have access"],
     ] as const) {
-      const view = renderApp("/incidents", signedIn, undefined, {
+      const view = renderApp("/admin/incidents", signedIn, undefined, {
         "/api/v1/incidents": () => apiError(status, code, { "Retry-After": "5" }),
       });
       expect(await screen.findByText(title)).toBeInTheDocument();
@@ -138,7 +138,7 @@ describe("incident history", () => {
 
   it("keeps the last records marked stale when a refresh fails", async () => {
     const user = userEvent.setup();
-    renderApp("/incidents", signedIn, undefined, {
+    renderApp("/admin/incidents", signedIn, undefined, {
       "/api/v1/incidents": [
         () => json(200, page([summary(1)])),
         () => apiError(500, "INTERNAL_ERROR"),
@@ -155,7 +155,7 @@ describe("incident detail", () => {
   const path = `/api/v1/incidents/${INCIDENT_ID}`;
 
   it("shows events, native uncalibrated output, the unknown tier and null scores honestly", async () => {
-    const { container } = renderApp(`/incidents/${INCIDENT_ID}`, signedIn, undefined, {
+    const { container } = renderApp(`/admin/incidents/${INCIDENT_ID}`, signedIn, undefined, {
       [path]: () => json(200, { data: detail(), request_id: "req-detail" }),
     });
     expect(await screen.findByRole("heading", { name: "Incident 11111111" })).toBeInTheDocument();
@@ -175,7 +175,7 @@ describe("incident detail", () => {
   });
 
   it("shows unavailable SMS and call stages with their reasons", async () => {
-    renderApp(`/incidents/${INCIDENT_ID}`, signedIn, undefined, {
+    renderApp(`/admin/incidents/${INCIDENT_ID}`, signedIn, undefined, {
       [path]: () =>
         json(200, { data: detail({ events: [UNAVAILABLE_SMS_EVENT, CALL_EVENT] }), request_id: "r" }),
     });
@@ -185,18 +185,18 @@ describe("incident detail", () => {
   });
 
   it("treats 404 as unavailable or expired and keeps the list filters on the back link", async () => {
-    renderApp(`/incidents/${INCIDENT_ID}`, signedIn, undefined, {
+    renderApp(`/admin/incidents/${INCIDENT_ID}`, signedIn, undefined, {
       [path]: () => apiError(404, "NOT_FOUND"),
     });
     expect(await screen.findByText("Incident unavailable or expired")).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "Back to incident history" })[0]).toHaveAttribute(
       "href",
-      "/incidents",
+      "/admin/incidents",
     );
   });
 
   it("never sends a malformed ID to the server", async () => {
-    const { callsTo, requests } = renderApp("/incidents/not-a-uuid", signedIn);
+    const { callsTo, requests } = renderApp("/admin/incidents/not-a-uuid", signedIn);
     expect(await screen.findByText("Incident unavailable or expired")).toBeInTheDocument();
     expect(requests.some((r) => r.url.startsWith("/api/v1/incidents/"))).toBe(false);
     expect(callsTo("/api/v1/incidents")).toHaveLength(0);
@@ -204,7 +204,7 @@ describe("incident detail", () => {
 
   it("shows a retryable error for 503", async () => {
     const user = userEvent.setup();
-    renderApp(`/incidents/${INCIDENT_ID}`, signedIn, undefined, {
+    renderApp(`/admin/incidents/${INCIDENT_ID}`, signedIn, undefined, {
       [path]: [
         () => apiError(503, "DEPENDENCY_UNAVAILABLE"),
         () => apiError(503, "DEPENDENCY_UNAVAILABLE"),
@@ -219,7 +219,7 @@ describe("incident detail", () => {
 
   it("opens from the list with a back link that restores the filters", async () => {
     const user = userEvent.setup();
-    renderApp("/incidents?tier=unknown", signedIn, undefined, {
+    renderApp("/admin/incidents?tier=unknown", signedIn, undefined, {
       "/api/v1/incidents": () => json(200, page([summary(1, { id: INCIDENT_ID })])),
       [path]: () => json(200, { data: detail(), request_id: "r" }),
     });
@@ -227,7 +227,7 @@ describe("incident detail", () => {
     await screen.findByRole("heading", { name: "Incident 11111111" });
     expect(screen.getByRole("link", { name: "Back to incident history" })).toHaveAttribute(
       "href",
-      "/incidents?tier=unknown",
+      "/admin/incidents?tier=unknown",
     );
   });
 });

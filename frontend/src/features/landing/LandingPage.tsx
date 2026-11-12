@@ -4,6 +4,7 @@
 import { useState, type CSSProperties } from "react";
 import { Link } from "react-router";
 
+import { EXAMPLES } from "../../app/routes";
 import { Button } from "../../components/Button";
 import {
   HeroShield,
@@ -13,15 +14,14 @@ import {
   SystemIllustration,
 } from "../../components/Illustrations";
 import { SiteFooter } from "../../components/SiteFooter";
-import { ThemeToggle } from "../../components/ThemeToggle";
-import { Wordmark } from "../../components/Wordmark";
+import { SiteHeader } from "../../components/SiteHeader";
 
 const TICKER = [
-  "Controlled SMS submission",
-  "Incident history",
+  "Recorded examples",
+  "Fictional messages only",
   "Evidence, not message text",
   "Honest analysis status",
-  "Role-based access",
+  "No login needed",
   "Unknown stays unknown",
 ];
 
@@ -85,20 +85,24 @@ const WORKFLOW = [
 
 const FAQ = [
   {
-    q: "Who can sign in?",
-    a: "Only accounts created by an operator. There is no public sign-up, and each account has a role: viewer, analyst or admin.",
+    q: "Is there a login or sign-up?",
+    a: "No. This public site has no accounts, no sign-up and no login. The operator console described below is separate and is not open to visitors.",
   },
   {
-    q: "Does KAVACH keep the message text?",
-    a: "No. A submitted message is analysed and the evidence is kept; the text itself is not stored or shown, and evidence expires after 7 days.",
+    q: "Are the examples live?",
+    a: "No. They are the pinned model's recorded outputs for fixed, fictional messages, taken in a local offline run. Nothing is analysed when you visit.",
+  },
+  {
+    q: "Can I try my own message?",
+    a: "Not on this site: it has no input box. Live analysis is a local research feature for fictional messages, and a public analyzer would need its own authorization, privacy review and abuse limits first.",
+  },
+  {
+    q: "Does KAVACH keep message text?",
+    a: "This site never receives message text. In the operator console, a submitted message is analysed once and only the evidence is kept; the text is not stored or shown, and evidence expires after 7 days.",
   },
   {
     q: "Is the model score a probability?",
     a: "No. The SMS model's native outputs are uncalibrated and labelled as such. Risk tiers stay unknown until a calibration validated on KAVACH data exists.",
-  },
-  {
-    q: "Can anyone submit messages?",
-    a: "Only admins, and only synthetic test messages through the controlled submission page. Viewers and analysts cannot submit.",
   },
 ];
 
@@ -125,36 +129,7 @@ export function LandingPage() {
   const [motionPaused, setMotionPaused] = useState(false);
   return (
     <>
-      <a className="skip-link" href="#main">
-        Skip to main content
-      </a>
-      <header className="site-nav">
-        <Link to="/welcome" className="wordmark-link" aria-label="KAVACH home">
-          <Wordmark />
-        </Link>
-        <nav className="site-nav-links" aria-label="Sections">
-          <ul>
-            <li>
-              <a href="#about">About</a>
-            </li>
-            <li>
-              <a href="#platform">Platform</a>
-            </li>
-            <li>
-              <a href="#capabilities">Capabilities</a>
-            </li>
-            <li>
-              <a href="#status">Status</a>
-            </li>
-          </ul>
-        </nav>
-        <div className="site-nav-end">
-          <ThemeToggle />
-          <Link to="/login" className="button button-primary button-sm">
-            Sign in
-          </Link>
-        </div>
-      </header>
+      <SiteHeader />
 
       <main id="main" className="landing-main" data-motion={motionPaused ? "paused" : "running"}>
         <section className="hero" aria-labelledby="hero-title">
@@ -183,9 +158,9 @@ export function LandingPage() {
               <span className="hl hl-blue">Decide with care.</span>
             </h1>
             <p className="hero-lead">
-              KAVACH is an analyst workspace for SMS fraud intelligence: controlled evidence
-              submission, incident history and honest analysis status, without keeping message
-              text.
+              KAVACH is an evidence-first research project for SMS fraud analysis. Browse what its
+              model recorded for fictional messages, and what it deliberately does not claim.
+              Nothing to sign in to.
             </p>
             <ul className="fact-chips" aria-label="At a glance">
               <li>
@@ -193,17 +168,17 @@ export function LandingPage() {
                 <span>Channel in this release</span>
               </li>
               <li>
-                <b>3 roles</b>
-                <span>Viewer, analyst, admin</span>
+                <b>No login</b>
+                <span>Open to every visitor</span>
               </li>
               <li>
-                <b>7 days</b>
-                <span>Evidence retention</span>
+                <b>Recorded</b>
+                <span>Examples, not live analysis</span>
               </li>
             </ul>
             <div className="cta-row">
-              <Link to="/login" className="button button-primary button-lg">
-                Sign in
+              <Link to={EXAMPLES} className="button button-primary button-lg">
+                See recorded examples
               </Link>
               <a href="#workflow" className="button button-secondary button-lg">
                 How it works
@@ -245,8 +220,8 @@ export function LandingPage() {
               <span className="number-tag">01</span>
               <h3>Collects evidence safely</h3>
               <p>
-                SMS events arrive through authenticated ingestion or the admin submission page.
-                Each is stored once, and the message text is not kept.
+                In the operator console, SMS events arrive through authenticated ingestion or the
+                admin submission page. Each is stored once, and the message text is not kept.
               </p>
             </article>
             <article className="card">
@@ -273,6 +248,10 @@ export function LandingPage() {
           <h2 id="capabilities-title" className="landing-title">
             Four tools. One workspace.
           </h2>
+          <p className="section-note">
+            These are the tools in KAVACH&apos;s operator console, which is not open to visitors.
+            This public site shows recorded examples instead.
+          </p>
           <div className="capability-grid">
             {CAPABILITIES.map((capability) => (
               <article
@@ -297,6 +276,7 @@ export function LandingPage() {
           <h2 id="workflow-title" className="landing-title">
             From message to evidence.
           </h2>
+          <p className="section-note">How the operator console handles a fictional message.</p>
           <ol className="workflow-list">
             {WORKFLOW.map((item) => (
               <li key={item.step} className="reveal">
@@ -332,10 +312,10 @@ export function LandingPage() {
               </p>
             </article>
             <article className="principle">
-              <h3>Access is earned</h3>
+              <h3>Nothing public to leak</h3>
               <p>
-                Every page and request checks the session and role on the server. Submitting is
-                limited to admins.
+                This site holds only fixed, fictional examples. The operator console checks the
+                session and role on the server for every request, and it is not linked from here.
               </p>
             </article>
             <article className="principle">
@@ -359,8 +339,8 @@ export function LandingPage() {
             </div>
             <p>
               KAVACH is a controlled demonstration, not a production service. The SMS model is
-              disabled by default and is not validated on KAVACH data; signed-in users see its live
-              state on the System page.
+              disabled by default and is not validated on KAVACH data. The examples on this site
+              are recorded outputs, not live analysis.
             </p>
             <dl className="status-rows">
               <div className="status-row" style={{ "--swatch": "var(--mint)" } as CSSProperties}>
@@ -374,6 +354,10 @@ export function LandingPage() {
               <div className="status-row" style={{ "--swatch": "var(--saffron)" } as CSSProperties}>
                 <dt>Risk tiers and scores</dt>
                 <dd>Unknown until calibrated</dd>
+              </div>
+              <div className="status-row">
+                <dt>Live analysis of visitors&apos; messages</dt>
+                <dd>Not available</dd>
               </div>
               <div className="status-row">
                 <dt>Voice and cross-channel correlation</dt>
@@ -401,9 +385,9 @@ export function LandingPage() {
 
         <section className="cta-band reveal" aria-labelledby="cta-title">
           <h2 id="cta-title">Ready to look at the evidence?</h2>
-          <p>Sign in with the account your operator gave you.</p>
-          <Link to="/login" className="button button-primary button-lg">
-            Sign in to KAVACH
+          <p>See what the model said about nine fictional messages, and what it does not claim.</p>
+          <Link to={EXAMPLES} className="button button-primary button-lg">
+            See the recorded examples
           </Link>
         </section>
       </main>

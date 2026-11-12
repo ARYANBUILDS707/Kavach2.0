@@ -3,7 +3,7 @@
 import { useEffect, useState, type SyntheticEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router";
 
-import { safeNext } from "../../app/routes";
+import { PUBLIC_HOME, safeNext } from "../../app/routes";
 import { useSession } from "../../app/SessionProvider";
 import { Banner } from "../../components/Banner";
 import { Button } from "../../components/Button";
@@ -90,14 +90,14 @@ export function LoginPage() {
   return (
     <div className="login-page">
       <header className="login-top">
-        <Link to="/welcome" className="wordmark-link" aria-label="About KAVACH">
+        <Link to={PUBLIC_HOME} className="wordmark-link" aria-label="KAVACH public site">
           <Wordmark />
         </Link>
         <ThemeToggle />
       </header>
       <main id="main" className="login-layout">
         <section className="login-intro" aria-labelledby="login-intro-heading">
-          <p className="eyebrow">SMS fraud intelligence · MVP-1</p>
+          <p className="eyebrow">Operator console · SMS fraud intelligence</p>
           <h2 id="login-intro-heading">
             <span className="hl hl-sun">Evidence first.</span> Judgement second.
           </h2>
@@ -166,7 +166,7 @@ export function LoginPage() {
             </Button>
           </form>
           <p className="login-foot">
-            New here? <Link to="/welcome">Learn what KAVACH does</Link>
+            Looking for the public site? <Link to={PUBLIC_HOME}>See what KAVACH does</Link>
           </p>
         </section>
       </main>

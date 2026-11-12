@@ -66,7 +66,7 @@ afterEach(() => {
 
 describe("access", () => {
   it.each(["viewer", "analyst"] as const)("a %s gets the forbidden state and no form", async (role) => {
-    const { callsTo } = renderApp("/analyze", [sessionAs(role)]);
+    const { callsTo } = renderApp("/admin/analyze", [sessionAs(role)]);
     // The forbidden state replaces the whole page, so its title is the page's only h1.
     expect(await screen.findByRole("heading", { level: 1, name: "You don't have access" })).toBeInTheDocument();
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
@@ -77,7 +77,7 @@ describe("access", () => {
   });
 
   it("an admin gets the form and the navigation item", async () => {
-    renderApp("/analyze", [sessionAs("admin")]);
+    renderApp("/admin/analyze", [sessionAs("admin")]);
     expect(await screen.findByLabelText("Synthetic message text")).toBeInTheDocument();
     const nav = screen.getByRole("navigation", { name: "Main" });
     expect(within(nav).getByRole("link", { name: "Analyze SMS" })).toHaveAttribute("aria-current", "page");
@@ -87,7 +87,7 @@ describe("access", () => {
 describe("validation", () => {
   it("refuses blank text with an associated message and sends nothing", async () => {
     const user = userEvent.setup();
-    const { callsTo } = renderApp("/analyze", [sessionAs("admin")]);
+    const { callsTo } = renderApp("/admin/analyze", [sessionAs("admin")]);
     const field = await screen.findByLabelText("Synthetic message text");
     await user.type(field, "   ");
     await user.click(screen.getByRole("button", { name: "Submit" }));
@@ -106,7 +106,7 @@ describe("validation", () => {
 
 describe("submission", () => {
   it("sends exactly the contract body with the CSRF token, shows the receipt and clears the text", async () => {
-    const { callsTo, container } = renderApp("/analyze", [sessionAs("admin")], undefined, {
+    const { callsTo, container } = renderApp("/admin/analyze", [sessionAs("admin")], undefined, {
       "/api/v1/events/sms": () => json(201, receipt()),
       [`/api/v1/incidents/${INCIDENT}`]: unavailableDetail,
     });
@@ -132,7 +132,7 @@ describe("submission", () => {
     // Incident navigation and the stored evidence read back from the server.
     expect(screen.getByRole("link", { name: /Open incident 55555555/ })).toHaveAttribute(
       "href",
-      `/incidents/${INCIDENT}`,
+      `/admin/incidents/${INCIDENT}`,
     );
     expect(screen.getByText("SMS model unavailable: stored without a model result")).toBeInTheDocument();
     expect(await screen.findByText("Model not enabled")).toBeInTheDocument();
@@ -140,7 +140,7 @@ describe("submission", () => {
   });
 
   it("shows native outputs only from stored evidence, labelled uncalibrated", async () => {
-    renderApp("/analyze", [sessionAs("admin")], undefined, {
+    renderApp("/admin/analyze", [sessionAs("admin")], undefined, {
       "/api/v1/system/models": () => json(200, models("ready")),
       "/api/v1/events/sms": () =>
         json(201, receipt({ analysis_status: "complete", warnings: ["SMS_SCORE_UNCALIBRATED"] })),
@@ -158,7 +158,7 @@ describe("submission", () => {
   });
 
   it("reports a replay as the original receipt", async () => {
-    renderApp("/analyze", [sessionAs("admin")], undefined, {
+    renderApp("/admin/analyze", [sessionAs("admin")], undefined, {
       "/api/v1/events/sms": () => json(200, receipt({ replayed: true })),
       [`/api/v1/incidents/${INCIDENT}`]: unavailableDetail,
     });
@@ -173,7 +173,7 @@ describe("submission", () => {
     const pending = new Promise<Response>((resolve) => {
       release = resolve;
     });
-    const { callsTo } = renderApp("/analyze", [sessionAs("admin")], undefined, {
+    const { callsTo } = renderApp("/admin/analyze", [sessionAs("admin")], undefined, {
       "/api/v1/events/sms": () => pending,
       [`/api/v1/incidents/${INCIDENT}`]: unavailableDetail,
     });
@@ -193,7 +193,7 @@ describe("submission", () => {
 describe("same-frame double submit", () => {
   it("sends one request when two submits fire before React re-renders", async () => {
     const user = userEvent.setup();
-    const { callsTo } = renderApp("/analyze", [sessionAs("admin")], undefined, {
+    const { callsTo } = renderApp("/admin/analyze", [sessionAs("admin")], undefined, {
       "/api/v1/events/sms": () => json(201, receipt()),
       [`/api/v1/incidents/${INCIDENT}`]: unavailableDetail,
     });
@@ -210,7 +210,7 @@ describe("same-frame double submit", () => {
 describe("failures", () => {
   it("after an uncertain outcome it locks the text and retries only the identical submission", async () => {
     const user = userEvent.setup();
-    const { callsTo } = renderApp("/analyze", [sessionAs("admin")], undefined, {
+    const { callsTo } = renderApp("/admin/analyze", [sessionAs("admin")], undefined, {
       "/api/v1/events/sms": [
         () => Promise.reject(new TypeError("Failed to fetch")),
         () => json(200, receipt({ replayed: true })),
@@ -230,7 +230,7 @@ describe("failures", () => {
 
   it("starts a new submission only when the admin explicitly discards the uncertain one", async () => {
     const user = userEvent.setup();
-    const { callsTo } = renderApp("/analyze", [sessionAs("admin")], undefined, {
+    const { callsTo } = renderApp("/admin/analyze", [sessionAs("admin")], undefined, {
       "/api/v1/events/sms": [() => apiError(500, "INTERNAL_ERROR"), () => json(201, receipt())],
       [`/api/v1/incidents/${INCIDENT}`]: unavailableDetail,
     });
@@ -252,7 +252,7 @@ describe("failures", () => {
     [429, "RATE_LIMITED", "Too many submissions"],
     [429, "CAPACITY_EXCEEDED", "Analysis capacity is full"],
   ] as const)("a %s %s says nothing was stored and keeps the text editable", async (status, code, title) => {
-    renderApp("/analyze", [sessionAs("admin")], undefined, {
+    renderApp("/admin/analyze", [sessionAs("admin")], undefined, {
       "/api/v1/events/sms": () => apiError(status, code, { "Retry-After": "7" }),
     });
     await typeAndSubmit();
@@ -267,7 +267,7 @@ describe("failures", () => {
 
   it("reuses the same submission after a rate limit when the text is unchanged", async () => {
     const user = userEvent.setup();
-    const { callsTo } = renderApp("/analyze", [sessionAs("admin")], undefined, {
+    const { callsTo } = renderApp("/admin/analyze", [sessionAs("admin")], undefined, {
       "/api/v1/events/sms": [
         () => apiError(429, "CAPACITY_EXCEEDED", { "Retry-After": "1" }),
         () => json(201, receipt()),
@@ -283,7 +283,7 @@ describe("failures", () => {
   });
 
   it("treats a 503 (worker starting or database) as uncertain and never auto-retries", async () => {
-    const { callsTo } = renderApp("/analyze", [sessionAs("admin")], undefined, {
+    const { callsTo } = renderApp("/admin/analyze", [sessionAs("admin")], undefined, {
       "/api/v1/events/sms": () => apiError(503, "DEPENDENCY_UNAVAILABLE", { "Retry-After": "10" }),
     });
     await typeAndSubmit();
@@ -294,7 +294,7 @@ describe("failures", () => {
 
   it("a 409 conflict discards the submission so the next one gets new identifiers", async () => {
     const user = userEvent.setup();
-    const { callsTo } = renderApp("/analyze", [sessionAs("admin")], undefined, {
+    const { callsTo } = renderApp("/admin/analyze", [sessionAs("admin")], undefined, {
       "/api/v1/events/sms": [() => apiError(409, "EVENT_ID_CONFLICT"), () => json(201, receipt())],
       [`/api/v1/incidents/${INCIDENT}`]: unavailableDetail,
     });
@@ -313,7 +313,7 @@ describe("failures", () => {
   });
 
   it("a 401 ends the session and returns to sign-in", async () => {
-    renderApp("/analyze", [sessionAs("admin")], undefined, {
+    renderApp("/admin/analyze", [sessionAs("admin")], undefined, {
       "/api/v1/events/sms": () => apiError(401, "SESSION_EXPIRED"),
     });
     await typeAndSubmit();
@@ -329,7 +329,7 @@ describe("model status notices", () => {
     ["unavailable", /unavailable\. Your message will be stored with the analysis unavailable/],
     ["ready", /Experimental analysis is on\..*not an established fact/],
   ] as const)("explains the %s worker state honestly", async (state, text) => {
-    renderApp("/analyze", [sessionAs("admin")], undefined, {
+    renderApp("/admin/analyze", [sessionAs("admin")], undefined, {
       "/api/v1/system/models": () => json(200, models(state)),
     });
     expect(await screen.findByText(text)).toBeInTheDocument();
@@ -338,7 +338,7 @@ describe("model status notices", () => {
 
 describe("privacy", () => {
   it("keeps the text out of URLs, links and browser storage through a full submission", async () => {
-    const { container } = renderApp("/analyze", [sessionAs("admin")], undefined, {
+    const { container } = renderApp("/admin/analyze", [sessionAs("admin")], undefined, {
       "/api/v1/events/sms": () => json(201, receipt()),
       [`/api/v1/incidents/${INCIDENT}`]: unavailableDetail,
     });

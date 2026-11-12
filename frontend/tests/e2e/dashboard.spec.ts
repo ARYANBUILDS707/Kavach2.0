@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 
 import { axeViolations } from "./axe";
+import { ORIGIN } from "./origin";
 
 // MVP-F2 journeys against the REAL local backend (no mocks). The test creates one synthetic SMS
 // through the admin browser-session API (MVP-B4) so the detail page has a known record; the
@@ -17,7 +18,7 @@ test.skip(process.env.KAVACH_E2E_SHORT_SESSION === "1", "runs against a normal-l
 test.skip(admin.username === "" || admin.password === "", "KAVACH_E2E_USERNAME/PASSWORD not set");
 
 test("overview, history, detail and system show real data honestly", async ({ page }) => {
-  await page.goto("/login");
+  await page.goto("/admin/login");
   await page.getByLabel("Username").fill(admin.username);
   await page.getByLabel("Password").fill(admin.password);
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -28,7 +29,7 @@ test("overview, history, detail and system show real data honestly", async ({ pa
   expect(sessionResponse.status(), "session read (a 429 means the shared read budget is spent)").toBe(200);
   const session = (await sessionResponse.json()) as { data: { csrf_token: string } };
   const submitted = await page.request.post("/api/v1/events/sms", {
-    headers: { Origin: "http://127.0.0.1:5173", "X-CSRF-Token": session.data.csrf_token },
+    headers: { Origin: ORIGIN, "X-CSRF-Token": session.data.csrf_token },
     data: {
       event_id: `ui-${randomUUID()}`,
       subscriber_token: `ui-sub-${randomUUID()}`,
@@ -52,11 +53,11 @@ test("overview, history, detail and system show real data honestly", async ({ pa
   await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Incidents" }).click();
   await page.getByLabel("Risk tier").selectOption("unknown");
   await page.getByRole("button", { name: "Apply filters" }).click();
-  await expect(page).toHaveURL(/\/incidents\?tier=unknown$/);
+  await expect(page).toHaveURL(/\/admin\/incidents\?tier=unknown$/);
   await expect(page.getByRole("table", { name: "Incident records" })).toBeVisible();
   expect(await axeViolations(page)).toEqual([]);
 
-  await page.goto(`/incidents/${incidentId}`);
+  await page.goto(`/admin/incidents/${incidentId}`);
   await expect(page.getByRole("heading", { name: `Incident ${incidentId.slice(0, 8)}` })).toBeVisible();
   await expect(page.getByText(/Message text is not retained/)).toBeVisible();
   await expect(page.getByText("Model not enabled")).toBeVisible();
@@ -77,13 +78,13 @@ test("overview, history, detail and system show real data honestly", async ({ pa
 });
 
 test("a malformed or unknown incident ID is the same unavailable page", async ({ page }) => {
-  await page.goto("/login");
+  await page.goto("/admin/login");
   await page.getByLabel("Username").fill(admin.username);
   await page.getByLabel("Password").fill(admin.password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   for (const id of ["not-a-uuid", randomUUID()]) {
-    await page.goto(`/incidents/${id}`);
+    await page.goto(`/admin/incidents/${id}`);
     await expect(page.getByText("Incident unavailable or expired")).toBeVisible();
   }
 });

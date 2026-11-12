@@ -3,6 +3,7 @@
 import { Link } from "react-router";
 
 import { RiskBadge, StatusBadge } from "../../components/Badges";
+import { adminIncident } from "../../app/routes";
 import { Timestamp } from "../../components/Timestamp";
 import { KIND_LABELS, formatScore, shortId } from "../../lib/format";
 import type { IncidentSummary } from "../../lib/api/types";
@@ -40,7 +41,7 @@ export function IncidentTable({
                 <Timestamp iso={item.occurred_at} />
               </td>
               <td data-label="Incident">
-                <Link to={`/incidents/${item.id}`} state={{ from: returnTo }}>
+                <Link to={adminIncident(item.id)} state={{ from: returnTo }}>
                   Open incident <span className="copyable-id">{shortId(item.id)}</span>
                 </Link>
               </td>

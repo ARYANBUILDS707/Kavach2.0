@@ -109,14 +109,14 @@ npm ci
 npm run dev
 ```
 
-The Vite proxy sends `/api` to `127.0.0.1:8000` (`frontend/vite.config.ts`). Open **http://127.0.0.1:5173/welcome**. Use `127.0.0.1`, not `localhost`: the backend accepts only the exact origin in `APP_ORIGIN`.
+The Vite proxy sends `/api` to `127.0.0.1:8000` (`frontend/vite.config.ts`). Open **http://127.0.0.1:5173**: the public site, which needs no login. The operator console is at **http://127.0.0.1:5173/admin**. Use `127.0.0.1`, not `localhost`: the backend accepts only the exact origin in `APP_ORIGIN`.
 
 ## 7. Pre-demo check (two minutes)
 
-1. `/welcome` loads, and the "Pause motion" button works.
-2. Sign in as `demo-admin`. Overview shows "SMS model: Disabled".
+1. `/` loads with no login, and the "Pause motion" button works; `/examples` shows nine recorded examples labelled "not live analysis".
+2. Open `/admin` and sign in as `demo-admin`. Overview shows "SMS model: Disabled".
 3. Submit one fictional message on **Analyze SMS**, for example `FICTIONAL DEMO: Your parcel is held, pay the release fee at the link.` The receipt appears, and the incident shows "analysis unavailable" with tier "unknown".
-4. Sign out. Sign in as `demo-viewer`: there is no Analyze page, and `/analyze` says "You don't have access".
+4. Sign out. Sign in as `demo-viewer`: there is no Analyze page, and `/admin/analyze` says "You don't have access".
 
 The backend allows 120 page reads per minute per user. If you click very fast, a "Too many requests · Resuming in N seconds" banner is the documented limit, not a crash. Wait for the countdown.
 

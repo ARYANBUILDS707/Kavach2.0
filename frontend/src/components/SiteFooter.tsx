@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 
+import { EXAMPLES } from "../app/routes";
 import { Wordmark } from "./Wordmark";
 
 /** Closing band shared by the public pages; `compact` is the one-line version inside the app.
@@ -19,29 +20,29 @@ export function SiteFooter({ compact = false }: { compact?: boolean }) {
         <div className="site-footer-brand">
           <Wordmark />
           <p>
-            An SMS fraud-intelligence workspace for analysts, built as a controlled research
-            demonstration.
+            An SMS fraud-analysis research project, shown here through recorded examples on
+            fictional messages.
           </p>
         </div>
         <nav aria-label="Footer" className="site-footer-nav">
           <ul>
             <li>
-              <a href="/welcome#platform">Platform</a>
+              <a href="/#platform">Platform</a>
             </li>
             <li>
-              <a href="/welcome#capabilities">Capabilities</a>
+              <a href="/#capabilities">Capabilities</a>
             </li>
             <li>
-              <a href="/welcome#status">Status</a>
+              <a href="/#status">Status</a>
             </li>
             <li>
-              <Link to="/login">Analyst sign-in</Link>
+              <Link to={EXAMPLES}>Recorded examples</Link>
             </li>
           </ul>
         </nav>
         <p className="site-footer-note">
-          Accounts are provisioned by an operator. KAVACH makes no accuracy, security or compliance
-          claims for this demonstration.
+          This site has no accounts and keeps no messages. KAVACH makes no accuracy, security or
+          compliance claims for this demonstration.
         </p>
       </div>
     </footer>

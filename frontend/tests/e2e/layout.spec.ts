@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 
 import { axeViolations } from "./axe";
+import { ORIGIN } from "./origin";
 
 // Responsive layout of the incident tables against the REAL local backend. jsdom does no layout,
 // so overlap can only be caught here, from actual DOM boxes. Credentials come from the environment.
@@ -10,7 +11,6 @@ const admin = {
   username: process.env.KAVACH_E2E_USERNAME ?? "",
   password: process.env.KAVACH_E2E_PASSWORD ?? "",
 };
-const ORIGIN = "http://127.0.0.1:5173";
 
 test.skip(process.env.KAVACH_E2E_SHORT_SESSION === "1", "runs against a normal-length session");
 test.skip(admin.username === "" || admin.password === "", "KAVACH_E2E_USERNAME/PASSWORD not set");
@@ -25,7 +25,7 @@ interface RowBox {
 }
 
 async function signIn(page: Page) {
-  await page.goto("/login");
+  await page.goto("/admin/login");
   await page.getByLabel("Username").fill(admin.username);
   await page.getByLabel("Password").fill(admin.password);
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -112,8 +112,8 @@ for (const width of [390, 768]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 1024 });
 
     for (const [path, heading] of [
-      ["/", "Overview"],
-      ["/incidents", "Incident history"],
+      ["/admin", "Overview"],
+      ["/admin/incidents", "Incident history"],
     ] as const) {
       const label = `${heading} at ${String(width)}px`;
       await page.goto(path);
