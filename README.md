@@ -2,7 +2,19 @@
 
 KAVACH is a proposed fraud-analysis platform that connects authorized SMS and voice-call signals to present explainable risk evidence for human review.
 
-Backend foundation source and tests are present and committed (`754a22a` on `main`, pushed to `origin`; `dev`, `backend` and `frontend` branches also exist). Factory startup and both health routes over HTTP were last verified on 28 October 2026; pytest and Ruff were last re-run on 31 October 2026. See "Verification status" below, which separates historical results from current status. The MVP targets a controlled demonstration; live telecom integration and reported historical benchmarks are not verified capabilities.
+**Current release: SMS MVP-1** (owner decision C-12), a local controlled demonstration. Analysts sign in to a web workspace backed by a FastAPI service, PostgreSQL and Redis. Admins can submit fictional SMS through a controlled page; everyone with access can review incident history and evidence; message text is never kept. The pretrained SMS model is integrated behind an isolated worker but **disabled**: it is not validated on KAVACH data, and every analysis is shown honestly as unavailable until the M4-Q evaluation decides otherwise. Voice and call analysis, correlation, reviews and deployment are later milestones. Live telecom integration and historical benchmarks are not verified capabilities.
+
+## Current status (12 November 2026)
+
+| Area | State |
+| --- | --- |
+| Backend (`backend`, `50431e9`) | Authentication with server sessions, CSRF and Origin checks, roles, and a fail-closed Redis throttle; idempotent SMS and call ingestion; incident reads with the `channel` filter; per-user read limit; operator CLI; retention; isolated SMS worker (off). Merged into `dev` by PR #1 (`5bcd68a`). Backend CI green. |
+| Frontend (`frontend`, `988cb1e`) | React and TypeScript workspace: public landing page, sign-in, overview, incident history and detail, system status, admin-only Analyze SMS; light and dark themes; accessibility and motion controls. Merged into `dev` by PR #2 (`61cbffa`). Frontend CI green on the PR (run 43153039726). |
+| Joint acceptance | Passed on the integrated `dev` commit `61cbffa`: every suite, plus 17 real browser journeys against real PostgreSQL and Redis. See the [MVP1 integration report](docs/MVP1_INTEGRATION_REPORT.md) and the [security audit report](docs/SECURITY_AUDIT_REPORT_MVP1.md). |
+| SMS model | Disabled. The M4-Q labelling and evaluation (MVP-B1) has not been done, so no accuracy is claimed. |
+| Deployment | None. Run the stack locally with the [local demo procedure](docs/LOCAL_DEMO.md); demo talk track in the [demo script](docs/DEMO_SCRIPT.md). |
+
+The sections below "Backend foundation" keep the dated history of each milestone; "Verification status" separates historical results from current status.
 
 ## Start here
 
@@ -46,9 +58,9 @@ The original [connection test](docs/CONNECTION_TEST.md) is preserved in the docu
 
 ## Backend foundation
 
-Python 3.12.13 is selected in `backend/.python-version`. The package uses FastAPI, Pydantic v2, environment-based settings, pytest and Ruff. Direct dependencies are pinned in `backend/pyproject.toml`; a resolved transitive lockfile remains pending the first successful dependency installation.
+Python 3.12.13 is selected in `backend/.python-version`. The package uses FastAPI, Pydantic v2, environment-based settings, pytest and Ruff. Direct dependencies are pinned in `backend/pyproject.toml` and resolved in `backend/uv.lock` (M1.1).
 
-Implemented source:
+Implemented source at M1 (historical; later milestones added the capabilities listed under "Current status"):
 
 - `GET /health` and `GET /api/v1/health`: public process liveness only, with `analysis_ready: false`, a generated request ID and no internal dependency details.
 - SMS and call Pydantic schemas with bounded identifiers/content, explicit timezone validation, UTC normalization, a seven-day maximum event age and 60-second future skew.
@@ -56,7 +68,7 @@ Implemented source:
 - Optional SMS `sender_id` and call `audio_reference`; metadata-only calls are permitted. Reference syntax excludes paths and URLs. Manifest membership, source authorization and pseudonymization are later service responsibilities.
 - Safe HTTP error envelopes without raw validation inputs, and explicit environment settings.
 
-No production POST ingestion routes exist yet. Schema API tests mount validation-only routes in a separate test harness. No model predictions, database persistence, authentication, correlation or frontend are implemented.
+At M1, no production POST ingestion routes, persistence, authentication or frontend existed; they arrived in M2–M4 and MVP-1. Correlation, fusion and voice analysis are still not implemented.
 
 ### Setup
 
@@ -242,11 +254,13 @@ backend/.venv/bin/python -m pytest backend/tests -m integration
 
 ### Continuous integration
 
-`.github/workflows/backend-ci.yml` runs on pushes to `backend`, `dev` or `main` and on pull requests targeting `dev` or `main`. Job "Backend tests and lint" is described here; job "Backend integration (PostgreSQL and Redis)" (M2.1) generates fresh masked passwords for each run, starts `deployment/compose.dev.yml` on the runner, applies the migrations twice and runs `alembic check` (M2.2), runs `pytest -m integration` against it, prints service logs on failure and always removes the containers and volumes. Every backend milestone pushed to `backend` is checked; `frontend` and `feature/*` pushes are not. On `ubuntu-24.04` with Python 3.12.13 and uv 0.11.16, it verifies the lockfile is current, installs from it with `--locked`, then runs pytest, Ruff lint and Ruff format check. The workflow has read-only `contents` permission, does not persist checkout credentials, uses no secrets, pins actions to commit SHAs (`actions/checkout` v7.0.1, `astral-sh/setup-uv` v10.3.0), cancels superseded runs on the same ref, and times out after 15 minutes. Any failed step fails the job; the three checks each still run after a successful install so all failures are reported together. The "Backend tests and lint" job passed on GitHub Actions for `backend` commit `c36e903` (reported by the owner). **The M2.1 integration job has not run on GitHub yet**; it is verified only by replaying its commands locally.
+`.github/workflows/backend-ci.yml` runs on pushes to `backend`, `dev` or `main` and on pull requests targeting `dev` or `main`. Job "Backend tests and lint" is described here; job "Backend integration (PostgreSQL and Redis)" (M2.1) generates fresh masked passwords for each run, starts `deployment/compose.dev.yml` on the runner, applies the migrations twice and runs `alembic check` (M2.2), runs `pytest -m integration` against it, prints service logs on failure and always removes the containers and volumes. Every backend milestone pushed to `backend` is checked; `frontend` and `feature/*` pushes are not. On `ubuntu-24.04` with Python 3.12.13 and uv 0.11.16, it verifies the lockfile is current, installs from it with `--locked`, then runs pytest, Ruff lint and Ruff format check. The workflow has read-only `contents` permission, does not persist checkout credentials, uses no secrets, pins actions to commit SHAs (`actions/checkout` v7.0.1, `astral-sh/setup-uv` v10.3.0), cancels superseded runs on the same ref, and times out after 15 minutes. Any failed step fails the job; the three checks each still run after a successful install so all failures are reported together. Both backend jobs have since passed on GitHub for every pushed milestone, most recently `50431e9` (runs 42517472445 and 43094400802) and the `dev` merge commit `5bcd68a` (run 43094934847). `.github/workflows/frontend-ci.yml` (MVP-F1) runs on pushes to `frontend` and on pull requests into `dev` and `main` that touch `frontend/`: locked `npm ci`, a high/critical advisory gate and `npm run verify`. It passed on `988cb1e` (run 43093871566). It does not run on pushes to `dev`. Browser journeys need the real stack and run at joint acceptance, not in CI.
 
 ### Verification status
 
-**Current status (M4-Q revision 2, 8 November 2026; point-in-time):** a solo-reviewer evaluation workflow for the pretrained SMS model is prepared (`docs/M4_Q_SOLO_EVALUATION.md`): a blank, blinded 183-row sheet (40 legitimate chat messages so the strict 0.10 Wilson limit is attainable) drawn only from train/validation data under both split versions, pre-registered GO / CONDITIONAL / NO-GO rules, and an evaluator that scores the model only after the sheet is complete. **No label has been written and no result exists.** It never replaces the independent two-reviewer label gate (still BLOCKED), and the model remains unvalidated with uncalibrated scores.
+**Current status (SMS MVP-1 joint acceptance, 11–12 November 2026; point-in-time):** first run on the PR #2 head `39b7721`, then repeated on the integrated `dev` commit `61cbffa` (identical tree) with the same results; Backend CI also passed on the `dev` push (run 43153516772). The backend default suite gave 387 passed; the integration suite against fresh PostgreSQL and Redis gave 424 passed; experiments 275 and the SMS worker 40 passed; Ruff, lockfiles and `alembic check` were clean. The frontend gave `npm run verify` 136/136 with the contract matching `50431e9`. 17 Playwright browser journeys passed against the real stack: sign-in and session restore, admin submission, incident detail, viewer refusal, CSRF and Origin rejection, idle expiry, layout and accessibility. Redis and PostgreSQL outages failed closed, and no submitted text was found in the database, Redis, logs or browser storage. The SMS worker stayed disabled. Details and gaps: `docs/MVP1_INTEGRATION_REPORT.md`.
+
+**Historical record — M4-Q revision 2, 8 November 2026:** a solo-reviewer evaluation workflow for the pretrained SMS model is prepared (`docs/M4_Q_SOLO_EVALUATION.md`): a blank, blinded 183-row sheet (40 legitimate chat messages so the strict 0.10 Wilson limit is attainable) drawn only from train/validation data under both split versions, pre-registered GO / CONDITIONAL / NO-GO rules, and an evaluator that scores the model only after the sheet is complete. **No label has been written and no result exists.** It never replaces the independent two-reviewer label gate (still BLOCKED), and the model remains unvalidated with uncalibrated scores.
 
 **Historical record — M4-I.2, 7 November 2026:** the isolated pretrained SMS worker is now connected to authenticated SMS ingestion, **off unless `SMS_WORKER_ENABLED=true`**. Inference runs after the replay check and outside transactions. Overload or a starting worker is rejected (429/503) before anything is stored. Completed inference stores the model's native legitimate/spam/fraud outputs as **uncalibrated evidence** (`sms_score` stays null and the incident tier stays `unknown`); failures are stored as explicit unavailable stages. Run for real offline on an Apple M1 (median 54 ms per SMS over HTTP, worker about 0.5–1.1 GB). The model is not validated on KAVACH data and no score is a phishing probability. See `docs/M4_I2_SMS_INTEGRATION_REPORT.md`.
 
@@ -332,10 +346,11 @@ Kavach2.0/
 ├── README.md
 ├── .env.example
 ├── .gitignore
-├── .github/workflows/backend-ci.yml
+├── .github/workflows/{backend-ci,frontend-ci}.yml
 ├── deployment/                   # Development/test-only services (not a deployment)
 │   ├── compose.dev.yml
 │   ├── compose.dev.env.example
+│   ├── models/                   # Pinned model manifest (no model files in Git)
 │   └── postgres/initdb/10-kavach-roles.sql
 ├── backend/
 │   ├── .python-version
@@ -354,14 +369,20 @@ Kavach2.0/
 │       ├── {conftest,test_config,test_entrypoint,test_errors,test_events,test_health,test_infrastructure}.py
 │       └── integration/{conftest,schema_rows,test_services,test_migrations,test_constraints,test_privileges}.py
 ├── docs/                         # Specifications and workflow documents
-├── frontend/.gitkeep             # Reserved; no frontend implementation
+├── frontend/                     # React + TypeScript workspace (Vite, Vitest, Playwright)
+├── workers/sms/                  # Isolated SMS inference worker (own lockfile; disabled by default)
+├── experiments/                  # Offline dataset governance and evaluation (own lockfile)
 ├── tests/.gitkeep                # Reserved for cross-application tests
 ├── scripts/.gitkeep
 └── data/.gitkeep                 # Data contents excluded from Git
 ```
 
-Package `__init__.py` files are omitted from the condensed tree below the top package. Local ignored environments/caches are not shown. `backend/uv.lock` sits beside `backend/pyproject.toml`.
+The backend tree above is condensed to its M2 shape; later modules (auth, services, models, simulator, privacy, CLI) live under the same package. Package `__init__.py` files are omitted from the condensed tree below the top package. Local ignored environments/caches are not shown. `backend/uv.lock` sits beside `backend/pyproject.toml`.
 
 ## Next milestone
 
-M1.1 and M2.1–M2.3 are complete (GitHub Actions green on `c36e903`, `0cebb3b`, `e7c0873` and `24e6538`). M2.4 (source-scoped API keys, operator CLI, audit, retention) is implemented and verified locally, uncommitted, and has not yet run on GitHub (see `docs/MILESTONE_TRACKER.md`). Backend milestones M1.1–M7a stay on `backend` and reach `dev` through a single integration pull request after full backend acceptance (`docs/GIT_WORKFLOW.md`). D02 packages, D03, D07 and C-06 were approved on 31 October 2026. Ingestion, ML, Redis correlation and frontend are not started. Branch workflow and milestone status: `docs/GIT_WORKFLOW.md`, `docs/MILESTONE_TRACKER.md`.
+1. **Release SMS MVP-1:** both integration PRs are merged (`dev` at `61cbffa`). Work through the `dev` → `main` release checklist; the remaining items are listed in `docs/MVP1_INTEGRATION_REPORT.md`.
+2. **M4-Q (MVP-B1/B2):** the owner labels the blinded sheet and authorizes the single evaluation. The worker stays disabled unless the pre-registered rule gives GO or an approved CONDITIONAL verdict.
+3. **Afterwards:** voice analysis (M5), correlation and fusion (M6), the review workflow, live updates and the simulator UI (M7–M8), and packaging and deployment (M11), each through its own owner-controlled PR.
+
+Branch workflow and milestone status: `docs/GIT_WORKFLOW.md`, `docs/MILESTONE_TRACKER.md`.
