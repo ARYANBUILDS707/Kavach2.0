@@ -6,6 +6,21 @@ To show real model predictions instead, follow steps 1–4 below, then switch on
 
 It uses a separate Compose project, `kavach-demo`, on its own ports, so an existing `kavach-dev` stack and its data are never touched. This is the configuration verified in [MVP1_INTEGRATION_REPORT.md](MVP1_INTEGRATION_REPORT.md).
 
+## Quick start (launcher)
+
+`scripts/kavach-demo.sh` runs steps 1–6 below for you. On the first run it asks you to type the demo passwords; they are hidden and never stored by the script.
+
+```sh
+scripts/kavach-demo.sh start                  # normal demo: SMS model disabled
+scripts/kavach-demo.sh start --experimental   # decision C-13: real, unvalidated predictions on fictional messages
+scripts/kavach-demo.sh stop                   # stop PostgreSQL and Redis (data kept)
+scripts/kavach-demo.sh reset                  # delete the demo data and generated secrets
+```
+
+- **Stopping:** Ctrl-C stops the API and the web server.
+- **Experimental mode:** its settings exist only in the launcher's own process, never in a file, so a plain `start` is always model-disabled. It needs the verified artifacts in `data/models` (or `KAVACH_DEMO_MODEL_DIR`).
+- **Keys:** use either the launcher or the manual steps below for a given demo database. The launcher keeps its own generated keys in `~/.kavach-demo/app-keys.env`.
+
 ## Prerequisites
 
 - Docker with Compose v2.
