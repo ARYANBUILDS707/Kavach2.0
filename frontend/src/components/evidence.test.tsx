@@ -15,10 +15,12 @@ function completeOutput() {
 const OUTPUT = completeOutput();
 
 describe("ModelOutputPanel", () => {
-  it("shows native scores to 4 decimals, the top label and the uncalibrated warning", () => {
+  it("shows native scores to 4 decimals, the prediction and the uncalibrated warning", () => {
     render(<ModelOutputPanel output={OUTPUT} modelVersion="horizon-phishing-scam-base@test" />);
-    expect(screen.getByRole("heading", { name: "Model output (uncalibrated)" })).toBeInTheDocument();
-    expect(screen.getByText(/not probabilities, not a risk score/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Model prediction (experimental)" })).toBeInTheDocument();
+    expect(screen.getByText(/The model predicts:/)).toHaveTextContent("The model predicts: Fraud");
+    expect(screen.getByText(/not an established fact/)).toBeInTheDocument();
+    expect(screen.getByText(/not probabilities and not a risk score/)).toBeInTheDocument();
     expect(screen.getByText(/not validated on KAVACH data/)).toBeInTheDocument();
     const table = screen.getByRole("table");
     const rows = within(table).getAllByRole("row").slice(1);
@@ -27,7 +29,7 @@ describe("ModelOutputPanel", () => {
       "spam0.0567",
       "fraud0.8199",
     ]);
-    expect(screen.getByText("fraud", { selector: "strong" })).toBeInTheDocument();
+    expect(screen.getByText("Fraud", { selector: "strong" })).toBeInTheDocument();
     expect(screen.getByText("horizon-phishing-scam-base@test")).toBeInTheDocument();
   });
 

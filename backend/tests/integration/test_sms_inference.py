@@ -456,8 +456,13 @@ def test_open_circuit_and_unverified_artifacts_store_unavailable(
 def test_missing_artifacts_configuration_is_unverified_not_a_crash(
     make_client, key: str, clock: FakeClock, migration_engine: Engine, tmp_path: Path
 ) -> None:
+    # The worker may only be enabled for the local experiment, which needs a loopback origin;
+    # this test submits with an ingestion key, so the browser origin plays no part in it.
     app, client = make_client(
+        app_env="development",
+        app_origin="http://127.0.0.1:5173",
         sms_worker_enabled=True,
+        sms_model_authorization="experimental-local-unvalidated",
         sms_worker_python=Path(sys.executable),
         model_dir=tmp_path / "no-such-models",
         model_manifest_path=Path(__file__).resolve().parents[3]

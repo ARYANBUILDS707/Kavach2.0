@@ -136,7 +136,7 @@ describe("submission", () => {
     );
     expect(screen.getByText("SMS model unavailable: stored without a model result")).toBeInTheDocument();
     expect(await screen.findByText("Model not enabled")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Model output (uncalibrated)" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Model prediction (experimental)" })).toBeNull();
   });
 
   it("shows native outputs only from stored evidence, labelled uncalibrated", async () => {
@@ -148,7 +148,11 @@ describe("submission", () => {
         json(200, { data: detail({ id: INCIDENT }), request_id: "r" }),
     });
     await typeAndSubmit();
-    expect(await screen.findByRole("heading", { name: "Model output (uncalibrated)" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Model prediction (experimental)" })).toBeInTheDocument();
+    // The stored top label, stated as the model's prediction rather than a fact.
+    expect(screen.getByText(/The model predicts:/)).toHaveTextContent("The model predicts: Fraud");
+    const panel = screen.getByRole("region", { name: "Model prediction (experimental)" });
+    expect(within(panel).getByText(/not an established fact/)).toBeInTheDocument();
     expect(screen.getByText("0.8199")).toBeInTheDocument();
     expect(screen.getByText("Model output is uncalibrated")).toBeInTheDocument();
   });
@@ -323,7 +327,7 @@ describe("model status notices", () => {
     ["disabled", /disabled on this deployment.*no prediction is made/],
     ["starting", /starting\. Submissions are refused/],
     ["unavailable", /unavailable\. Your message will be stored with the analysis unavailable/],
-    ["ready", /native outputs will be shown as stored evidence, labelled uncalibrated/],
+    ["ready", /Experimental analysis is on\..*not an established fact/],
   ] as const)("explains the %s worker state honestly", async (state, text) => {
     renderApp("/analyze", [sessionAs("admin")], undefined, {
       "/api/v1/system/models": () => json(200, models(state)),

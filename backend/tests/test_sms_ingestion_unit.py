@@ -131,6 +131,7 @@ def test_existing_version_one_receipts_are_unchanged() -> None:
 def worker_settings(tmp_path: Path, **override: Any) -> dict[str, Any]:
     return {
         "sms_worker_enabled": True,
+        "sms_model_authorization": "experimental-local-unvalidated",
         "sms_worker_python": Path(sys.executable),
         "model_dir": tmp_path,
         "model_manifest_path": MANIFEST,
@@ -204,12 +205,38 @@ def test_unusable_worker_paths_make_the_model_unverified_outside_pilot(
     )
 
 
-def test_pilot_refuses_to_start_with_an_unusable_worker(tmp_path, monkeypatch) -> None:
+def test_the_worker_needs_the_explicit_experimental_authorization(tmp_path, monkeypatch) -> None:
     ingestion_env(monkeypatch)
-    monkeypatch.setenv("APP_ORIGIN", "https://kavach.example")
-    settings = Settings(
-        app_env="pilot",
-        **worker_settings(tmp_path, model_manifest_path=Path("/nonexistent/manifest.json")),
+    with pytest.raises(ValidationError, match="SMS_MODEL_AUTHORIZATION"):
+        Settings(**worker_settings(tmp_path, sms_model_authorization=None))
+    with pytest.raises(ValidationError, match="sms_model_authorization"):
+        Settings(**worker_settings(tmp_path, sms_model_authorization="validated"))
+
+
+@pytest.mark.parametrize(
+    ("app_env", "origin"),
+    [("pilot", "https://kavach.example"), ("development", "https://kavach.example")],
+)
+def test_experimental_analysis_is_local_development_only(
+    tmp_path, monkeypatch, app_env, origin
+) -> None:
+    ingestion_env(monkeypatch)
+    monkeypatch.setenv("APP_ORIGIN", origin)
+    with pytest.raises(ValidationError, match="loopback APP_ORIGIN"):
+        Settings(app_env=app_env, **worker_settings(tmp_path))
+
+
+def test_pilot_refuses_to_start_with_an_unusable_worker(tmp_path, monkeypatch) -> None:
+    # No pilot authorization exists yet (the experiment is local-only), so the settings are built
+    # without validation to keep the fail-closed pilot path covered for a future authorized mode.
+    ingestion_env(monkeypatch)
+    valid = Settings(**worker_settings(tmp_path))
+    settings = valid.model_copy(
+        update={
+            "app_env": "pilot",
+            "app_origin": "https://kavach.example",
+            "model_manifest_path": Path("/nonexistent/manifest.json"),
+        }
     )
     with pytest.raises(RuntimeError, match="manifest_invalid"):
         build_sms_worker(settings)

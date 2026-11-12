@@ -36,7 +36,7 @@ const MODEL_NOTICES: Record<ModelState, string> = {
   unavailable:
     "The SMS model is unavailable. Your message will be stored with the analysis unavailable and a reason.",
   ready:
-    "The SMS model is ready. Its native outputs will be shown as stored evidence, labelled uncalibrated.",
+    "Experimental analysis is on. The pinned model's prediction (fraud, spam or legitimate) is read back from the stored evidence and labelled uncalibrated. It is not validated on KAVACH data and is not an established fact.",
 };
 
 function ModelNotice() {
