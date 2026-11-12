@@ -6,6 +6,7 @@ import { Link } from "react-router";
 
 import { useApi } from "../../app/ApiContext";
 import { useModelStatus } from "../../app/ModelStatusProvider";
+import { adminIncident } from "../../app/routes";
 import { useSession } from "../../app/SessionProvider";
 import { StatusBadge } from "../../components/Badges";
 import { Banner } from "../../components/Banner";
@@ -115,7 +116,7 @@ function ReceiptPanel({ receipt }: { receipt: AdminEventReceipt }) {
             <ul>
               {receipt.incident_ids.map((id) => (
                 <li key={id}>
-                  <Link to={`/incidents/${id}`}>
+                  <Link to={adminIncident(id)}>
                     Open incident <span className="copyable-id">{shortId(id)}</span>
                   </Link>
                 </li>

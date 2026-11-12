@@ -21,7 +21,7 @@ describe("system status", () => {
     ["disabled", "Disabled", /not enabled on this deployment/],
     ["unavailable", "Unavailable", /cannot serve requests/],
   ] as const)("explains the %s state", async (state, label, explanation) => {
-    renderApp("/system", signedIn, undefined, {
+    renderApp("/admin/system", signedIn, undefined, {
       "/api/v1/system/models": () => json(200, models(state)),
     });
     const card = await screen.findByRole("region", { name: "SMS model" });
@@ -32,7 +32,7 @@ describe("system status", () => {
   });
 
   it("shows the failure reason of an unavailable worker", async () => {
-    renderApp("/system", signedIn, undefined, {
+    renderApp("/admin/system", signedIn, undefined, {
       "/api/v1/system/models": () => json(200, models("unavailable")),
     });
     expect(await screen.findByText("Model worker stopped")).toBeInTheDocument();
@@ -41,7 +41,7 @@ describe("system status", () => {
 
   it("shows a retryable error when the status cannot be read", async () => {
     const user = userEvent.setup();
-    renderApp("/system", signedIn, undefined, {
+    renderApp("/admin/system", signedIn, undefined, {
       "/api/v1/system/models": [
         () => apiError(503, "DEPENDENCY_UNAVAILABLE"),
         () => apiError(503, "DEPENDENCY_UNAVAILABLE"),
@@ -63,7 +63,7 @@ describe("overview", () => {
       summary(2, { analysis_status: "partial" }),
       summary(3),
     ];
-    const { callsTo } = renderApp("/", signedIn, undefined, {
+    const { callsTo } = renderApp("/admin", signedIn, undefined, {
       "/api/v1/incidents": () => json(200, page(items, "more")),
       "/api/v1/system/models": () => json(200, models("ready")),
     });
@@ -86,7 +86,7 @@ describe("overview", () => {
   });
 
   it("shows at most ten recent rows", async () => {
-    renderApp("/", signedIn, undefined, {
+    renderApp("/admin", signedIn, undefined, {
       "/api/v1/incidents": () => json(200, page(Array.from({ length: 25 }, (_, i) => summary(i + 1)))),
     });
     const table = await screen.findByRole("table", { name: "Most recent SMS incidents" });
@@ -94,7 +94,7 @@ describe("overview", () => {
   });
 
   it("shows the empty state and the model card when nothing is retained", async () => {
-    renderApp("/", signedIn);
+    renderApp("/admin", signedIn);
     expect(await screen.findByText("No SMS incidents in the last 7 days")).toBeInTheDocument();
     const card = screen.getByRole("region", { name: "SMS model readiness" });
     expect(await within(card).findByText("Disabled")).toBeInTheDocument();
@@ -102,7 +102,7 @@ describe("overview", () => {
   });
 
   it("shows an unavailable state when incidents cannot be read", async () => {
-    renderApp("/", signedIn, undefined, {
+    renderApp("/admin", signedIn, undefined, {
       "/api/v1/incidents": () => apiError(503, "DEPENDENCY_UNAVAILABLE"),
     });
     expect(await screen.findByText("Service temporarily unavailable")).toBeInTheDocument();
@@ -112,7 +112,7 @@ describe("overview", () => {
 describe("navigation and read budget", () => {
   it("lists only the pages the user may open and marks the current one", async () => {
     // SESSION is an admin, so the admin-only "Analyze SMS" page is listed (MVP-F3).
-    renderApp("/system", signedIn);
+    renderApp("/admin/system", signedIn);
     const nav = await screen.findByRole("navigation", { name: "Main" });
     const links = within(nav).getAllByRole("link").map((link) => link.textContent);
     expect(links).toEqual(["Overview", "Incidents", "System", "Analyze SMS"]);
@@ -120,7 +120,7 @@ describe("navigation and read budget", () => {
   });
 
   it("shares one model-status request between the header and the page", async () => {
-    const { callsTo } = renderApp("/system", signedIn, undefined, {
+    const { callsTo } = renderApp("/admin/system", signedIn, undefined, {
       "/api/v1/system/models": () => json(200, models("ready")),
     });
     await screen.findByText(/SMS model: Ready/);
@@ -131,7 +131,7 @@ describe("navigation and read budget", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     let visibility: DocumentVisibilityState = "visible";
     vi.spyOn(document, "visibilityState", "get").mockImplementation(() => visibility);
-    const { callsTo } = renderApp("/", signedIn, undefined, {
+    const { callsTo } = renderApp("/admin", signedIn, undefined, {
       "/api/v1/system/models": [
         () => json(200, models("ready")),
         () => json(200, models("ready")),
@@ -164,7 +164,7 @@ describe("navigation and read budget", () => {
 
   it("reads each incident list only once per visit, with no background polling", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    const { callsTo } = renderApp("/incidents", signedIn, undefined, {
+    const { callsTo } = renderApp("/admin/incidents", signedIn, undefined, {
       "/api/v1/incidents": () => json(200, page([summary(1)])),
     });
     await screen.findByRole("table");
@@ -176,7 +176,7 @@ describe("navigation and read budget", () => {
 
   it("keeps browser storage empty and puts only filter values in the URL", async () => {
     const user = userEvent.setup();
-    renderApp("/incidents", signedIn, undefined, {
+    renderApp("/admin/incidents", signedIn, undefined, {
       "/api/v1/incidents": () => json(200, page([summary(1)])),
     });
     await screen.findByRole("table");

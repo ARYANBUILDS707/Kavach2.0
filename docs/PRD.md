@@ -183,3 +183,14 @@ D04-A1 terms:
 24. [DEFINITION_OF_DONE.md](DEFINITION_OF_DONE.md)
 25. [INTEGRATION_PLAN.md](INTEGRATION_PLAN.md)
 26. [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)
+
+## Public analyzer implementation authorization — 13 November 2026
+
+The owner authorized completion of the anonymous analyzer, local fictional-message testing,
+Docker/Railway preparation, and a commit/PR into `dev` on `feature/public-live-analyzer`.
+This supersedes the old foundation-only scope for this task, but **does not approve C-15**,
+public hosting, spending, a merge or a release. C-13 remains local fictional testing only;
+M4-Q remains NOT READY. Hosted mode is rejected even if its reserved approval token is set.
+The default site offers recorded examples and an unavailable analyzer form. Local mode adds
+real stateless SMS classification, never a stored event, risk tier or calibrated probability.
+See [PUBLIC_ANALYZER_RUNBOOK.md](PUBLIC_ANALYZER_RUNBOOK.md).

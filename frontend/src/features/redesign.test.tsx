@@ -1,5 +1,5 @@
-// The public landing page, the folding app menu, the in-memory theme toggle and the overview's
-// per-day activity, through the real app.
+// The login-free public pages, the folding console menu, the in-memory theme toggle and the
+// overview's per-day activity, through the real app.
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
@@ -16,20 +16,34 @@ afterEach(() => {
   delete document.documentElement.dataset.theme;
 });
 
-describe("landing page", () => {
-  it("is public, reads no data and offers sign-in but never sign-up", async () => {
-    const { requests } = renderApp("/welcome", signedOut);
-    expect(await screen.findByRole("heading", { level: 1, name: /Read the signal/ })).toBeInTheDocument();
-    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
-    for (const link of screen.getAllByRole("link", { name: /^Sign in/ })) {
-      expect(link).toHaveAttribute("href", "/login");
+describe("public pages", () => {
+  it("open without a login, make no API request at all, and offer no sign-in or sign-up", async () => {
+    for (const path of ["/", "/examples"]) {
+      const { requests, unmount } = renderApp(path, signedOut);
+      expect(await screen.findByRole("heading", { level: 1 })).toBeInTheDocument();
+      expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+      expect(screen.queryByText(/sign up|register|create an account/i)).toBeNull();
+      expect(screen.queryByRole("link", { name: /sign.?in|log.?in/i })).toBeNull();
+      expect(screen.queryByRole("button", { name: /sign.?in|log.?in/i })).toBeNull();
+      for (const link of screen.getAllByRole("link")) {
+        expect(link.getAttribute("href") ?? "").not.toMatch(/login|admin/);
+      }
+      expect(requests).toHaveLength(0);
+      unmount();
     }
-    expect(screen.queryByText(/sign up|register|create an account/i)).toBeNull();
-    expect(requests.filter((r) => !r.url.startsWith("/api/v1/auth/"))).toHaveLength(0);
+  });
+
+  it("keeps the old addresses working: /welcome is the public home, /login is the console sign-in", async () => {
+    const first = renderApp("/welcome", signedOut);
+    expect(await screen.findByRole("heading", { level: 1, name: /Read the signal/ })).toBeInTheDocument();
+    expect(first.requests).toHaveLength(0);
+    first.unmount();
+    renderApp("/login", signedOut);
+    expect(await screen.findByRole("heading", { name: "Sign in to KAVACH" })).toBeInTheDocument();
   });
 
   it("states the model's limits instead of claiming a live state", async () => {
-    renderApp("/welcome", signedOut);
+    renderApp("/", signedOut);
     const status = await screen.findByRole("region", { name: "Release status" });
     expect(within(status).getByText(/disabled by default and is not validated on KAVACH data/)).toBeInTheDocument();
     expect(within(status).getByText("Unknown until calibrated")).toBeInTheDocument();
@@ -38,7 +52,7 @@ describe("landing page", () => {
 
   it("has one keyboard control that pauses and resumes all decorative motion", async () => {
     const user = userEvent.setup();
-    renderApp("/welcome", signedOut);
+    renderApp("/", signedOut);
     const toggle = await screen.findByRole("button", { name: "Pause motion" });
     const main = screen.getByRole("main");
     expect(main).toHaveAttribute("data-motion", "running");
@@ -59,17 +73,17 @@ describe("landing page", () => {
     expect([window.localStorage.length, window.sessionStorage.length]).toEqual([0, 0]);
   });
 
-  it("leaves protected pages going to sign-in, which links back to the landing page", async () => {
-    renderApp("/incidents", signedOut);
+  it("leaves the console behind its own sign-in, which links back to the public site", async () => {
+    renderApp("/admin/incidents", signedOut);
     expect(await screen.findByRole("heading", { name: "Sign in to KAVACH" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Learn what KAVACH does" })).toHaveAttribute("href", "/welcome");
+    expect(screen.getByRole("link", { name: "See what KAVACH does" })).toHaveAttribute("href", "/");
   });
 });
 
 describe("app menu", () => {
   it("opens and closes with the button and Escape, and closes on navigation", async () => {
     const user = userEvent.setup();
-    renderApp("/system", signedIn);
+    renderApp("/admin/system", signedIn);
     const toggle = await screen.findByRole("button", { name: "Menu" });
     const panel = document.getElementById("shell-panel");
     expect(toggle).toHaveAttribute("aria-expanded", "false");
@@ -91,7 +105,7 @@ describe("app menu", () => {
 describe("theme toggle", () => {
   it("switches the theme in memory only", async () => {
     const user = userEvent.setup();
-    renderApp("/system", signedIn);
+    renderApp("/admin/system", signedIn);
     // jsdom has no matchMedia, so the starting theme is light.
     await user.click(await screen.findByRole("button", { name: "Switch to dark theme" }));
     expect(document.documentElement.dataset.theme).toBe("dark");
@@ -118,7 +132,7 @@ describe("overview activity", () => {
   });
 
   it("shows the per-day counts from the same single request", async () => {
-    const { callsTo } = renderApp("/", signedIn, undefined, {
+    const { callsTo } = renderApp("/admin", signedIn, undefined, {
       "/api/v1/incidents": () => json(200, page([summary(1), summary(2), summary(3)])),
     });
     const activity = await screen.findByRole("region", { name: "Records per day" });

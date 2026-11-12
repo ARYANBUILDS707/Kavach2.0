@@ -147,3 +147,15 @@ Use real PostgreSQL/Redis in integration tests; test mocks only at explicit mode
 Local Compose services: static UI/reverse proxy, backend, PostgreSQL and Redis; model assets are read-only mounted. Database/cache ports stay private. Persistent PostgreSQL volume; Redis candidate persistence disabled. Run migrations once before starting traffic. Health distinguishes public liveness from authenticated dependency readiness. Missing models may permit diagnostic UI but must fail full analysis readiness.
 
 Pilot deployment requires D10, TLS, restricted networking, encryption/backup controls, measured capacity and documented operator authority. Do not select AWS g5.xlarge solely because it appears in historical benchmark claims. Future asynchronous workers, durable encrypted raw jobs, OIDC, multi-tenancy and carrier streaming require new requirements and capacity evidence; they are not hidden MVP dependencies.
+
+## Stateless public analyzer boundary — 13 November 2026
+
+An explicitly configured `PUBLIC_ANALYZER_ONLY` application serves only liveness, analyzer and
+optional static public routes. It refuses PostgreSQL credentials and admin/audit/ingestion keys.
+It reuses the verified SMS supervisor via a service with no repository dependency, uses separate
+short-lived Redis quota keys, and never creates an event, incident or audit record. Deploy it
+separately from administration with its own Redis instance/credentials before any approved launch.
+The Docker entry point uses one process, 32 HTTP concurrency limit, no access logs and no trust
+in forwarding headers. Model files are mounted read-only; the optional process lock lives in `/tmp`.
+All replicas must share quota Redis/key and the global budget. Local defaults remain conservative.
+No hosted mode is currently allowed; C-15 and restricted-release checks require a later change.

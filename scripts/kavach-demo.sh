@@ -193,7 +193,8 @@ EOF
   fi
   cat <<EOF
 
-  Open http://127.0.0.1:$WEB_PORT and sign in as demo-admin.
+  Public site (no login): http://127.0.0.1:$WEB_PORT
+  Operator console:       http://127.0.0.1:$WEB_PORT/admin  (sign in as demo-admin)
   Fictional messages to try on Analyze SMS:
     FICTIONAL DEMO: Your Northpay account is frozen. Confirm your PIN at http://northpay-unlock.example now.
     FICTIONAL DEMO: Diwali sale at Fabrikart! Flat 60% off this weekend only. Reply STOP to opt out.

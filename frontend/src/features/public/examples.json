@@ -1,0 +1,105 @@
+{
+  "recorded_on": "2026-11-12",
+  "model_version": "horizon-phishing-scam-base@fa686fc0d6a3+m1:1cf123b806f7",
+  "examples": [
+    {
+      "id": "wallet-suspension",
+      "scenario": "Wallet suspension with a link",
+      "text": "FICTIONAL TEST: Your Northpay wallet is suspended. Verify your PIN now at http://northpay-verify.example or lose your balance today.",
+      "prediction": "fraud",
+      "labels": {
+        "legitimate": 0.0013,
+        "spam": 0.0031,
+        "fraud": 0.9957
+      }
+    },
+    {
+      "id": "family-impersonation",
+      "scenario": "Family impersonation, urgent transfer",
+      "text": "FICTIONAL TEST: Hi Dad, phone broke, this is my new number. Please transfer Rs 12,000 to my friend's account urgently, will explain.",
+      "prediction": "fraud",
+      "labels": {
+        "legitimate": 0.0093,
+        "spam": 0.0022,
+        "fraud": 0.9885
+      }
+    },
+    {
+      "id": "parcel-fee",
+      "scenario": "Parcel release fee",
+      "text": "FICTIONAL TEST: Customs has held your parcel. Pay the Rs 49 release fee within 2 hours: https://parcel-release.example/pay",
+      "prediction": "fraud",
+      "labels": {
+        "legitimate": 0.001,
+        "spam": 0.0011,
+        "fraud": 0.9979
+      }
+    },
+    {
+      "id": "retail-promotion",
+      "scenario": "Retail promotion",
+      "text": "FICTIONAL TEST: Weekend Bonanza at Fabrikart! Buy 1 get 1 free on all kurtas. Offer ends Sunday. Reply STOP to opt out.",
+      "prediction": "spam",
+      "labels": {
+        "legitimate": 0.0445,
+        "spam": 0.9524,
+        "fraud": 0.0031
+      }
+    },
+    {
+      "id": "data-pack-offer",
+      "scenario": "Mobile data-pack offer",
+      "text": "FICTIONAL TEST: Get 2GB extra data for just Rs 19 with Zoomtel! Recharge today and enjoy unlimited calls. T&C apply.",
+      "prediction": "spam",
+      "labels": {
+        "legitimate": 0.023,
+        "spam": 0.9686,
+        "fraud": 0.0085
+      }
+    },
+    {
+      "id": "restaurant-opening",
+      "scenario": "Restaurant opening offer",
+      "text": "FICTIONAL TEST: Grand opening of Spicebox restaurant this Friday. Flat 30% off on your first meal. Book a table now!",
+      "prediction": "spam",
+      "labels": {
+        "legitimate": 0.1284,
+        "spam": 0.8664,
+        "fraud": 0.0052
+      }
+    },
+    {
+      "id": "meeting-at-station",
+      "scenario": "Friend arriving at the station",
+      "text": "FICTIONAL TEST: Hi, reaching the station in 10 minutes. Wait near the ticket counter, see you soon.",
+      "prediction": "legitimate",
+      "labels": {
+        "legitimate": 0.988,
+        "spam": 0.0061,
+        "fraud": 0.006
+      }
+    },
+    {
+      "id": "genuine-sign-in-code",
+      "scenario": "Genuine-looking sign-in code",
+      "text": "FICTIONAL TEST: 731904 is your Northpay sign-in code. It expires in 10 minutes. Do not share it with anyone.",
+      "prediction": "legitimate",
+      "labels": {
+        "legitimate": 0.9514,
+        "spam": 0.0244,
+        "fraud": 0.0242
+      }
+    },
+    {
+      "id": "appointment-reminder",
+      "scenario": "Appointment reminder",
+      "text": "FICTIONAL TEST: Reminder: your dentist appointment is tomorrow at 4.30 pm. Reply C to confirm or R to reschedule.",
+      "prediction": "legitimate",
+      "labels": {
+        "legitimate": 0.9948,
+        "spam": 0.0037,
+        "fraud": 0.0015
+      }
+    }
+  ]
+}

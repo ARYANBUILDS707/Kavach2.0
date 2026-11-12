@@ -4,7 +4,6 @@ import { MemoryRouter } from "react-router";
 
 import { ApiProvider } from "../app/ApiContext";
 import { AppRouter } from "../app/AppRouter";
-import { SessionProvider } from "../app/SessionProvider";
 import { createClient } from "../lib/api/client";
 import { EMPTY_PAGE, MODELS_DISABLED, fakeFetch, json, router, type Scripted } from "./fakeFetch";
 
@@ -35,11 +34,9 @@ export function renderApp(
   const client = createClient({ fetch: fake.fetch, sleep: () => Promise.resolve() });
   const view = render(
     <ApiProvider client={client}>
-      <SessionProvider {...(now === undefined ? {} : { now })}>
-        <MemoryRouter initialEntries={[path]}>
-          <AppRouter />
-        </MemoryRouter>
-      </SessionProvider>
+      <MemoryRouter initialEntries={[path]}>
+        <AppRouter {...(now === undefined ? {} : { now })} />
+      </MemoryRouter>
     </ApiProvider>,
   );
   const callsTo = (target: string) => fake.requests.filter((r) => r.url.split("?")[0] === target);

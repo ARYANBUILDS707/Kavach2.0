@@ -88,7 +88,7 @@ Reuse native controls first. Introduce a component dependency only when it solve
 
 ## Navigation and forms
 
-Primary destinations: Overview, Incidents, System, and Analyze SMS for admins only. The wordmark returns to Overview. Detail view includes a back link preserving feed filters in the URL. Sign-out is in the header; below 1200 px the navigation and tools fold behind a Menu disclosure that closes on navigation or Escape. From 1200 px the header is one fixed-height row: navigation does not wrap and a long display name is shortened at 24 characters with the full name as its tooltip (the role label always shows), so the sticky detail assessment column is never covered. No navigation item implies unavailable features. The public product page lives at `/welcome` (no session, no data requests, no sign-up); sign-in links to it.
+Primary destinations: Overview, Incidents, System, and Analyze SMS for admins only. The wordmark returns to the console Overview. The console lives under `/admin` and is not linked from the public site, which has its own header (About, Platform, Capabilities, Status and an Examples button) and no sign-in or sign-up link. Detail view includes a back link preserving feed filters in the URL. Sign-out is in the header; below 1200 px the navigation and tools fold behind a Menu disclosure that closes on navigation or Escape. From 1200 px the header is one fixed-height row: navigation does not wrap and a long display name is shortened at 24 characters with the full name as its tooltip (the role label always shows), so the sticky detail assessment column is never covered. No navigation item implies unavailable features. The public pages are `/` (the product page) and `/examples` (recorded examples): no session, no API requests, no sign-up and no cookies. The operator sign-in is `/admin/login`; it links back to the public site, and the public site never links to it. Decision C-14; see [PUBLIC_SITE_DESIGN.md](PUBLIC_SITE_DESIGN.md).
 
 Use visible labels, clear constraints before submission, and inline errors after interaction. Server validation remains authoritative. Do not echo passwords or raw communications in error text. Simulator SMS input is transient and explicitly synthetic-only; call choice is an allowlisted sample selector, not an upload control. Review notes warn against including phone numbers, OTPs, or raw transcripts.
 
@@ -139,3 +139,16 @@ Motion is short and physical: buttons scale to 0.97 when pressed, destination ca
 Target WCAG 2.2 AA: semantic landmarks/headings/tables, keyboard access, visible focus, no keyboard traps, 4.5:1 normal text contrast, 3:1 relevant non-text contrast, labeled controls, descriptive link names, 200% zoom, reflow at 320 CSS px, and textual errors linked to controls. Test with keyboard and a screen reader in addition to automated checks.
 
 At 320–767 px, use stacked filter fields and incident summaries that preserve all essential fields and a clear detail link. Horizontal scrolling is allowed for genuinely tabular evidence only within a labeled region. Below 1200 px the header uses the Menu disclosure; at 768–1023 px detail is single-column; ≥1024 px detail is split. Never hide risk, uncertainty, review result, or save controls because of viewport width.
+
+## Local public analyzer — 13 November 2026
+
+`/analyze` sits outside the session provider and uses existing public header, footer, button,
+field and card styles. It checks only the anonymous availability endpoint. The form stays disabled
+when hosting is not authorized; local fictional tests can submit without login. Pending submissions
+cannot be repeated; editing clears stale results; success clears text; errors retain the in-memory
+draft. No cookies, browser storage, text in URLs, automatic retries or score gauges. Predictions
+are labeled experimental/unvalidated, with truncation and stage/total timing. “Legitimate” never
+means safe. Hosted inference remains unavailable until C-15 and launch checks pass.
+
+Public scroll reveals translate content while preserving full opacity, so stopping mid-scroll
+never leaves readable text below its required contrast. Time-based page entrances are unchanged.

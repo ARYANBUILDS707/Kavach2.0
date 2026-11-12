@@ -2,6 +2,7 @@
 
 import logging
 import os
+import threading
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import timedelta
@@ -11,10 +12,12 @@ from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
 
+from kavach.api.public_static import PublicStaticFiles
 from kavach.api.routes.auth import router as auth_router
 from kavach.api.routes.events import router as events_router
 from kavach.api.routes.health import router as health_router
 from kavach.api.routes.incidents import router as incidents_router
+from kavach.api.routes.public_analyzer import router as public_router
 from kavach.api.routes.simulator import router as simulator_router
 from kavach.api.routes.system import router as system_router
 from kavach.auth.cookies import cookie_policy_for
@@ -40,6 +43,7 @@ from kavach.privacy.audit import AuditWriter
 from kavach.privacy.digests import KeyedDigester
 from kavach.services.incidents import IncidentReadService
 from kavach.services.ingestion import IngestionService
+from kavach.services.public_analyzer import PublicQuota
 
 
 @asynccontextmanager
@@ -118,7 +122,7 @@ def build_sms_worker(settings: Settings) -> SmsWorkerSupervisor:
     return SmsWorkerSupervisor(
         SmsWorkerConfig(
             command=worker_command(python, manifest_path, model_dir, settings.sms_worker_threads),
-            lock_path=model_dir / ".kavach-sms-worker.lock",
+            lock_path=settings.sms_worker_lock_path or model_dir / ".kavach-sms-worker.lock",
             manifest=manifest,
             max_inflight=settings.max_inflight_analyses,
             inference_timeout_s=settings.sms_inference_timeout_ms / 1000,
@@ -189,9 +193,9 @@ def create_app(
     )
     app.state.redis = create_redis_client(settings.redis_url) if settings.redis_url else None
     # Without the full authentication configuration the auth routes answer 503.
-    app.state.auth = build_auth_service(settings, app, clock) if settings.app_origin else None
+    app.state.auth = build_auth_service(settings, app, clock) if settings.auth_configured else None
     app.state.cookie_policy = (
-        cookie_policy_for(settings.app_origin) if settings.app_origin else None
+        cookie_policy_for(settings.app_origin) if settings.auth_configured else None
     )
     app.state.ingest_keys = (
         IngestKeyService(sessions=app.state.db_sessions, audit=app.state.auth.audit, clock=clock)
@@ -203,6 +207,18 @@ def create_app(
     rate_key = (
         settings.rate_limit_hmac_key.get_secret_value().encode()
         if settings.rate_limit_hmac_key is not None
+        else None
+    )
+    app.state.public_slots = threading.BoundedSemaphore(settings.max_inflight_analyses)
+    app.state.public_quota = (
+        PublicQuota(
+            app.state.redis,
+            rate_key,
+            settings.app_env,
+            settings.public_analyzer_ip_limit_per_minute,
+            settings.public_analyzer_global_limit_per_minute,
+        )
+        if app.state.redis is not None and rate_key is not None
         else None
     )
     app.state.bearer_throttle = (
@@ -238,6 +254,17 @@ def create_app(
         response = await call_next(request)
         response.headers["X-Request-ID"] = str(request.state.request_id)
         response.headers["Cache-Control"] = "no-store"
+        if settings.public_analyzer_only:
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data:; font-src 'self'; connect-src 'self'; "
+                "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+            )
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["Referrer-Policy"] = "no-referrer"
+            response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+            if settings.app_env == "pilot":
+                response.headers["Strict-Transport-Security"] = "max-age=31536000"
         return response
 
     app.add_exception_handler(ApiError, api_error)
@@ -245,6 +272,11 @@ def create_app(
     app.add_exception_handler(HTTPException, http_error)
     app.add_exception_handler(Exception, unexpected_error)
     app.include_router(health_router)
+    app.include_router(public_router)
+    if settings.public_analyzer_only:
+        if settings.public_frontend_dir is not None:
+            app.mount("/", PublicStaticFiles(directory=settings.public_frontend_dir))
+        return app
     app.include_router(auth_router)
     app.include_router(events_router)
     app.include_router(incidents_router)

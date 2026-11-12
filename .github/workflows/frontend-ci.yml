@@ -49,3 +49,33 @@ jobs:
 
       - name: Verify contract, lint, type-check, test, build and scan the bundle
         run: npm run verify
+
+      - name: Set up uv for disabled public backend browser tests
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.11.16"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Install backend and browser test dependencies
+        run: |
+          uv sync --project ../backend --locked
+          npx playwright install --with-deps chromium
+
+      - name: Verify public disabled state and isolation in Chromium
+        env:
+          APP_ENV: development
+          PUBLIC_ANALYZER_ONLY: "true"
+          PUBLIC_ANALYZER_MODE: disabled
+          SMS_WORKER_ENABLED: "false"
+          KAVACH_PUBLIC_E2E_MODE: disabled
+        run: |
+          uv run --project ../backend --locked uvicorn kavach.main:create_app --factory \
+            --host 127.0.0.1 --port 8184 --no-access-log --no-proxy-headers &
+          backend_pid=$!
+          trap 'kill "$backend_pid" 2>/dev/null || true' EXIT
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if curl --fail --silent http://127.0.0.1:8184/health >/dev/null; then break; fi
+            sleep 1
+          done
+          npx playwright test --config playwright.public.config.ts

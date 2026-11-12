@@ -1,26 +1,41 @@
+// Public analysis has its own anonymous API; no public page restores an admin session.
+// The operator console and its sign-in live under `/admin`.
+export const PUBLIC_HOME = "/";
+export const PUBLIC_ANALYZE = "/analyze";
+export const EXAMPLES = "/examples";
+
+export const ADMIN_HOME = "/admin";
+export const ADMIN_LOGIN = "/admin/login";
+export const ADMIN_INCIDENTS = "/admin/incidents";
+export const ADMIN_SYSTEM = "/admin/system";
+export const ADMIN_ANALYZE = "/admin/analyze";
+
+export function adminIncident(id: string): string {
+  return `${ADMIN_INCIDENTS}/${id}`;
+}
+
 // Internal paths a sign-in may return to. `next` comes from the URL, so it is untrusted: only
-// same-origin paths of known shapes are accepted, anything else falls back to the overview.
+// same-origin console paths of known shapes are accepted, anything else falls back to the console
+// overview.
 const KNOWN_PATHS = [
-  /^\/$/,
-  /^\/incidents$/,
-  /^\/incidents\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
-  /^\/system$/,
-  /^\/analyze$/,
+  /^\/admin$/,
+  /^\/admin\/incidents$/,
+  /^\/admin\/incidents\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+  /^\/admin\/system$/,
+  /^\/admin\/analyze$/,
 ];
 const SAFE_QUERY = /^\?[A-Za-z0-9=&_.:%+-]{0,512}$/;
 
-export const HOME = "/";
-
 export function safeNext(value: string | null): string {
-  if (value === null) return HOME;
+  if (value === null) return ADMIN_HOME;
   const queryStart = value.indexOf("?");
   const path = queryStart === -1 ? value : value.slice(0, queryStart);
   const query = queryStart === -1 ? "" : value.slice(queryStart);
-  if (!KNOWN_PATHS.some((pattern) => pattern.test(path))) return HOME;
-  if (query !== "" && !SAFE_QUERY.test(query)) return HOME;
+  if (!KNOWN_PATHS.some((pattern) => pattern.test(path))) return ADMIN_HOME;
+  if (query !== "" && !SAFE_QUERY.test(query)) return ADMIN_HOME;
   return value;
 }
 
 export function loginPath(next: string): string {
-  return next === HOME ? "/login" : `/login?next=${encodeURIComponent(next)}`;
+  return next === ADMIN_HOME ? ADMIN_LOGIN : `${ADMIN_LOGIN}?next=${encodeURIComponent(next)}`;
 }

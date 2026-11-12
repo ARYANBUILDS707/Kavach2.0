@@ -2,7 +2,7 @@
 
 KAVACH is a proposed fraud-analysis platform that connects authorized SMS and voice-call signals to present explainable risk evidence for human review.
 
-**Current release: SMS MVP-1** (owner decision C-12), a local controlled demonstration. Analysts sign in to a web workspace backed by a FastAPI service, PostgreSQL and Redis. Admins can submit fictional SMS through a controlled page; everyone with access can review incident history and evidence; message text is never kept. The pretrained SMS model is integrated behind an isolated worker but **disabled**: it is not validated on KAVACH data, and every analysis is shown honestly as unavailable until the M4-Q evaluation decides otherwise. Voice and call analysis, correlation, reviews and deployment are later milestones. Live telecom integration and historical benchmarks are not verified capabilities.
+**Current release: SMS MVP-1** (owner decision C-12), a local controlled demonstration. **The public website needs no login, account or sign-up** (decision C-14): visitors open the home page and a page of recorded examples, with no API calls and no live analysis. The operator console (`/admin`) is a separate, protected area backed by a FastAPI service, PostgreSQL and Redis, where admins can submit fictional SMS and review incident history and evidence; message text is never kept. The pretrained SMS model is integrated behind an isolated worker but **disabled**: it is not validated on KAVACH data, and every analysis is shown honestly as unavailable until the M4-Q evaluation decides otherwise. A local-only experimental mode (C-13) can show the model's prediction for fictional messages. Voice and call analysis, correlation, reviews and deployment are later milestones. Live telecom integration and historical benchmarks are not verified capabilities.
 
 ## Current status (12 November 2026)
 
@@ -10,6 +10,7 @@ KAVACH is a proposed fraud-analysis platform that connects authorized SMS and vo
 | --- | --- |
 | Backend (`backend`, `50431e9`) | Authentication with server sessions, CSRF and Origin checks, roles, and a fail-closed Redis throttle; idempotent SMS and call ingestion; incident reads with the `channel` filter; per-user read limit; operator CLI; retention; isolated SMS worker (off). Merged into `dev` by PR #1 (`5bcd68a`). Backend CI green. |
 | Frontend (`frontend`, `988cb1e`) | React and TypeScript workspace: public landing page, sign-in, overview, incident history and detail, system status, admin-only Analyze SMS; light and dark themes; accessibility and motion controls. Merged into `dev` by PR #2 (`61cbffa`). Frontend CI green on the PR (run 43153039726). |
+| Public site (C-14) | Login-free home and recorded-examples pages that make no API calls; the operator console moved under `/admin`; every API route is proven closed to anonymous callers by an inventory test. A public real-time analyzer is **not** authorized: see the [proposal](docs/PUBLIC_ANALYZER_PROPOSAL.md) (C-15, not approved) and the [design](docs/PUBLIC_SITE_DESIGN.md). |
 | Joint acceptance | Passed on the integrated `dev` commit `61cbffa`: every suite, plus 17 real browser journeys against real PostgreSQL and Redis. See the [MVP1 integration report](docs/MVP1_INTEGRATION_REPORT.md) and the [security audit report](docs/SECURITY_AUDIT_REPORT_MVP1.md). |
 | SMS model | Disabled by default. M4-Q preflight is NOT READY (MVP-B1), so no accuracy is claimed. Decision C-13 adds an opt-in, local-only experimental mode that shows the pinned model's uncalibrated prediction on fictional messages, labelled as a model prediction rather than a fact: [experimental SMS analysis](docs/EXPERIMENTAL_SMS_ANALYSIS.md). |
 | Deployment | None. Run the stack locally with the [local demo procedure](docs/LOCAL_DEMO.md); demo talk track in the [demo script](docs/DEMO_SCRIPT.md). |
@@ -386,3 +387,11 @@ The backend tree above is condensed to its M2 shape; later modules (auth, servic
 3. **Afterwards:** voice analysis (M5), correlation and fusion (M6), the review workflow, live updates and the simulator UI (M7–M8), and packaging and deployment (M11), each through its own owner-controlled PR.
 
 Branch workflow and milestone status: `docs/GIT_WORKFLOW.md`, `docs/MILESTONE_TRACKER.md`.
+
+## Stateless anonymous analyzer (local experimental only)
+
+The `/analyze` page and `/api/v1/public/analyze` endpoint reuse the real SMS worker without
+creating an incident or requiring login. Disabled by default; local fictional-message use only.
+Hosted inference is blocked pending C-15, privacy/security and restricted-release approval;
+M4-Q remains NOT READY. See [the runbook](docs/PUBLIC_ANALYZER_RUNBOOK.md) for isolated local
+startup, tests, Docker/Railway preparation and remaining launch gates.

@@ -5,6 +5,7 @@ import { useSearchParams } from "react-router";
 
 import { Banner } from "../../components/Banner";
 import { Button } from "../../components/Button";
+import { ADMIN_INCIDENTS } from "../../app/routes";
 import { PageHeader } from "../../components/PageHeader";
 import { LOADING, StateView, describeError } from "../../components/StateView";
 import { isApiError } from "../../lib/api/errors";
@@ -157,7 +158,7 @@ export function IncidentListPage() {
   const [params, setParams] = useSearchParams();
   const filters = filtersFromParams(params);
   const pages = useIncidentPages(filters);
-  const returnTo = `/incidents${params.toString() ? `?${params.toString()}` : ""}`;
+  const returnTo = `${ADMIN_INCIDENTS}${params.toString() ? `?${params.toString()}` : ""}`;
   const filtered = isFiltered(filters);
 
   function apply(next: IncidentFilters) {
