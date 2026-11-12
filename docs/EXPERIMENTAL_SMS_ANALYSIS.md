@@ -58,7 +58,7 @@ The prerequisites are the same as in [LOCAL_DEMO.md](LOCAL_DEMO.md), plus the mo
 
    The log shows `sms_worker.ready reason=self_test_passed`.
 
-5. **Start the frontend (terminal 2):** `cd frontend && npm ci && npm run dev`. Open `http://127.0.0.1:5173`, sign in as the admin, and check that the header pill reads **SMS model: Ready**.
+5. **Start the frontend (terminal 2):** `cd frontend && npm ci && npm run dev`. Open `http://127.0.0.1:5173/admin`, sign in as the admin, and check that the header pill reads **SMS model: Ready**.
 6. **Analyze SMS:** the page shows "Experimental analysis is on". Submit a fictional message; the receipt reads the stored prediction back from the server.
 
 **Switching back to the standard mode:** remove the five lines from step 3, restore `export SMS_WORKER_ENABLED=false`, and restart the backend.

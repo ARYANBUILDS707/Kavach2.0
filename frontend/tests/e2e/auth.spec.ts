@@ -17,8 +17,8 @@ const viewer = {
 const shortSession = process.env.KAVACH_E2E_SHORT_SESSION === "1";
 
 async function signIn(page: Page, account: { username: string; password: string }) {
-  await page.goto("/");
-  await expect(page).toHaveURL(/\/login$/);
+  await page.goto("/admin");
+  await expect(page).toHaveURL(/\/admin\/login$/);
   await page.getByLabel("Username").fill(account.username);
   await page.getByLabel("Password").fill(account.password);
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -32,8 +32,8 @@ test.describe("authentication against the real backend", () => {
   test("sign in, restore the session on reload, and sign out without browser storage", async ({
     page,
   }) => {
-    await page.goto("/");
-    await expect(page).toHaveURL(/\/login$/);
+    await page.goto("/admin");
+    await expect(page).toHaveURL(/\/admin\/login$/);
     expect(await axeViolations(page)).toEqual([]);
 
     await signIn(page, admin);
@@ -55,11 +55,11 @@ test.describe("authentication against the real backend", () => {
     await expect(page.getByText("You have signed out.")).toBeVisible();
     // The server revoked the session: a reload stays signed out.
     await page.reload();
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page).toHaveURL(/\/admin\/login$/);
   });
 
   test("a wrong password gets one generic message and no session", async ({ page }) => {
-    await page.goto("/login");
+    await page.goto("/admin/login");
     await page.getByLabel("Username").fill(admin.username);
     await page.getByLabel("Password").fill("definitely-not-the-password");
     await page.getByRole("button", { name: "Sign in" }).click();
@@ -91,7 +91,7 @@ test.describe("session expiry against the real backend", () => {
     await signIn(page, admin);
     await expect(page.getByText(/less than five minutes/)).toBeVisible();
     await expect(page.getByText(/Your session ended/)).toBeVisible({ timeout: 100_000 });
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page).toHaveURL(/\/admin\/login$/);
     const session = await page.request.get("/api/v1/auth/session");
     expect(session.status()).toBe(401);
   });

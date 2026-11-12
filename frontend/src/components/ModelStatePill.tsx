@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 
 import { useModelStatus } from "../app/ModelStatusProvider";
+import { ADMIN_SYSTEM } from "../app/routes";
 import { MODEL_STATE_LABELS } from "../lib/format";
 
 /** Header indicator for the SMS model; links to the System page for detail. */
@@ -16,7 +17,7 @@ export function ModelStatePill() {
     state = "unknown";
   }
   return (
-    <Link to="/system" className={`pill pill-model-${state}`}>
+    <Link to={ADMIN_SYSTEM} className={`pill pill-model-${state}`}>
       SMS model: {text}
     </Link>
   );

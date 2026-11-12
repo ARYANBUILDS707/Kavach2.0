@@ -1,6 +1,7 @@
 import { expect, test, type Page, type Response } from "@playwright/test";
 
 import { axeViolations } from "./axe";
+import { ORIGIN } from "./origin";
 
 // READ-ONLY journey against the REAL local backend through the Vite proxy: it never submits an
 // event, never uses page.route(), and compares what the UI shows with the API's own answers, so
@@ -9,7 +10,6 @@ const admin = {
   username: process.env.KAVACH_E2E_USERNAME ?? "",
   password: process.env.KAVACH_E2E_PASSWORD ?? "",
 };
-const ORIGIN = "http://127.0.0.1:5173";
 
 test.skip(process.env.KAVACH_E2E_SHORT_SESSION === "1", "runs against a normal-length session");
 test.skip(admin.username === "" || admin.password === "", "KAVACH_E2E_USERNAME/PASSWORD not set");
@@ -55,8 +55,8 @@ test("an admin works through every screen on real data without writing anything"
   const seen = observe(page);
 
   // Signed out, a protected page goes to sign-in.
-  await page.goto("/incidents");
-  await expect(page).toHaveURL(/\/login\?next=%2Fincidents$/);
+  await page.goto("/admin/incidents");
+  await expect(page).toHaveURL(/\/admin\/login\?next=%2Fadmin%2Fincidents$/);
 
   await page.getByLabel("Username").fill(admin.username);
   await page.getByLabel("Password").fill(admin.password);
@@ -110,7 +110,7 @@ test("an admin works through every screen on real data without writing anything"
   await expect(page.getByRole("button", { name: "Load more" })).toHaveCount(recent.page.has_more ? 1 : 0);
   await page.getByLabel("Risk tier").selectOption("critical");
   await page.getByRole("button", { name: "Apply filters" }).click();
-  await expect(page).toHaveURL(/\/incidents\?.*tier=critical/);
+  await expect(page).toHaveURL(/\/admin\/incidents\?.*tier=critical/);
   const critical = (await (await page.request.get("/api/v1/incidents?channel=sms&tier=critical&limit=25")).json()) as Page_<Summary>;
   if (critical.data.length === 0) {
     await expect(page.getByText("No incidents match these filters")).toBeVisible();
@@ -118,7 +118,7 @@ test("an admin works through every screen on real data without writing anything"
     await expect(page.locator(".incident-table tbody tr")).toHaveCount(critical.data.length);
   }
   await page.getByRole("button", { name: "Clear filters" }).click();
-  await expect(page).toHaveURL(/\/incidents$/);
+  await expect(page).toHaveURL(/\/admin\/incidents$/);
   expect(await axeViolations(page), "incidents axe").toEqual([]);
 
   // Incident detail: a real incident only if one exists; otherwise recorded as not exercised.
@@ -126,7 +126,7 @@ test("an admin works through every screen on real data without writing anything"
   if (first === undefined) {
     test.info().annotations.push({ type: "not exercised", description: "no incident exists, so no real detail page" });
   } else {
-    await page.goto(`/incidents/${first.id}`);
+    await page.goto(`/admin/incidents/${first.id}`);
     await expect(page.getByRole("heading", { level: 1, name: `Incident ${first.id.slice(0, 8)}` })).toBeVisible();
     await expect(page.getByText(/Message text is not retained/)).toBeVisible();
     expect(await axeViolations(page), "detail axe").toEqual([]);
@@ -148,7 +148,7 @@ test("an admin works through every screen on real data without writing anything"
 
   // Phone width: the menu opens and the pages fit.
   await page.setViewportSize({ width: 390, height: 844 });
-  for (const path of ["/", "/incidents", "/system", "/analyze"]) {
+  for (const path of ["/admin", "/admin/incidents", "/admin/system", "/admin/analyze"]) {
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await noOverflow(page, `${path} at 390px`);
@@ -171,8 +171,8 @@ test("an admin works through every screen on real data without writing anything"
   // Sign out: the server ends the session and protected pages and reads are refused.
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByText("You have signed out.")).toBeVisible();
-  await page.goto("/system");
-  await expect(page).toHaveURL(/\/login\?next=%2Fsystem$/);
+  await page.goto("/admin/system");
+  await expect(page).toHaveURL(/\/admin\/login\?next=%2Fadmin%2Fsystem$/);
   expect((await page.request.get("/api/v1/incidents?channel=sms&limit=1")).status()).toBe(401);
 
   // Every browser API call reached the real backend (request ID present), none was a write to

@@ -4,7 +4,7 @@ This script is for a live or recorded demonstration of the local stack described
 
 Every claim in this script is backed by [MVP1_INTEGRATION_REPORT.md](MVP1_INTEGRATION_REPORT.md). **Do not claim accuracy or detection performance:** the SMS model is disabled and has not been validated on KAVACH data.
 
-Before starting, open one browser window at `http://127.0.0.1:5173/welcome`, light theme, about 1280 px wide, with nothing else showing. Have two fictional messages ready to paste:
+Before starting, open one browser window at `http://127.0.0.1:5173` (the public site; no login), light theme, about 1280 px wide, with nothing else showing. The operator console is at `/admin` and is not linked from the public site. Have two fictional messages ready to paste:
 
 - `FICTIONAL DEMO: Your Examplebank KYC expires today. Update now at the link to avoid suspension.`
 - `FICTIONAL DEMO: Running 10 minutes late, start dinner without me.`
@@ -13,13 +13,14 @@ Before starting, open one browser window at `http://127.0.0.1:5173/welcome`, lig
 
 | Time | On screen | Say (roughly) |
 | --- | --- | --- |
-| 0:00–0:25 | `/welcome` hero; click **Pause motion** | "SMS fraud moves fast, but analysts need evidence they can trust, not a black-box score. KAVACH is an evidence-first workspace: it records analysis evidence, never keeps message text, and leaves the decision to a person. Motion can be paused for accessibility." |
-| 0:25–0:45 | Click **Sign in**; sign in as `demo-admin` | "Accounts are provisioned by an operator; there is no public sign-up. Sessions are server-side, the cookie is HttpOnly, and every write needs a CSRF token and the right Origin." |
-| 0:45–1:10 | **Overview**, then the **SMS model** pill on **System** | "This is the live state from the backend. The model is *Disabled*, and the page says so: not validated on KAVACH data, scores uncalibrated. We never invent a number." |
-| 1:10–1:50 | **Analyze SMS**: paste the first message, **Submit** | "Only admins can submit, and only fictional test messages. The browser creates the event ID once, so a retry can never create a duplicate. The text is sent once and is not kept." Point at the receipt: "Stored. Analysis is *unavailable* because the model is off. That's the honest state, not a fake score." |
-| 1:50–2:20 | Open the incident from the receipt or **Incidents** | "The incident record shows the event timeline, the analysis stage and its reason, tier *unknown*, and no message text, only evidence." Optionally show the filters on **Incidents**. |
-| 2:20–2:45 | **Sign out**; sign in as `demo-viewer`; open `/analyze` | "Roles are enforced on the server. A viewer has no submission page, and the API itself refuses a viewer's submission with 403. Hiding a button isn't the security." |
-| 2:45–3:00 | Back on `/welcome`, or a summary slide | "Tested end to end against real PostgreSQL and Redis: about 800 backend tests, 136 frontend tests and 17 browser journeys, including outages that fail closed. Next steps: the human-labelled evaluation that decides whether the model can be switched on, then voice and correlation." |
+| 0:00–0:20 | `/` hero; click **Pause motion** | "SMS fraud moves fast, but analysts need evidence they can trust, not a black-box score. KAVACH is an evidence-first research project: it records analysis evidence, never keeps message text, and leaves the decision to a person. There is no login on this site, and motion can be paused for accessibility." |
+| 0:20–0:45 | Click **Examples**; scroll the nine cards | "These are recorded examples, not live analysis: nine invented messages and what the pinned model recorded for each, with the date and model version. The scores are uncalibrated and the model is not validated, so we claim no accuracy. There is deliberately no box to type into." |
+| 0:45–1:00 | Type `/admin` in the address bar; sign in as `demo-admin` | "The operator console is a separate area that nothing public links to. Accounts are provisioned by an operator; there is no sign-up. Sessions are server-side, and every write needs a CSRF token and the right Origin." |
+| 1:00–1:20 | **Overview**, then the **SMS model** pill on **System** | "This is the live state from the backend. The model is *Disabled*, and the page says so: not validated on KAVACH data, scores uncalibrated. We never invent a number." |
+| 1:20–1:55 | **Analyze SMS**: paste the first message, **Submit** | "Only admins can submit, and only fictional test messages. The browser creates the event ID once, so a retry can never create a duplicate. The text is sent once and is not kept." Point at the receipt: "Stored. Analysis is *unavailable* because the model is off. That's the honest state, not a fake score." |
+| 1:55–2:20 | Open the incident from the receipt or **Incidents** | "The incident record shows the event timeline, the analysis stage and its reason, tier *unknown*, and no message text, only evidence." Optionally show the filters on **Incidents**. |
+| 2:20–2:45 | **Sign out**; sign in as `demo-viewer`; open `/admin/analyze` | "Roles are enforced on the server. A viewer has no submission page, and the API itself refuses a viewer's submission with 403. Hiding a button isn't the security." |
+| 2:45–3:00 | Back on the public site `/`, or a summary slide | "Tested end to end against real PostgreSQL and Redis: about 800 backend tests, 136 frontend tests and 17 browser journeys, including outages that fail closed. Next steps: the human-labelled evaluation that decides whether the model can be switched on, then voice and correlation." |
 
 ## If something goes wrong live
 

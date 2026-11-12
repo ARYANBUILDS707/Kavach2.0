@@ -5,6 +5,7 @@ import { useCallback } from "react";
 import { Link, useLocation, useParams } from "react-router";
 
 import { useApi } from "../../app/ApiContext";
+import { ADMIN_INCIDENTS, adminIncident } from "../../app/routes";
 import { RiskBadge, StatusBadge } from "../../components/Badges";
 import { Banner } from "../../components/Banner";
 import { Button } from "../../components/Button";
@@ -30,7 +31,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 function backTarget(state: unknown): string {
   const from = (state as { from?: unknown } | null)?.from;
-  return typeof from === "string" && from.startsWith("/incidents") ? from : "/incidents";
+  return typeof from === "string" && from.startsWith(ADMIN_INCIDENTS) ? from : ADMIN_INCIDENTS;
 }
 
 function Versions({ versions }: { versions: Record<string, string> }) {
@@ -171,7 +172,7 @@ function Detail({ incident }: { incident: IncidentDetail }) {
               <ul className="related-list">
                 {incident.related_incident_ids.map((id) => (
                   <li key={id}>
-                    <Link to={`/incidents/${id}`}>
+                    <Link to={adminIncident(id)}>
                       Incident <span className="copyable-id">{shortId(id)}</span>
                     </Link>
                   </li>

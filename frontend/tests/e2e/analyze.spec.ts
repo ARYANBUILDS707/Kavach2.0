@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 
 import { axeViolations } from "./axe";
+import { ORIGIN } from "./origin";
 
 // MVP-F3 against the REAL local backend (MVP-B4 admin path, worker disabled). The message is
 // fictional and must never appear in a URL, browser storage, the console or the page after the
@@ -21,7 +22,7 @@ test.skip(process.env.KAVACH_E2E_SHORT_SESSION === "1", "runs against a normal-l
 test.skip(admin.username === "" || admin.password === "", "KAVACH_E2E_USERNAME/PASSWORD not set");
 
 async function signIn(page: Page, account: { username: string; password: string }) {
-  await page.goto("/login");
+  await page.goto("/admin/login");
   await page.getByLabel("Username").fill(account.username);
   await page.getByLabel("Password").fill(account.password);
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -66,7 +67,7 @@ test("an admin submits once, sees the receipt and stored evidence, and the text 
 
   // The receipt's incident link opens the real detail page; the URL holds only the ID.
   await page.getByRole("link", { name: /Open incident/ }).click();
-  await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}$/);
+  await expect(page).toHaveURL(/\/admin\/incidents\/[0-9a-f-]{36}$/);
   await expect(page.getByText(/Message text is not retained/)).toBeVisible();
   expect(await page.content()).not.toContain("CANARY 7316");
   expect(consoleLines.filter((line) => line.includes("CANARY"))).toEqual([]);
@@ -80,7 +81,7 @@ test("a viewer has no submission page and the server refuses viewer, CSRF and Or
   await expect(
     page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Analyze SMS" }),
   ).toHaveCount(0);
-  await page.goto("/analyze");
+  await page.goto("/admin/analyze");
   await expect(page.getByRole("heading", { level: 1, name: "You don't have access" })).toBeVisible();
   await expect(page.getByLabel("Synthetic message text")).toHaveCount(0);
   expect(await axeViolations(page)).toEqual([]);
@@ -95,7 +96,7 @@ test("a viewer has no submission page and the server refuses viewer, CSRF and Or
   const csrf = ((await (await page.request.get("/api/v1/auth/session")).json()) as {
     data: { csrf_token: string };
   }).data.csrf_token;
-  const origin = "http://127.0.0.1:5173";
+  const origin = ORIGIN;
   const asViewer = await page.request.post("/api/v1/events/sms", {
     headers: { Origin: origin, "X-CSRF-Token": csrf },
     data: body,

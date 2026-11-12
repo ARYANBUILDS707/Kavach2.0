@@ -13,13 +13,14 @@ import { ThemeToggle } from "../components/ThemeToggle";
 import { Wordmark } from "../components/Wordmark";
 import type { ApiError } from "../lib/api/errors";
 import { ModelStatusProvider } from "./ModelStatusProvider";
+import { ADMIN_ANALYZE, ADMIN_HOME, ADMIN_INCIDENTS, ADMIN_SYSTEM } from "./routes";
 import { useSession } from "./SessionProvider";
 
 const NAV_ITEMS = [
-  { to: "/", label: "Overview", end: true, adminOnly: false },
-  { to: "/incidents", label: "Incidents", end: false, adminOnly: false },
-  { to: "/system", label: "System", end: false, adminOnly: false },
-  { to: "/analyze", label: "Analyze SMS", end: false, adminOnly: true },
+  { to: ADMIN_HOME, label: "Overview", end: true, adminOnly: false },
+  { to: ADMIN_INCIDENTS, label: "Incidents", end: false, adminOnly: false },
+  { to: ADMIN_SYSTEM, label: "System", end: false, adminOnly: false },
+  { to: ADMIN_ANALYZE, label: "Analyze SMS", end: false, adminOnly: true },
 ] as const;
 
 const ROLE_LABELS = { viewer: "Viewer", analyst: "Analyst", admin: "Admin" } as const;
@@ -60,7 +61,7 @@ export function AppShell() {
         }}
       >
         <div className="shell-bar">
-          <Link to="/" className="wordmark-link" aria-label="KAVACH home">
+          <Link to={ADMIN_HOME} className="wordmark-link" aria-label="KAVACH home">
             <Wordmark />
           </Link>
           <span className="demo-label">Controlled demonstration</span>

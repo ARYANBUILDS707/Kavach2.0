@@ -6,6 +6,7 @@ import { Link } from "react-router";
 
 import { useApi } from "../../app/ApiContext";
 import { useModelStatus } from "../../app/ModelStatusProvider";
+import { ADMIN_INCIDENTS, ADMIN_SYSTEM } from "../../app/routes";
 import { ModelStateBadge } from "../../components/Badges";
 import { Banner } from "../../components/Banner";
 import { Button } from "../../components/Button";
@@ -37,7 +38,7 @@ function ModelCard() {
             on KAVACH data.
           </p>
           <p>
-            <Link to="/system">System status</Link>
+            <Link to={ADMIN_SYSTEM}>System status</Link>
           </p>
         </>
       ) : loading ? (
@@ -160,10 +161,10 @@ export function OverviewPage() {
           <IncidentTable
             items={items.slice(0, RECENT_ROWS)}
             caption="Most recent SMS incidents"
-            returnTo="/incidents"
+            returnTo={ADMIN_INCIDENTS}
           />
           <div className="section-footer">
-            <Link to="/incidents">View the full incident history</Link>
+            <Link to={ADMIN_INCIDENTS}>View the full incident history</Link>
           </div>
         </section>
       </>

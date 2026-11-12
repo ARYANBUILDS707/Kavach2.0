@@ -26,7 +26,7 @@ afterEach(() => {
 
 describe("session restore on load", () => {
   it("restores an existing session from GET /auth/session", async () => {
-    const { requests } = renderApp("/", [() => json(200, SESSION)]);
+    const { requests } = renderApp("/admin", [() => json(200, SESSION)]);
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     expect(screen.getByText(/· Admin$/)).toHaveTextContent(/^Test Admin · Admin$/);
     expect(screen.getByText("Controlled demonstration")).toBeInTheDocument();
@@ -36,12 +36,12 @@ describe("session restore on load", () => {
   });
 
   it("sends a signed-out visitor to the login page", async () => {
-    renderApp("/", [unauthenticated]);
+    renderApp("/admin", [unauthenticated]);
     expect(await screen.findByRole("heading", { name: "Sign in to KAVACH" })).toBeInTheDocument();
   });
 
   it("never schedules an expiry beyond the browser timer limit (the server still enforces it)", async () => {
-    renderApp("/", [() => json(200, SESSION)], () => Date.parse("2026-01-01T00:00:00Z"));
+    renderApp("/admin", [() => json(200, SESSION)], () => Date.parse("2026-01-01T00:00:00Z"));
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
@@ -51,7 +51,7 @@ describe("session restore on load", () => {
 
   it("shows an unavailable state with a retry when the session check fails (503)", async () => {
     const user = userEvent.setup();
-    renderApp("/", [
+    renderApp("/admin", [
       () => apiError(503, "DEPENDENCY_UNAVAILABLE"),
       () => apiError(503, "DEPENDENCY_UNAVAILABLE"),
       () => apiError(503, "DEPENDENCY_UNAVAILABLE"),
@@ -65,7 +65,7 @@ describe("session restore on load", () => {
 
 describe("sign in", () => {
   it("signs in, sends only the credentials, and clears the password", async () => {
-    const { requests } = renderApp("/", [unauthenticated, () => json(200, SESSION)]);
+    const { requests } = renderApp("/admin", [unauthenticated, () => json(200, SESSION)]);
     await signIn();
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     const loginRequest = requests.find((r) => r.url === "/api/v1/auth/login");
@@ -78,13 +78,13 @@ describe("sign in", () => {
   });
 
   it("returns to the requested page after sign-in", async () => {
-    renderApp("/login?next=%2F", [unauthenticated, () => json(200, SESSION)]);
+    renderApp("/admin/login?next=%2F", [unauthenticated, () => json(200, SESSION)]);
     await signIn();
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
   });
 
   it("shows one generic message for wrong credentials and clears the password", async () => {
-    renderApp("/login", [unauthenticated, () => apiError(401, "INVALID_CREDENTIALS")]);
+    renderApp("/admin/login", [unauthenticated, () => apiError(401, "INVALID_CREDENTIALS")]);
     await signIn();
     expect(await screen.findByText(/Username or password is incorrect\./)).toBeInTheDocument();
     expect(screen.getByLabelText(/Password/)).toHaveValue("");
@@ -92,7 +92,7 @@ describe("sign in", () => {
   });
 
   it("disables sign-in for the Retry-After period after 429", async () => {
-    renderApp("/login", [
+    renderApp("/admin/login", [
       unauthenticated,
       () => apiError(429, "RATE_LIMITED", { "Retry-After": "30" }),
     ]);
@@ -106,7 +106,7 @@ describe("sign in", () => {
     [503, "DEPENDENCY_UNAVAILABLE", /Sign-in is temporarily unavailable/],
     [403, "CSRF_REJECTED", /must be opened from the configured address/],
   ])("explains a %s %s without exposing server text", async (status, code, text) => {
-    renderApp("/login", [unauthenticated, () => apiError(status, code)]);
+    renderApp("/admin/login", [unauthenticated, () => apiError(status, code)]);
     await signIn();
     expect(await screen.findByText(text)).toBeInTheDocument();
     expect(screen.queryByText(/safe server message/)).toBeNull();
@@ -116,7 +116,7 @@ describe("sign in", () => {
 
 describe("expiry and sign-out", () => {
   it("ends the session on any 401 SESSION_EXPIRED and returns to login with a notice", async () => {
-    const { client } = renderApp("/", [() => json(200, SESSION), unauthenticated]);
+    const { client } = renderApp("/admin", [() => json(200, SESSION), unauthenticated]);
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     await act(async () => {
       await client.get("/api/v1/auth/session").catch(() => undefined);
@@ -128,7 +128,7 @@ describe("expiry and sign-out", () => {
   it("warns five minutes before the deadline and signs out at it", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const deadline = Date.parse(SESSION.data.expires_at);
-    renderApp("/", [() => json(200, SESSION)], () => deadline - 6 * 60 * 1000);
+    renderApp("/admin", [() => json(200, SESSION)], () => deadline - 6 * 60 * 1000);
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(61 * 1000);
@@ -142,7 +142,7 @@ describe("expiry and sign-out", () => {
 
   it("signs out with the CSRF token and clears the session", async () => {
     const user = userEvent.setup();
-    const { requests } = renderApp("/", [
+    const { requests } = renderApp("/admin", [
       () => json(200, SESSION),
       () => new Response(null, { status: 204 }),
     ]);
@@ -155,7 +155,7 @@ describe("expiry and sign-out", () => {
 
   it("keeps the session and warns when sign-out cannot be confirmed (503)", async () => {
     const user = userEvent.setup();
-    renderApp("/", [() => json(200, SESSION), () => apiError(503, "DEPENDENCY_UNAVAILABLE")]);
+    renderApp("/admin", [() => json(200, SESSION), () => apiError(503, "DEPENDENCY_UNAVAILABLE")]);
     await user.click(await screen.findByRole("button", { name: "Sign out" }));
     expect(await screen.findByText(/session may still be active/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Overview" })).toBeInTheDocument();
@@ -184,7 +184,7 @@ describe("guards and privacy", () => {
 
   it("stores nothing in browser storage or cookies through a full sign-in and sign-out", async () => {
     const user = userEvent.setup();
-    renderApp("/", [unauthenticated, () => json(200, SESSION), () => new Response(null, { status: 204 })]);
+    renderApp("/admin", [unauthenticated, () => json(200, SESSION), () => new Response(null, { status: 204 })]);
     await signIn();
     await screen.findByRole("heading", { name: "Overview" });
     await user.click(screen.getByRole("button", { name: "Sign out" }));
