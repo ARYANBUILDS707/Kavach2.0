@@ -1,15 +1,17 @@
 # Frontend CI (MVP-F1): locked install, advisory gate, contract checksum and generated-type
 # freshness, lint, strict type-check, unit and component tests, production build and bundle
 # scan. Playwright journeys need the real backend stack and run at joint acceptance, not here.
-# Actions are pinned to full commit SHAs; the comment names the tag.
+# No path filters: every pull request into `dev` or `main` and every push to `frontend`, `dev`
+# or `main` gets a result, so "Frontend checks" can be a required status check without blocking
+# documentation-only PRs (security audit finding M1). Actions are pinned to full commit SHAs;
+# the comment names the tag.
 name: Frontend CI
 
 on:
   pull_request:
     branches: [dev, main]
-    paths: ["frontend/**", ".github/workflows/frontend-ci.yml"]
   push:
-    branches: [frontend]
+    branches: [frontend, dev, main]
 
 permissions:
   contents: read
