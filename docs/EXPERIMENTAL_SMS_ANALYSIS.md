@@ -23,6 +23,8 @@ This mode lets a signed-in admin type a **fictional** SMS and see the pinned pre
 
 ## Start the application in experimental mode
 
+**Shortest path:** run `scripts/kavach-demo.sh start --experimental` from the repository root. It prepares the worker environment, sets the five settings below in its own process only, waits for `sms_worker.ready`, and prints the C-13 banner. Ctrl-C stops everything. If the worker cannot start, the launcher says so, and the UI shows "analysis unavailable" rather than a prediction. The manual steps follow.
+
 The prerequisites are the same as in [LOCAL_DEMO.md](LOCAL_DEMO.md), plus the model environment and the verified artifacts (`data/models/horizon-phishing-scam-base`, never in Git; see [M4_I1_SMS_WORKER_REPORT.md](M4_I1_SMS_WORKER_REPORT.md)).
 
 1. **Services, migrations and accounts:** follow [LOCAL_DEMO.md](LOCAL_DEMO.md) steps 1–4 exactly.
