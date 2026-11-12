@@ -1,0 +1,328 @@
+{
+  "dry_run_stricter_grouping": [
+    {
+      "assigned_records": 27877,
+      "changes_by_direction": {
+        "test->train": 1228,
+        "test->validation": 1129,
+        "train->test": 1325,
+        "train->validation": 1261,
+        "validation->test": 961,
+        "validation->train": 1376
+      },
+      "clusters": 14816,
+      "largest_cluster_records": 3687,
+      "largest_stratum_deviation": 0.0037,
+      "leakage_profile": {
+        "cross_split_pairs_at_least": {
+          "0.4": 5982,
+          "0.5": 967,
+          "0.6": 0,
+          "0.7": 0
+        },
+        "test_banking_texts_with_a_train_neighbour_at_least": {
+          "0.4": 0.1674,
+          "0.5": 0.0848,
+          "0.6": 0.0,
+          "0.7": 0.0
+        },
+        "test_texts": 3060,
+        "test_texts_with_a_train_neighbour_at_least": {
+          "0.4": 0.1199,
+          "0.5": 0.0621,
+          "0.6": 0.0,
+          "0.7": 0.0
+        },
+        "validation_banking_texts_with_a_train_neighbour_at_least": {
+          "0.4": 0.1878,
+          "0.5": 0.0923,
+          "0.6": 0.0,
+          "0.7": 0.0
+        },
+        "validation_texts": 3063,
+        "validation_texts_with_a_train_neighbour_at_least": {
+          "0.4": 0.1234,
+          "0.5": 0.0588,
+          "0.6": 0.0,
+          "0.7": 0.0
+        }
+      },
+      "pairs_at_lowest_level": 209927,
+      "records_in_both_versions": 27877,
+      "records_that_change_split": 7280,
+      "share_of_records_that_change_split": 0.2611,
+      "threshold": 0.6,
+      "v1_test_records_that_leave_test": 2357,
+      "v1_test_records_total": 3577
+    },
+    {
+      "assigned_records": 27706,
+      "changes_by_direction": {
+        "test->train": 1530,
+        "test->validation": 991,
+        "train->test": 1481,
+        "train->validation": 1407,
+        "validation->test": 945,
+        "validation->train": 1499
+      },
+      "clusters": 13843,
+      "largest_cluster_records": 4017,
+      "largest_stratum_deviation": 0.0037,
+      "leakage_profile": {
+        "cross_split_pairs_at_least": {
+          "0.4": 1169,
+          "0.5": 0,
+          "0.6": 0,
+          "0.7": 0
+        },
+        "test_banking_texts_with_a_train_neighbour_at_least": {
+          "0.4": 0.0959,
+          "0.5": 0.0,
+          "0.6": 0.0,
+          "0.7": 0.0
+        },
+        "test_texts": 3041,
+        "test_texts_with_a_train_neighbour_at_least": {
+          "0.4": 0.0641,
+          "0.5": 0.0,
+          "0.6": 0.0,
+          "0.7": 0.0
+        },
+        "validation_banking_texts_with_a_train_neighbour_at_least": {
+          "0.4": 0.097,
+          "0.5": 0.0,
+          "0.6": 0.0,
+          "0.7": 0.0
+        },
+        "validation_texts": 3044,
+        "validation_texts_with_a_train_neighbour_at_least": {
+          "0.4": 0.0673,
+          "0.5": 0.0,
+          "0.6": 0.0,
+          "0.7": 0.0
+        }
+      },
+      "pairs_at_lowest_level": 209498,
+      "records_in_both_versions": 27706,
+      "records_that_change_split": 7853,
+      "share_of_records_that_change_split": 0.2834,
+      "threshold": 0.5,
+      "v1_test_records_that_leave_test": 2521,
+      "v1_test_records_total": 3577
+    },
+    {
+      "assigned_records": 27554,
+      "changes_by_direction": {
+        "test->train": 1661,
+        "test->validation": 869,
+        "train->test": 1509,
+        "train->validation": 1643,
+        "validation->test": 946,
+        "validation->train": 1599
+      },
+      "clusters": 12884,
+      "largest_cluster_records": 5822,
+      "largest_stratum_deviation": 0.0019,
+      "leakage_profile": {
+        "cross_split_pairs_at_least": {
+          "0.4": 0,
+          "0.5": 0,
+          "0.6": 0,
+          "0.7": 0
+        },
+        "test_banking_texts_with_a_train_neighbour_at_least": {
+          "0.4": 0.0,
+          "0.5": 0.0,
+          "0.6": 0.0,
+          "0.7": 0.0
+        },
+        "test_texts": 3021,
+        "test_texts_with_a_train_neighbour_at_least": {
+          "0.4": 0.0,
+          "0.5": 0.0,
+          "0.6": 0.0,
+          "0.7": 0.0
+        },
+        "validation_banking_texts_with_a_train_neighbour_at_least": {
+          "0.4": 0.0,
+          "0.5": 0.0,
+          "0.6": 0.0,
+          "0.7": 0.0
+        },
+        "validation_texts": 3024,
+        "validation_texts_with_a_train_neighbour_at_least": {
+          "0.4": 0.0,
+          "0.5": 0.0,
+          "0.6": 0.0,
+          "0.7": 0.0
+        }
+      },
+      "pairs_at_lowest_level": 209351,
+      "records_in_both_versions": 27554,
+      "records_that_change_split": 8227,
+      "share_of_records_that_change_split": 0.2986,
+      "threshold": 0.4,
+      "v1_test_records_that_leave_test": 2530,
+      "v1_test_records_total": 3577
+    }
+  ],
+  "frozen_split_assignments_sha256": "ef452e8c219a20f3f02248d94e919b5454f0dd3a4418f7c8d7db879a6099ba0a",
+  "note": "Aggregates only. The dry runs write no split; creating sms_split.v2 is a separate decision. Test text was never displayed.",
+  "summary": {
+    "across_strata": 57,
+    "by_dataset_pair": {
+      "imc25_smishing_reports/imc25_smishing_reports": 844,
+      "imc25_smishing_reports/uci_sms_spam_collection": 1,
+      "uci_sms_spam_collection/uci_sms_spam_collection": 25
+    },
+    "by_split_pair": {
+      "test/train": 420,
+      "test/validation": 33,
+      "train/validation": 417
+    },
+    "by_stratum_pair": {
+      "imc:banking/imc:banking": 533,
+      "imc:banking/imc:others": 21,
+      "imc:delivery/imc:delivery": 28,
+      "imc:government/imc:government": 33,
+      "imc:government/imc:others": 8,
+      "imc:others/imc:others": 124,
+      "imc:others/imc:spam": 6,
+      "imc:others/imc:telecom": 11,
+      "imc:spam/imc:spam": 12,
+      "imc:telecom/imc:telecom": 56,
+      "uci:ham/uci:ham": 13,
+      "uci:spam/uci:spam": 12
+    },
+    "pairs_across_splits": 870,
+    "pairs_at_threshold": 49381,
+    "similarity_quartiles_min_q1_median_q3_max": {
+      "char_5gram_jaccard": [
+        0.6,
+        0.613,
+        0.63,
+        0.657,
+        0.699
+      ],
+      "length_ratio": [
+        0.27,
+        0.811,
+        0.901,
+        0.956,
+        1.0
+      ],
+      "sequence_ratio": [
+        0.425,
+        0.826,
+        0.862,
+        0.887,
+        0.973
+      ],
+      "word_trigram_jaccard": [
+        0.0,
+        0.333,
+        0.412,
+        0.5,
+        0.857
+      ]
+    },
+    "test_texts_in_a_cross_split_pair": {
+      "by_stratum": {
+        "imc:banking": {
+          "count": 107,
+          "of": 920,
+          "share": 0.1163
+        },
+        "imc:delivery": {
+          "count": 10,
+          "of": 179,
+          "share": 0.0559
+        },
+        "imc:government": {
+          "count": 11,
+          "of": 186,
+          "share": 0.0591
+        },
+        "imc:hey mum/dad": {
+          "count": 0,
+          "of": 8,
+          "share": 0.0
+        },
+        "imc:others": {
+          "count": 29,
+          "of": 523,
+          "share": 0.0554
+        },
+        "imc:spam": {
+          "count": 8,
+          "of": 160,
+          "share": 0.05
+        },
+        "imc:telecom": {
+          "count": 11,
+          "of": 194,
+          "share": 0.0567
+        },
+        "imc:wrong number": {
+          "count": 0,
+          "of": 31,
+          "share": 0.0
+        },
+        "synthetic:synthetic_benign": {
+          "count": 0,
+          "of": 106,
+          "share": 0.0
+        },
+        "uci:ham": {
+          "count": 4,
+          "of": 675,
+          "share": 0.0059
+        },
+        "uci:spam": {
+          "count": 7,
+          "of": 90,
+          "share": 0.0778
+        }
+      },
+      "count": 187,
+      "of": 3072,
+      "share": 0.0609
+    },
+    "within_one_stratum": 813
+  },
+  "threshold": 0.6,
+  "v1_leakage_profile": {
+    "cross_split_pairs_at_least": {
+      "0.4": 19181,
+      "0.5": 4702,
+      "0.6": 870,
+      "0.7": 0
+    },
+    "test_banking_texts_with_a_train_neighbour_at_least": {
+      "0.4": 0.2685,
+      "0.5": 0.1804,
+      "0.6": 0.1065,
+      "0.7": 0.0
+    },
+    "test_texts": 3072,
+    "test_texts_with_a_train_neighbour_at_least": {
+      "0.4": 0.1715,
+      "0.5": 0.1077,
+      "0.6": 0.0534,
+      "0.7": 0.0
+    },
+    "validation_banking_texts_with_a_train_neighbour_at_least": {
+      "0.4": 0.2693,
+      "0.5": 0.1868,
+      "0.6": 0.0977,
+      "0.7": 0.0
+    },
+    "validation_texts": 3077,
+    "validation_texts_with_a_train_neighbour_at_least": {
+      "0.4": 0.1706,
+      "0.5": 0.1128,
+      "0.6": 0.0578,
+      "0.7": 0.0
+    }
+  }
+}

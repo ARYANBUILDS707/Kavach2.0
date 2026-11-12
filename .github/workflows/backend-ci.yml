@@ -1,0 +1,167 @@
+# Backend CI: locked install, pytest and Ruff (M1.1), plus real PostgreSQL/Redis
+# integration tests (M2.1) and schema migrations (M2.2). Since M4.2 the offline `experiments/`
+# project (dataset governance and preparation) has its own lockfile, tests and Ruff checks in the
+# first job; it is a separate environment and never part of the API image. Since M4-I.1 the
+# isolated SMS worker (`workers/sms/`) has its own lockfile too; CI installs only its default,
+# standard-library environment (no torch) and runs its protocol and verification tests; the real
+# model runs locally (`-m model`). Actions are pinned to full commit SHAs; the comment names the tag.
+name: Backend CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [backend, dev, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend tests and lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      UV_PYTHON: "3.12.13"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.11.16"
+          enable-cache: true
+          cache-dependency-glob: |
+            backend/uv.lock
+            experiments/uv.lock
+            workers/sms/uv.lock
+
+      - name: Verify lockfile matches pyproject.toml
+        run: uv lock --check --project backend
+
+      - name: Verify experiments lockfile matches its pyproject.toml
+        run: uv lock --check --project experiments
+
+      - name: Verify SMS worker lockfile matches its pyproject.toml
+        run: uv lock --check --project workers/sms
+
+      - name: Install locked dependencies
+        id: install
+        run: uv sync --project backend --locked
+
+      - name: Run pytest
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: uv run --project backend --locked pytest backend/tests
+
+      - name: Run Ruff lint
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: uv run --project backend --locked ruff check backend --output-format=github
+
+      - name: Run Ruff format check
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: uv run --project backend --locked ruff format --check backend
+
+      - name: Install locked experiments dependencies
+        id: experiments
+        run: uv sync --project experiments --locked
+
+      - name: Run experiments tests
+        if: ${{ !cancelled() && steps.experiments.outcome == 'success' }}
+        run: uv run --project experiments --locked pytest experiments/tests
+
+      - name: Run Ruff lint (experiments)
+        if: ${{ !cancelled() && steps.experiments.outcome == 'success' }}
+        run: uv run --project experiments --locked ruff check experiments --output-format=github
+
+      - name: Run Ruff format check (experiments)
+        if: ${{ !cancelled() && steps.experiments.outcome == 'success' }}
+        run: uv run --project experiments --locked ruff format --check experiments
+
+      # Default environment only: no torch is installed in CI.
+      - name: Install locked SMS worker dependencies
+        id: worker
+        run: uv sync --project workers/sms --locked
+
+      - name: Run SMS worker tests
+        if: ${{ !cancelled() && steps.worker.outcome == 'success' }}
+        run: uv run --project workers/sms --locked pytest workers/sms/tests
+
+      - name: Run Ruff lint (SMS worker)
+        if: ${{ !cancelled() && steps.worker.outcome == 'success' }}
+        run: uv run --project workers/sms --locked ruff check workers/sms --output-format=github
+
+      - name: Run Ruff format check (SMS worker)
+        if: ${{ !cancelled() && steps.worker.outcome == 'success' }}
+        run: uv run --project workers/sms --locked ruff format --check workers/sms
+
+  integration:
+    name: Backend integration (PostgreSQL and Redis)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      UV_PYTHON: "3.12.13"
+      COMPOSE_FILE: deployment/compose.dev.yml
+      COMPOSE_PROJECT_NAME: kavach-ci
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.11.16"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      # Fresh random credentials per run; masked in logs and discarded with the runner.
+      - name: Generate ephemeral service passwords
+        run: |
+          for name in POSTGRES MIGRATOR APP RETENTION REDIS; do
+            value="$(openssl rand -hex 24)"
+            echo "::add-mask::${value}"
+            echo "KAVACH_DEV_${name}_PASSWORD=${value}" >> "$GITHUB_ENV"
+          done
+
+      - name: Start PostgreSQL and Redis
+        run: docker compose up --detach --wait --wait-timeout 180
+
+      - name: Export test service URLs
+        run: |
+          {
+            echo "TEST_DATABASE_URL=postgresql+psycopg://kavach_app:${KAVACH_DEV_APP_PASSWORD}@127.0.0.1:55432/kavach_test"
+            echo "TEST_MIGRATION_DATABASE_URL=postgresql+psycopg://kavach_migrator:${KAVACH_DEV_MIGRATOR_PASSWORD}@127.0.0.1:55432/kavach_test"
+            echo "TEST_RETENTION_DATABASE_URL=postgresql+psycopg://kavach_retention:${KAVACH_DEV_RETENTION_PASSWORD}@127.0.0.1:55432/kavach_test"
+            echo "TEST_REDIS_URL=redis://:${KAVACH_DEV_REDIS_PASSWORD}@127.0.0.1:56379/15"
+            echo "MIGRATION_DATABASE_URL=postgresql+psycopg://kavach_migrator:${KAVACH_DEV_MIGRATOR_PASSWORD}@127.0.0.1:55432/kavach_test"
+          } >> "$GITHUB_ENV"
+
+      - name: Install locked dependencies
+        run: uv sync --project backend --locked
+
+      # Fresh database: upgrade, upgrade again (must be a no-op), then compare models to schema.
+      - name: Apply migrations and verify metadata
+        run: |
+          uv run --project backend --locked alembic -c backend/alembic.ini upgrade head
+          uv run --project backend --locked alembic -c backend/alembic.ini upgrade head
+          uv run --project backend --locked alembic -c backend/alembic.ini current
+          uv run --project backend --locked alembic -c backend/alembic.ini check
+
+      - name: Run integration tests
+        run: uv run --project backend --locked pytest backend/tests -m integration
+
+      - name: Show service logs
+        if: ${{ failure() }}
+        run: docker compose logs --no-color
+
+      - name: Stop services and remove volumes
+        if: ${{ always() }}
+        run: docker compose down --volumes

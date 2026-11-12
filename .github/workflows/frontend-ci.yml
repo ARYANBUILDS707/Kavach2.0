@@ -1,0 +1,51 @@
+# Frontend CI (MVP-F1): locked install, advisory gate, contract checksum and generated-type
+# freshness, lint, strict type-check, unit and component tests, production build and bundle
+# scan. Playwright journeys need the real backend stack and run at joint acceptance, not here.
+# No path filters: every pull request into `dev` or `main` and every push to `frontend`, `dev`
+# or `main` gets a result, so "Frontend checks" can be a required status check without blocking
+# documentation-only PRs (security audit finding M1). Actions are pinned to full commit SHAs;
+# the comment names the tag.
+name: Frontend CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [frontend, dev, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install locked dependencies (no lifecycle scripts, see .npmrc)
+        run: npm ci
+
+      - name: Advisory gate (high and critical)
+        run: npm audit --audit-level=high
+
+      - name: Verify contract, lint, type-check, test, build and scan the bundle
+        run: npm run verify

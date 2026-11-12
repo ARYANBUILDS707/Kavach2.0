@@ -2,7 +2,7 @@
 
 ## Status and conventions
 
-Proposed under PRD D02, D03, D05 and D07. Use PostgreSQL for durable state and Redis only for temporary cache/rate counters. No schema has been created. [ARCHITECTURE.md](ARCHITECTURE.md) defines transaction flow; [API.md](API.md) defines exposure.
+Approved for M2 under PRD D02, D03 and D07 (31 October 2026); D05 remains proposed. Use PostgreSQL for durable state and Redis only for temporary cache/rate counters. The schema below is implemented by Alembic revision `0001_initial_schema` (M2.2) with SQLAlchemy models in `backend/src/kavach/db/models.py`; see "Implementation notes (M2.2)" for the database-level details that this specification left to implementation. [ARCHITECTURE.md](ARCHITECTURE.md) defines transaction flow; [API.md](API.md) defines exposure.
 
 All durable IDs are UUIDs unless stated otherwise. All timestamps are UTC `timestamptz`. Fields are required unless marked nullable. Server-generated `created_at` defaults to the database current time. Scores use `double precision` with finite range checks 0–1; nonfinite values are forbidden. Enum-like fields use text plus CHECK constraints so additions are explicit migrations. JSONB has an application schema and a bounded size; it is not an unrestricted payload archive.
 
@@ -77,6 +77,22 @@ One capability: submit events and read receipts for its own source. Do not add a
 | expires_at | timestamptz | Required; retention deadline |
 
 `signals` contains reason-code arrays, approved canonical organization labels, intent category, boolean URL-risk indicators, context confidence where supported, per-stage status/duration, audio duration/sample ID for synthetic fixtures, and late-event status. Never store arbitrary entity text, URLs, phone numbers, OTPs, raw sender IDs, SMS, transcript, audio or feature vectors. Missing-score reason is required for every unavailable stage. Cap serialized signals at 16 KiB and versions at 4 KiB.
+
+**`signals` schema version 2 (D04-A1; implemented in M4-I.2, no migration).** Written only for SMS events while the SMS worker is enabled; version 1 rows are unchanged.
+- A completed `sms_classifier` stage adds `model_output`:
+  - `labels`: exactly the manifest's `legitimate`/`spam`/`fraud` keys, values in [0, 1], 4 decimals;
+  - `top_label`;
+  - `score_semantics: "uncalibrated_softmax"`;
+  - `truncated`.
+- `model_output` is absent for any other status.
+- It is model evidence, not `sms_score`, which stays null until a validated calibration manifest exists.
+- No text, tokens or embeddings are ever stored.
+- `model_versions.sms_classifier` is `<model_key>@<revision[:12]>+m<manifest_version>:<manifest sha256[:12]>`.
+- Rows written before M4-I.2 keep version 1.
+- Assessments for these events use `policy_version` `kavach-m4-uncalibrated-sms-evidence`: tier `unknown`, null scores, `analysis_status` `partial` (model completed) or `unavailable`, and `model_versions` equal to the event's. `evidence.sms_model_evidence` repeats the labels with the same uncalibrated marker.
+- The service validates the exact key set before every write (an extra key, a non-numeric label or a text field is rejected, never stored).
+
+The full contract is in M4_SMS_INFERENCE_ARCHITECTURE.md §9.
 
 Store only post-analysis events; a pending raw job table is intentionally absent. `kind` consistency CHECKs prohibit voice scores on SMS and SMS scores on calls. Stronger status/signal-schema validation is enforced at the service boundary.
 
@@ -199,9 +215,39 @@ Single organization per deployment. Only backend/operator jobs connect to Postgr
 
 Use distinct migration-owner, runtime and retention roles. Runtime has no schema DDL, user-role bypass, review/assessment UPDATE/DELETE, or audit UPDATE/DELETE. Retention uses narrowly scoped expiry procedures. Table grants and service authorization are the proposed MVP boundary. Row-level security is not required for one deployment scope and no direct client database access; if tenant ownership is introduced, add tenant keys and default-deny policies before enabling tenant traffic. PostgreSQL RLS policy behavior and owner bypass must be explicitly tested in that change. [PostgreSQL row security](https://www.postgresql.org/docs/17/ddl-rowsecurity.html)
 
+## Implementation notes (M2.2)
+
+These record how the tables above are enforced in PostgreSQL. They do not change any documented column, type or relationship.
+
+- **Roles.** `kavach_migrator` owns the schema and runs migrations; `kavach_app` is the runtime role; `kavach_retention` is the expiry role. Development/test roles are created by `deployment/postgres/initdb/10-kavach-roles.sql`; other environments must create roles with the same names before migrating. PUBLIC has no access to the databases and no `CREATE` on schema `public`.
+- **Runtime grants.** SELECT and INSERT on all nine tables. UPDATE only on named columns: `users` (display_name, password_hash, role, is_active), `sessions` (last_seen_at, revoked_at), `ingest_keys` (revoked_at), `incidents` (current_revision, latest_review_id, version, updated_at). No UPDATE on events, incident_events, assessments, reviews or audit_records; no DELETE, TRUNCATE, REFERENCES, TRIGGER or DDL anywhere; no access to `alembic_version`.
+- **Retention privileges (revision `0002_retention_procedure`, M2.5).** The retention role holds **no table privileges**. It may only execute `kavach_retention_purge(target, cutoff, batch_size)`, a `SECURITY DEFINER` procedure (pinned `search_path`, PUBLIC cannot execute it) that deletes one batch (1–10,000) of *expired* rows and refuses a cutoff later than the database clock (SQLSTATE 22023). Targets, in the order the cleanup uses them: `incidents` (their links, assessments and reviews cascade), `events` no longer linked to any incident, `audit_records`, and `sessions` that are expired or revoked. Users and ingestion keys are never deleted, so audit and review references stay valid. A row is removed when its `expires_at` (or a session's `revoked_at`) is at or before the cutoff. Revision 0001 had granted table-level DELETE, which allowed deleting unexpired rows, including every audit record; M2.5 found and closed that.
+- **Retention runs** (`kavach.db.retention`, `python -m kavach.cli retention run`). The cutoff defaults to the database clock. Destructive runs require naming the connected database and are limited to `*_test` databases in this phase; dry runs execute the same batches in one transaction and roll back. Because the retention role cannot write audit rows, a destructive run is bracketed by audit records written through the runtime role: `retention.start` is committed **before** the first deletion (if it cannot be written, nothing is deleted) and `retention.complete` after the last, both carrying the run ID as `request_id`. A start without a completion marks an interrupted run.
+- **Revocation is final (0002).** A `BEFORE UPDATE OF revoked_at` trigger on `sessions` and `ingest_keys` rejects any change to a set `revoked_at` (SQLSTATE 23514, constraint `revocation_is_final`), for every role. The runtime role's column grant would otherwise allow un-revoking.
+- **Deferred cross-row rules.** A deferred constraint trigger on incident_events, incidents, assessments and events calls `kavach_check_incident_integrity()` at commit. It enforces: link channel equals event kind (`incident_events_channel_matches_kind`); standalone = exactly one event, pair = exactly one SMS and one call (`incident_membership_cardinality`); one subscriber digest and key version per incident (`incident_membership_same_subscriber`); `fusion_score` only on pair incidents (`assessments_fusion_only_for_pairs`). Violations raise SQLSTATE 23514 with those constraint names. The functions are `SECURITY DEFINER` with a pinned `search_path`, and PUBLIC cannot execute them.
+- **Deferred foreign keys.** `(incidents.id, current_revision)` → `assessments` and `(incidents.id, latest_review_id)` → `reviews(incident_id, id)` are `DEFERRABLE INITIALLY DEFERRED`.
+- **Checks added at the database boundary** (consistent with the column rules above): 32-byte length for every digest/HMAC column; canonical non-empty lowercase usernames; JSONB columns must be objects, with the documented 16 KiB (`events.signals`), 4 KiB (`events.model_versions`) and 32 KiB (`assessments.evidence`) caps; NaN and infinities fail the 0–1 score checks.
+- **Server defaults.** UUID primary keys default to `gen_random_uuid()`; `created_at` defaults to `now()`; `users.updated_at` is maintained by a `BEFORE UPDATE` trigger. `incidents.updated_at` is set by the service.
+- **Operator lifecycle (M2.4).** Account and key changes require an active admin actor, re-checked in the same transaction, and are audited in it. The first admin is created by an explicit bootstrap that is refused once any active admin exists; bootstrap, deactivation and demotion are serialized with a transaction-scoped advisory lock so the last active admin cannot be removed. Ingestion keys store only a SHA-256 digest and are revoked, never deleted.
+- **Event writes (M3.1).** One transaction per new event: a transaction-scoped advisory lock derived from the subscriber digest, `INSERT ... ON CONFLICT (source, external_event_id) DO NOTHING`, the standalone incident (`incident_key = standalone:<event UUID>`, expiry equal to the event's) with its link and assessment revision 1 (tier `unknown`, all scores null, `policy_version` `kavach-m3.1-no-models`), and an `event.ingest` audit record whose actor is the ingestion key (`actor_kind = ingestor`). `subscriber_digest` and `payload_digest` are HMAC-SHA256 under the versioned `SUBSCRIBER_HMAC_KEYS` and `PAYLOAD_HMAC_KEYS`; raw text, sender IDs and subscriber tokens are never stored. `signals` holds `{"schema_version": 1, "stages": {<stage>: {"status", "reason", "duration_ms"}}, "reason_codes": []}` (proposed version 2 for M4-I below); `expires_at` is `received_at + EVENT_RETENTION_DAYS` (default 7).
+- **Migrations.** `alembic -c backend/alembic.ini upgrade head` with `MIGRATION_DATABASE_URL` set to the migration owner. Repeated upgrades are no-ops; `alembic check` must report no differences. The downgrade drops the schema and is refused unless the target database name ends in `_test` and is passed explicitly (`-x allow-destructive-downgrade=<database>`); deployed databases use forward repair only.
+
 ## Redis keys
 
 Candidate key `candidate:{identity_key_version}:{subscriber_digest}` stores only event IDs, kinds and event times with TTL 40 minutes, refreshed on write. Candidate validation always uses event time and durable records. Login/read/ingest counters have policy-defined TTLs. Never store raw text/audio/transcripts or secrets in Redis. Disable persistence for candidate state; separate namespaces for test/development. Loss of cache does not lose reviews or authoritative idempotency.
+
+Implemented layout (M3.2; every key is prefixed `kavach:{APP_ENV}:`):
+
+| Key | Type | Contents | Expiry |
+| --- | --- | --- | --- |
+| `candidate:{identity_key_version}:{subscriber_digest hex}` | sorted set | member `{kind}:{event UUID}`, score = event time (epoch ms) | 40 min, refreshed on write; members older than (indexing time − 40 min) pruned on write, and a replay re-indexes only while the event is inside that horizon (M3.4); at most 1,200 members (D08 rate × 40 min), oldest evicted with an `operational_event` |
+| `ratelimit:login:acct:{HMAC}` / `ratelimit:login:ip:{HMAC}` | counter | failed-login reservations (M2.3) | 15 min |
+| `ratelimit:bearer:ip:{HMAC}` | counter | rejected Bearer credentials per client IP | 15 min |
+| `ratelimit:bearer:lookup:{HMAC}` | counter | key lookups allowed from an IP over the ceiling (10 per window; TD-19, M3.4) | 60 s |
+| `ratelimit:bearer:valid:{HMAC}` | string `1` | the presented key authenticated recently; admits a lookup (never access) from a blocked IP; deleted by any failed check | 24 h |
+| `ratelimit:ingest:key:{HMAC}` | sorted set | accepted submissions per key (request IDs, Redis-time scores) | 60 s sliding |
+
+HMACs use `RATE_LIMIT_HMAC_KEY`; no username, IP, key material, subscriber token or content appears in a key or value. D05 (proposed, adopted for M3.2): a pair needs |Δ event time| ≤ 30 min and an arriving event may start a pair only if it is at most 10 min late, so no candidate older than 40 min can ever match. Events already older than that at arrival are not indexed. The index is only an accelerator: it creates no incidents, a candidate match is not a trusted correlation, and `python -m kavach.cli candidates rebuild` restores it from PostgreSQL (events inside the 40-minute horizon).
 
 ## Retention, migration and recovery
 

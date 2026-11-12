@@ -1,0 +1,59 @@
+# Isolated SMS inference worker (docs/M4_SMS_INFERENCE_ARCHITECTURE.md). A separate, locked
+# environment: the API never installs or imports anything from here. The default install is
+# standard-library only (protocol, manifest and artifact checks); the model runtime is the opt-in
+# `model` group: `uv sync --project workers/sms --locked --group model`.
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kavach-sms-worker"
+version = "0.1.0"
+description = "KAVACH isolated pretrained SMS inference worker (stdin/stdout protocol)"
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "ruff==0.17.2",
+]
+# Exactly the versions approved in the model manifest (runtime.packages); the worker refuses to
+# start if the installed versions differ. Every pin is a release at least two weeks old on
+# 5 November 2026 (docs/M4_PRETRAINED_EVALUATION.md).
+model = [
+    "huggingface-hub==2.2.0",
+    "numpy==2.5.4",
+    "safetensors==0.8.0",
+    "tokenizers==0.23.3",
+    "torch==2.14.1",
+    "transformers==5.20.2",
+]
+
+[tool.uv]
+# Every resolved package, direct or transitive, must be at least two weeks older than the
+# 6 November 2026 lock (the project's dependency-age rule).
+exclude-newer = "2026-10-23T00:00:00Z"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kavach_sms_worker"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Real-model tests need the `model` group and the verified artifacts; select with `-m model`.
+addopts = "-ra --strict-markers -m 'not model'"
+markers = [
+    "model: loads the real pinned model (needs the model group and MODEL_DIR)",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
