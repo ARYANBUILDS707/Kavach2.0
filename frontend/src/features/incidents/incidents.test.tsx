@@ -160,7 +160,8 @@ describe("incident detail", () => {
     });
     expect(await screen.findByRole("heading", { name: "Incident 11111111" })).toBeInTheDocument();
     expect(screen.getByText(/Message text is not retained/)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Model output (uncalibrated)" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Model prediction (experimental)" })).toBeInTheDocument();
+    expect(screen.getByText(/The model predicts:/)).toHaveTextContent("The model predicts: Fraud");
     expect(screen.getByText("0.8199")).toBeInTheDocument();
     expect(screen.getAllByText(/horizon-phishing-scam-base@test/).length).toBeGreaterThan(0);
     expect(screen.getByText("SMS model output is uncalibrated")).toBeInTheDocument();

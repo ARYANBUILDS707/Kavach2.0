@@ -2,6 +2,8 @@
 
 This procedure runs the full KAVACH SMS MVP-1 stack on one machine for a controlled demonstration: browser UI, API, PostgreSQL and Redis. It uses only synthetic accounts and fictional messages. It is not a deployment. Everything binds to `127.0.0.1`, and the SMS model stays **disabled** until the M4-Q decision authorizes it.
 
+To show real model predictions instead, follow steps 1–4 below, then switch on the owner-approved local experimental mode in [EXPERIMENTAL_SMS_ANALYSIS.md](EXPERIMENTAL_SMS_ANALYSIS.md) (decision C-13: fictional messages only, not validated).
+
 It uses a separate Compose project, `kavach-demo`, on its own ports, so an existing `kavach-dev` stack and its data are never touched. This is the configuration verified in [MVP1_INTEGRATION_REPORT.md](MVP1_INTEGRATION_REPORT.md).
 
 ## Prerequisites

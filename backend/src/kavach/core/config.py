@@ -74,6 +74,11 @@ class Settings(BaseSettings):
     sms_worker_max_rss_mb: int = Field(default=1536, ge=512, le=8192)
     sms_worker_start_timeout_seconds: float = Field(default=90.0, ge=10, le=600)
     inference_device: Literal["cpu"] = "cpu"
+    # Why the worker may run at all. M4-Q has no GO verdict (preflight NOT READY, 12 Nov 2026), so
+    # the only accepted value is the owner-authorized local experiment (decision C-13):
+    # development on a loopback origin only. It changes nothing the model returns: native outputs
+    # stay uncalibrated, sms_score null and the tier unknown.
+    sms_model_authorization: Literal["experimental-local-unvalidated"] | None = None
 
     @field_validator("database_url", "retention_database_url")
     @classmethod
@@ -202,6 +207,17 @@ class Settings(BaseSettings):
                 raise ValueError("SMS worker paths must be absolute")
             if not self.ingestion_configured:
                 raise ValueError("The SMS worker requires the event ingestion configuration")
+            if self.sms_model_authorization is None:
+                raise ValueError(
+                    "SMS_WORKER_ENABLED requires SMS_MODEL_AUTHORIZATION="
+                    "experimental-local-unvalidated (no M4-Q GO verdict exists)"
+                )
+            origin_host = urlsplit(self.app_origin or "").hostname or ""
+            if self.app_env != "development" or not is_loopback(origin_host):
+                raise ValueError(
+                    "Experimental SMS analysis runs only with APP_ENV=development "
+                    "and a loopback APP_ORIGIN"
+                )
             # The inference budget plus the commit reserve must fit inside the request deadline.
             if self.sms_inference_timeout_ms / 1000 + SMS_COMMIT_RESERVE_SECONDS >= (
                 self.inference_timeout_seconds

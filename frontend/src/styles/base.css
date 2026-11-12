@@ -711,6 +711,12 @@ a.button-secondary {
   margin-top: var(--space-4);
 }
 
+.model-prediction {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  line-height: 1.2;
+}
+
 /* ---------- tables ---------- */
 
 .table-region {
