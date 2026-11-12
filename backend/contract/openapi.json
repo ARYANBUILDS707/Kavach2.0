@@ -924,6 +924,107 @@
         "title": "PageInfo",
         "type": "object"
       },
+      "PublicAnalyzerStatus": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "experimental": {
+            "const": true,
+            "default": true,
+            "title": "Experimental",
+            "type": "boolean"
+          },
+          "max_chars": {
+            "title": "Max Chars",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enabled",
+          "max_chars"
+        ],
+        "title": "PublicAnalyzerStatus",
+        "type": "object"
+      },
+      "PublicPrediction": {
+        "properties": {
+          "experimental": {
+            "const": true,
+            "default": true,
+            "title": "Experimental",
+            "type": "boolean"
+          },
+          "model_ms": {
+            "minimum": 0.0,
+            "title": "Model Ms",
+            "type": "integer"
+          },
+          "prediction": {
+            "enum": [
+              "fraud",
+              "spam",
+              "legitimate"
+            ],
+            "title": "Prediction",
+            "type": "string"
+          },
+          "total_ms": {
+            "minimum": 0.0,
+            "title": "Total Ms",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "prediction",
+          "truncated",
+          "model_ms",
+          "total_ms"
+        ],
+        "title": "PublicPrediction",
+        "type": "object"
+      },
+      "PublicPredictionResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PublicPrediction"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "PublicPredictionResponse",
+        "type": "object"
+      },
+      "PublicStatusResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PublicAnalyzerStatus"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "request_id"
+        ],
+        "title": "PublicStatusResponse",
+        "type": "object"
+      },
       "ReceiptResponse": {
         "properties": {
           "data": {
@@ -2174,6 +2275,91 @@
         "summary": "Get Incident",
         "tags": [
           "incidents"
+        ]
+      }
+    },
+    "/api/v1/public/analyze": {
+      "post": {
+        "operationId": "analyze_sms_api_v1_public_analyze_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "text": {
+                    "maxLength": 4096,
+                    "minLength": 1,
+                    "title": "Text",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text"
+                ],
+                "title": "PublicSmsInput",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicPredictionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Default Response"
+          }
+        },
+        "summary": "Analyze Sms",
+        "tags": [
+          "public analyzer"
+        ]
+      }
+    },
+    "/api/v1/public/analyzer": {
+      "get": {
+        "operationId": "status_api_v1_public_analyzer_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Default Response"
+          }
+        },
+        "summary": "Status",
+        "tags": [
+          "public analyzer"
         ]
       }
     },

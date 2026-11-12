@@ -117,3 +117,9 @@ Never use force-push to undo a pushed change on a protected branch.
 - ~~When and how `frontend` integrates into `dev`~~ and ~~how later work reaches `dev`~~: **decided 9 Nov 2026** (MVP-1 joint acceptance, then further owner-controlled PRs from `backend`/`frontend`). Whether later work may also use `feature/*` branches from `dev` stays open.
 - Which merge method to configure in GitHub (merge commit recommended for the integration and release PRs).
 - Required reviewer count and who reviews while there is a single maintainer (an owner waiver must then be recorded per PR).
+
+## Bounded owner exception — 13 November 2026
+
+For `feature/public-live-analyzer`, the owner's explicit handoff instruction authorizes the agent
+to preserve/finish the existing work, commit it, push that branch and open a PR into `dev`.
+This is not authorization to merge, change `main`, deploy, rewrite history or alter other worktrees.

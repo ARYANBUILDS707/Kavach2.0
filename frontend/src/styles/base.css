@@ -2499,7 +2499,7 @@ circle.ill-ink-stroke:not(.ill-cream) {
 
 @keyframes rise {
   from {
-    opacity: 0;
+    /* Scroll may stop mid-animation: keep text contrast intact at every position. */
     transform: translateY(28px);
   }
 }
@@ -2610,4 +2610,14 @@ circle.ill-ink-stroke:not(.ill-cream) {
 
 .example-score {
   display: contents;
+}
+
+/* Public analyzer uses the existing surface, field and button tokens. */
+.public-analyzer { max-width: 720px; margin: 40px auto 64px; padding: 0 16px; }
+.public-analyzer > * + * { margin-top: 24px; }
+.analyzer-form { display: grid; gap: 24px; }
+.analyzer-form textarea { width: 100%; resize: vertical; min-height: 160px; }
+@media (max-width: 600px) {
+  .site-nav-end { flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+  .public-analyzer { margin-top: 24px; }
 }

@@ -163,6 +163,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/analyze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Analyze Sms */
+        post: operations["analyze_sms_api_v1_public_analyze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/analyzer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status */
+        get: operations["status_api_v1_public_analyzer_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/simulator/scenarios": {
         parameters: {
             query?: never;
@@ -638,6 +672,57 @@ export interface components {
             has_more: boolean;
             /** Next Cursor */
             next_cursor: string | null;
+        };
+        /** PublicAnalyzerStatus */
+        PublicAnalyzerStatus: {
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Experimental
+             * @default true
+             * @constant
+             */
+            experimental: true;
+            /** Max Chars */
+            max_chars: number;
+        };
+        /** PublicPrediction */
+        PublicPrediction: {
+            /**
+             * Experimental
+             * @default true
+             * @constant
+             */
+            experimental: true;
+            /** Model Ms */
+            model_ms: number;
+            /**
+             * Prediction
+             * @enum {string}
+             */
+            prediction: "fraud" | "spam" | "legitimate";
+            /** Total Ms */
+            total_ms: number;
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** PublicPredictionResponse */
+        PublicPredictionResponse: {
+            data: components["schemas"]["PublicPrediction"];
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+        };
+        /** PublicStatusResponse */
+        PublicStatusResponse: {
+            data: components["schemas"]["PublicAnalyzerStatus"];
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
         };
         /** ReceiptResponse */
         ReceiptResponse: {
@@ -1301,6 +1386,71 @@ export interface operations {
                 };
             };
             /** @description Error envelope */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    analyze_sms_api_v1_public_analyze_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Text */
+                    text: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicPredictionResponse"];
+                };
+            };
+            /** @description Default Response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    status_api_v1_public_analyzer_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicStatusResponse"];
+                };
+            };
+            /** @description Default Response */
             default: {
                 headers: {
                     [name: string]: unknown;

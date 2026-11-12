@@ -1,6 +1,9 @@
 # Proposal C-15: A Public Real-Time SMS Analyzer
 
-**Status: PROPOSED. Not approved, not implemented, not enabled anywhere.** This document is the separate design and authorization proposal that [PUBLIC_SITE_DESIGN.md](PUBLIC_SITE_DESIGN.md) and the owner's 13 Nov 2026 instruction call for. It is not legal advice.
+**Status: HOSTED RELEASE PROPOSED, NOT APPROVED. Local implementation authorized 13 Nov 2026; hosted mode remains blocked.** This document is the separate design and authorization proposal that [PUBLIC_SITE_DESIGN.md](PUBLIC_SITE_DESIGN.md) and the owner's 13 Nov 2026 instruction call for. It is not legal advice.
+
+Implementation and local-test authorization does not satisfy any launch gate below. See
+[PUBLIC_ANALYZER_RUNBOOK.md](PUBLIC_ANALYZER_RUNBOOK.md) for the implemented local contract.
 
 ## Why this needs its own decision
 
@@ -63,7 +66,7 @@ Required before launch: a load test on the real hosting hardware to set limits f
 - **Isolation:** the worker stays a separate, offline, unprivileged process with read-only model files; the public endpoint must not be able to reach PostgreSQL, Redis state about accounts, or the admin API. Prefer a separate service or host for public inference.
 - **Transport and headers:** HTTPS only, HSTS, a strict CSP, no third-party origins.
 - **Configuration:** a new, separately named authorization setting (not reuse of the C-13 value), refused unless explicitly approved; secrets only through environment storage; `APP_ENV=pilot` semantics for the rest of the service.
-- **Code changes this implies (none done):** a new public route with its own anonymous dependency and rate limiter; relaxing the C-13 "development and loopback only" gate for this one purpose, behind the new setting; a no-persistence code path; classifying the route in `test_anonymous_access.py`; a frontend analyzer page with honest loading, error, unavailable and saturated states; tests for privacy (no text in database, Redis or logs), limits and failure behavior; a refreshed security audit.
+- **Original proposed code changes (local implementation now exists; see runbook):** a new public route with its own anonymous dependency and rate limiter; relaxing the C-13 "development and loopback only" gate for this one purpose, behind the new setting; a no-persistence code path; classifying the route in `test_anonymous_access.py`; a frontend analyzer page with honest loading, error, unavailable and saturated states; tests for privacy (no text in database, Redis or logs), limits and failure behavior; a refreshed security audit.
 - **Supply chain:** keep pinned model revision, checksums and locked dependencies; re-run the advisory scans before launch.
 
 ## Options considered

@@ -20,8 +20,8 @@ export function SiteFooter({ compact = false }: { compact?: boolean }) {
         <div className="site-footer-brand">
           <Wordmark />
           <p>
-            An SMS fraud-analysis research project, shown here through recorded examples on
-            fictional messages.
+            An SMS fraud-analysis research project with recorded examples and a gated local
+            analyzer for fictional messages.
           </p>
         </div>
         <nav aria-label="Footer" className="site-footer-nav">

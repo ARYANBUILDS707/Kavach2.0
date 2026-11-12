@@ -387,3 +387,11 @@ The backend tree above is condensed to its M2 shape; later modules (auth, servic
 3. **Afterwards:** voice analysis (M5), correlation and fusion (M6), the review workflow, live updates and the simulator UI (M7–M8), and packaging and deployment (M11), each through its own owner-controlled PR.
 
 Branch workflow and milestone status: `docs/GIT_WORKFLOW.md`, `docs/MILESTONE_TRACKER.md`.
+
+## Stateless anonymous analyzer (local experimental only)
+
+The `/analyze` page and `/api/v1/public/analyze` endpoint reuse the real SMS worker without
+creating an incident or requiring login. Disabled by default; local fictional-message use only.
+Hosted inference is blocked pending C-15, privacy/security and restricted-release approval;
+M4-Q remains NOT READY. See [the runbook](docs/PUBLIC_ANALYZER_RUNBOOK.md) for isolated local
+startup, tests, Docker/Railway preparation and remaining launch gates.

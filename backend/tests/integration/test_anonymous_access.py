@@ -29,6 +29,8 @@ pytestmark = pytest.mark.integration
 
 # Routes that are open to a caller with no credentials on purpose, and why.
 OPEN_ROUTES = {
+    ("GET", "/api/v1/public/analyzer"): "public availability only",
+    ("POST", "/api/v1/public/analyze"): "stateless analyzer, disabled by default; C-15 pending",
     ("GET", "/health"): "process liveness only",
     ("GET", "/api/v1/health"): "process liveness only",
     ("POST", "/api/v1/auth/login"): "sign-in itself; refuses wrong credentials, throttled",

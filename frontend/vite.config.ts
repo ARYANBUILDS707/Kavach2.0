@@ -4,7 +4,7 @@ import { defineConfig } from "vitest/config";
 // Same-origin development: the browser talks only to Vite, which forwards /api to the local
 // backend. `changeOrigin: false` keeps the browser's Origin header, so the backend's exact
 // APP_ORIGIN check (http://127.0.0.1:5173 in development) behaves as in deployment.
-const api = { "/api": { target: "http://127.0.0.1:8000", changeOrigin: false } };
+const api = { "/api": { target: process.env.KAVACH_API_TARGET ?? "http://127.0.0.1:8000", changeOrigin: false } };
 
 export default defineConfig({
   plugins: [react()],

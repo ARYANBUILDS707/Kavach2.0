@@ -66,6 +66,7 @@ class Settings(BaseSettings):
     # own environment, offline, on CPU only.
     sms_worker_enabled: bool = False
     sms_worker_python: Path | None = None
+    sms_worker_lock_path: Path | None = None
     model_dir: Path | None = None
     model_manifest_path: Path | None = None
     max_inflight_analyses: int = Field(default=2, ge=1, le=2)
@@ -79,6 +80,16 @@ class Settings(BaseSettings):
     # development on a loopback origin only. It changes nothing the model returns: native outputs
     # stay uncalibrated, sms_score null and the tier unknown.
     sms_model_authorization: Literal["experimental-local-unvalidated"] | None = None
+
+    # Anonymous analyzer: disabled by default. C-13 permits local fictional tests only.
+    # Hosted mode and its reserved approval token remain blocked until C-15 is approved.
+    public_analyzer_only: bool = False
+    public_frontend_dir: Path | None = None
+    public_analyzer_mode: Literal["disabled", "local-experimental", "hosted"] = "disabled"
+    public_analyzer_hosted_approval: Literal["c15-owner-approved"] | None = None
+    public_analyzer_max_chars: int = Field(default=500, ge=1, le=4096)
+    public_analyzer_ip_limit_per_minute: int = Field(default=5, ge=1, le=600)
+    public_analyzer_global_limit_per_minute: int = Field(default=60, ge=1, le=6000)
 
     @field_validator("database_url", "retention_database_url")
     @classmethod
@@ -153,13 +164,42 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def require_complete_auth_configuration(self) -> Self:
+        # C-15 remains unapproved: even an operator-supplied token cannot enable hosting.
+        if self.public_analyzer_mode == "hosted":
+            raise ValueError("Hosted inference is blocked pending C-15 and release-gate approval")
+        if self.sms_worker_lock_path is not None and not self.sms_worker_lock_path.is_absolute():
+            raise ValueError("SMS_WORKER_LOCK_PATH must be absolute")
+        if self.public_frontend_dir is not None:
+            if not self.public_analyzer_only or not self.public_frontend_dir.is_absolute():
+                raise ValueError(
+                    "PUBLIC_FRONTEND_DIR requires public-only mode and an absolute path"
+                )
+            if not (self.public_frontend_dir / "index.html").is_file():
+                raise ValueError("PUBLIC_FRONTEND_DIR requires a built frontend")
+        if self.public_analyzer_only:
+            private_settings = (
+                self.database_url,
+                self.retention_database_url,
+                self.audit_hmac_keys,
+                self.audit_hmac_active_version,
+                self.subscriber_hmac_keys,
+                self.subscriber_hmac_active_version,
+                self.payload_hmac_keys,
+                self.payload_hmac_active_version,
+            )
+            if any(value is not None for value in private_settings):
+                raise ValueError(
+                    "Public-only service must not have database or admin configuration"
+                )
         auth_specific = {
             "APP_ORIGIN": self.app_origin,
             "RATE_LIMIT_HMAC_KEY": self.rate_limit_hmac_key,
             "AUDIT_HMAC_KEYS": self.audit_hmac_keys,
             "AUDIT_HMAC_ACTIVE_VERSION": self.audit_hmac_active_version,
         }
-        if self.app_env == "pilot" or any(value is not None for value in auth_specific.values()):
+        if not self.public_analyzer_only and (
+            self.app_env == "pilot" or any(value is not None for value in auth_specific.values())
+        ):
             required = auth_specific | {
                 "DATABASE_URL": self.database_url,
                 "REDIS_URL": self.redis_url,
@@ -182,7 +222,9 @@ class Settings(BaseSettings):
             "PAYLOAD_HMAC_KEYS": self.payload_hmac_keys,
             "PAYLOAD_HMAC_ACTIVE_VERSION": self.payload_hmac_active_version,
         }
-        if self.app_env == "pilot" or any(value is not None for value in ingestion.values()):
+        if not self.public_analyzer_only and (
+            self.app_env == "pilot" or any(value is not None for value in ingestion.values())
+        ):
             missing = sorted(name for name, value in ingestion.items() if value is None)
             if missing:
                 raise ValueError(f"Event ingestion requires: {', '.join(missing)}")
@@ -205,7 +247,7 @@ class Settings(BaseSettings):
                 raise ValueError(f"The SMS worker requires: {', '.join(missing)}")
             if any(not value.is_absolute() for value in worker_paths.values() if value):
                 raise ValueError("SMS worker paths must be absolute")
-            if not self.ingestion_configured:
+            if not self.ingestion_configured and not self.public_analyzer_only:
                 raise ValueError("The SMS worker requires the event ingestion configuration")
             if self.sms_model_authorization is None:
                 raise ValueError(
@@ -226,11 +268,22 @@ class Settings(BaseSettings):
                     "SMS_INFERENCE_TIMEOUT_MS plus the 2 s commit reserve must be shorter "
                     "than INFERENCE_TIMEOUT_SECONDS"
                 )
+        if self.public_analyzer_mode != "disabled":
+            if not self.sms_worker_enabled:
+                raise ValueError("PUBLIC_ANALYZER_MODE requires SMS_WORKER_ENABLED=true")
+            if self.redis_url is None or self.rate_limit_hmac_key is None:
+                raise ValueError("The public analyzer requires REDIS_URL and RATE_LIMIT_HMAC_KEY")
+        if self.public_analyzer_hosted_approval is not None and (
+            self.public_analyzer_mode != "hosted"
+        ):
+            raise ValueError(
+                "PUBLIC_ANALYZER_HOSTED_APPROVAL applies only to PUBLIC_ANALYZER_MODE=hosted"
+            )
         return self
 
     @property
     def auth_configured(self) -> bool:
-        return self.app_origin is not None
+        return self.app_origin is not None and not self.public_analyzer_only
 
     @property
     def ingestion_configured(self) -> bool:

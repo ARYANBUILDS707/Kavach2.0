@@ -23,6 +23,8 @@ def test_request_ids_are_generated_not_trusted(client: TestClient) -> None:
 
 def test_production_application_has_no_test_harness(client: TestClient) -> None:
     assert set(client.get("/openapi.json").json()["paths"]) == {
+        "/api/v1/public/analyzer",
+        "/api/v1/public/analyze",
         "/health",
         "/api/v1/health",
         "/api/v1/auth/login",
