@@ -1,0 +1,215 @@
+/* KAVACH design tokens.
+ *
+ * Visual language adapted from the owner's Srujana reference (srujanacu.in, Nov 2026): warm
+ * paper and ink, thick ink outlines, hard offset shadows, pill controls, rounded cards, saffron /
+ * blue / mint / sun / pink accents, tight display type and a JetBrains Mono voice for numbers.
+ * Values below were read from the reference stylesheet where it exposes them (palette, fonts,
+ * easing, radius, max width) and set by eye from the screenshots elsewhere (type scale).
+ *
+ * Fonts are self-hosted from /fonts (SIL Open Font License 1.1, licences beside the files), so
+ * no visitor request goes to a third-party font host.
+ */
+
+@font-face {
+  font-family: "Bricolage Grotesque";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url("/fonts/bricolage-grotesque-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Instrument Sans";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/instrument-sans-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 500 700;
+  font-display: swap;
+  src: url("/fonts/jetbrains-mono-latin.woff2") format("woff2");
+}
+
+:root {
+  color-scheme: light;
+
+  /* Palette (reference values). Accents keep their hue in both themes. */
+  --paper: #f5f0e6;
+  --paper-2: #ece4d3;
+  --paper-3: #e2d8c3;
+  --card: #fbf8f1;
+  --ink: #17140f;
+  --ink-2: #4e473c;
+  --rule: rgba(23, 20, 15, 0.14);
+  --line: #17140f;
+  --shade: #17140f;
+  --dot: rgba(23, 20, 15, 0.16);
+  --nav-bg: rgba(245, 240, 230, 0.86);
+  --saffron: #ff5b1f;
+  --blue: #2e5bff;
+  --mint: #19b47e;
+  --sun: #ffc83d;
+  --pink: #ff9bbb;
+  /* Fixed ink and cream for text placed on accent fills, whatever the theme. */
+  --on-accent: #17140f;
+  --on-blue: #f5f0e6;
+
+  /* Semantic roles used by components. */
+  --color-canvas: var(--paper);
+  --color-surface: var(--card);
+  --color-surface-2: var(--paper-2);
+  --color-surface-3: var(--paper-3);
+  --color-text-primary: var(--ink);
+  --color-text-secondary: var(--ink-2);
+  --color-border-subtle: var(--rule);
+  --color-border-control: var(--line);
+  --color-link: #1f45d9;
+  --color-focus: #2e5bff;
+  --color-focus-ring: rgba(46, 91, 255, 0.22);
+  --color-info-bg: #dce5ff;
+  --color-info-text: #1f2d6b;
+
+  /* Status pairs: text-first labels, colour is never the only signal, unknown is never green. */
+  --color-unknown-bg: var(--paper-2);
+  --color-unknown-text: var(--ink);
+  --color-low-bg: #d3f2e4;
+  --color-low-text: #0b5c40;
+  --color-medium-bg: #fff1c9;
+  --color-medium-text: #5c4300;
+  --color-high-bg: #ffe0d1;
+  --color-high-text: #7a2606;
+  --color-critical-bg: #ffd9cf;
+  --color-critical-text: #6b1a0e;
+
+  /* Type: display for headings and numbers, body for prose, mono for identifiers and labels. */
+  --font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --text-body: 16px;
+  --leading-body: 1.55;
+  --text-meta: 14px;
+  --leading-meta: 1.45;
+  --text-eyebrow: 12px;
+  --text-section-title: clamp(1.4rem, 1.1rem + 1.2vw, 1.9rem);
+  --leading-section-title: 1.05;
+  --text-page-title: clamp(2.3rem, 1.6rem + 3.6vw, 4rem);
+  --leading-page-title: 0.95;
+  --text-hero: clamp(2.8rem, 1.4rem + 6.4vw, 6rem);
+  --tracking-display: -0.035em;
+  --tracking-hero: -0.045em;
+  --tracking-eyebrow: 0.1em;
+
+  /* Space (4px base). */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-24: 96px;
+
+  /* Shape. */
+  --border: 2px;
+  --border-strong: 2.5px;
+  --radius-sm: 12px;
+  --radius: 16px;
+  --radius-card: 22px;
+  --radius-pill: 999px;
+  --shadow-hard: 0 4px 0 var(--shade);
+  --shadow-hard-lg: 0 6px 0 var(--shade);
+  --shadow-hard-sm: 0 3px 0 var(--shade);
+
+  /* Layout. */
+  --content-max: 1160px;
+  --gutter: 16px;
+  --header-height: 64px;
+  --form-max: 640px;
+  --target-min: 44px;
+
+  /* Motion (reference easing curves). */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --spring: linear(0, 0.009, 0.035 2.1%, 0.141 4.4%, 0.723 12.9%, 0.938 16.7%, 1.017 19.4%, 1.067, 1.099 24.3%, 1.108 26%, 1.1, 1.077 30.9%, 1.006 39.2%, 0.99 43%, 0.983 46.3%, 0.99 54.5%, 1 66.7%, 1);
+  --transition: 160ms;
+  --transition-slow: 320ms;
+}
+
+@media (min-width: 700px) {
+  :root {
+    --gutter: 24px;
+  }
+}
+
+@media (min-width: 1100px) {
+  :root {
+    --gutter: 32px;
+  }
+}
+
+/* Dark theme: follows the system unless the in-page toggle chose light. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --paper: #15130f;
+    --paper-2: #211e19;
+    --paper-3: #302b24;
+    --card: #1d1a16;
+    --ink: #f3ede1;
+    --ink-2: #b9b0a0;
+    --rule: rgba(243, 237, 225, 0.15);
+    --line: #cfc6b6;
+    --shade: #000;
+    --dot: rgba(243, 237, 225, 0.09);
+    --nav-bg: rgba(21, 19, 15, 0.82);
+    --color-link: #9db0ff;
+    --color-focus: #8fa6ff;
+    --color-focus-ring: rgba(143, 166, 255, 0.3);
+    --color-info-bg: #1d2552;
+    --color-info-text: #d5ddff;
+    --color-low-bg: #12372a;
+    --color-low-text: #8ff0c8;
+    --color-medium-bg: #3a2f12;
+    --color-medium-text: #ffdc85;
+    --color-high-bg: #3d2314;
+    --color-high-text: #ffc09b;
+    --color-critical-bg: #3b1a12;
+    --color-critical-text: #ffb7a3;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #15130f;
+  --paper-2: #211e19;
+  --paper-3: #302b24;
+  --card: #1d1a16;
+  --ink: #f3ede1;
+  --ink-2: #b9b0a0;
+  --rule: rgba(243, 237, 225, 0.15);
+  --line: #cfc6b6;
+  --shade: #000;
+  --dot: rgba(243, 237, 225, 0.09);
+  --nav-bg: rgba(21, 19, 15, 0.82);
+  --color-link: #9db0ff;
+  --color-focus: #8fa6ff;
+  --color-focus-ring: rgba(143, 166, 255, 0.3);
+  --color-info-bg: #1d2552;
+  --color-info-text: #d5ddff;
+  --color-low-bg: #12372a;
+  --color-low-text: #8ff0c8;
+  --color-medium-bg: #3a2f12;
+  --color-medium-text: #ffdc85;
+  --color-high-bg: #3d2314;
+  --color-high-text: #ffc09b;
+  --color-critical-bg: #3b1a12;
+  --color-critical-text: #ffb7a3;
+}
