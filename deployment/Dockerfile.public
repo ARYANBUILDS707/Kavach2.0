@@ -17,12 +17,26 @@ RUN uv sync --project backend --locked --no-dev --no-editable
 COPY workers/sms/pyproject.toml workers/sms/uv.lock /app/workers/sms/
 COPY workers/sms/src /app/workers/sms/src
 RUN uv sync --project workers/sms --locked --no-dev --group model --no-editable
+# The pinned weights are fetched at build time from the manifest's repository and revision and
+# verified (size, SHA-256, label map, no stray files) before they enter the runtime image, so the
+# image is self-contained, read-only and rolled back as a unit. Nothing is committed to Git.
+# KAVACH_MODEL_FETCH=false builds a site-only image without the model (the analyzer then reports
+# the model unavailable). Only this stage has a reason to reach the network.
+FROM python-env AS model
+ARG KAVACH_MODEL_FETCH=true
+ENV HF_HUB_DISABLE_TELEMETRY=1 HF_HOME=/tmp/hf
+COPY deployment/models /app/deployment/models
+RUN mkdir -p /app/models && if [ "$KAVACH_MODEL_FETCH" = "true" ]; then \
+      /app/workers/sms/.venv/bin/python -I -m kavach_sms_worker.provision \
+        --manifest /app/deployment/models/sms_classifier.horizon.v1.json --model-dir /app/models; \
+    fi
 FROM python:3.12.13-slim-bookworm@sha256:4766d8b510c428e595d74b9cc5bbb2fae8e26316fffb4adc89908d79aacd58a2 AS runtime
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1
 COPY --from=python-env /app/backend/.venv /app/backend/.venv
 COPY --from=python-env /app/workers/sms/.venv /app/workers/sms/.venv
 COPY deployment/models /app/deployment/models
+COPY --from=model /app/models /models
 COPY --from=frontend /build/frontend/dist /app/public
 RUN groupadd --gid 10001 kavach && useradd --uid 10001 --gid kavach --no-create-home kavach
 USER 10001:10001
@@ -32,6 +46,8 @@ ENV APP_ENV=pilot PUBLIC_ANALYZER_ONLY=true PUBLIC_ANALYZER_MODE=disabled \
     MODEL_MANIFEST_PATH=/app/deployment/models/sms_classifier.horizon.v1.json \
     MODEL_DIR=/models SMS_WORKER_LOCK_PATH=/tmp/kavach-public-worker.lock
 EXPOSE 8080
-# Exactly one API process. Ignore forwarding headers until a trusted edge is verified.
+# Exactly one API process. Uvicorn never rewrites the peer address from forwarding headers; in
+# hosted mode the application reads exactly the edge's client-address header (see
+# PUBLIC_ANALYZER_CLIENT_IP_HEADER) and fails closed when it is absent.
 # Disable access logs: URLs and edge IPs must not become an accidental content archive.
 CMD ["sh", "-c", "exec /app/backend/.venv/bin/uvicorn kavach.main:create_app --factory --host 0.0.0.0 --port ${PORT:-8080} --workers 1 --limit-concurrency 32 --timeout-keep-alive 5 --no-access-log --no-proxy-headers"]
