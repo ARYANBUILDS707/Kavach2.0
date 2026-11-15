@@ -222,3 +222,111 @@ def test_local_mode_does_not_relax_private_api_permissions():
     with TestClient(create_app(Settings())) as client:
         assert client.get("/api/v1/incidents").status_code in (401, 503)
         assert client.post("/api/v1/events/sms", json={"text": TEXT}).status_code in (401, 403, 503)
+
+
+# --- Hosted mode (decision C-15) is a separate gate. The values below satisfy it inside this test
+# process only, to test the gate and the edge-address handling; they are not an approval.
+HOSTED_ORIGIN = "https://analyzer.kavach.test"
+HOSTED_HEADERS = {"Origin": HOSTED_ORIGIN, "X-Kavach-Analyzer": "1", "X-Real-IP": "203.0.113.9"}
+HOSTED = {
+    "public_analyzer_mode": "hosted",
+    "public_analyzer_hosted_approval": "c15-owner-approved",
+    "app_env": "pilot",
+    "app_origin": HOSTED_ORIGIN,
+    "sms_model_authorization": None,
+    "public_analyzer_client_ip_header": "X-Real-IP",
+}
+
+
+def test_hosted_gate_accepts_only_the_complete_configuration():
+    config = settings(**HOSTED)
+    assert config.public_analyzer_mode == "hosted"
+    assert config.auth_configured is False and config.ingestion_configured is False
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"public_analyzer_hosted_approval": None},
+        {"app_env": "development"},
+        {"app_env": "test"},
+        {"app_origin": "http://analyzer.kavach.test"},
+        {"public_analyzer_only": False},
+        {"sms_model_authorization": "experimental-local-unvalidated"},
+        {"public_analyzer_client_ip_header": None},
+        {"public_analyzer_client_ip_header": "X Real IP"},
+        {"sms_worker_enabled": False},
+        {"redis_url": None},
+        {"rate_limit_hmac_key": None},
+        {"database_url": "postgresql+psycopg://localhost/private"},
+        {"public_analyzer_mode": "local-experimental"},
+    ],
+)
+def test_hosted_gate_refuses_each_missing_condition(overrides):
+    with pytest.raises(ValidationError):
+        settings(**(HOSTED | overrides))
+
+
+@pytest.fixture
+def hosted_app():
+    worker = Mock(spec=SmsWorkerSupervisor)
+    worker.classify.return_value = SmsInferenceResult(
+        "complete", None, SmsModelEvidence("test-double", {}, "fraud", False), 4, 0, 5
+    )
+    application = create_app(settings(**HOSTED), sms_worker=worker)
+    application.state.public_quota = Mock()
+    return application
+
+
+@pytest.fixture
+def hosted_client(hosted_app):
+    # Behind the edge the socket peer is the proxy's address, never the visitor's.
+    with TestClient(hosted_app, client=("10.0.0.7", 443)) as client:
+        yield client
+
+
+def test_hosted_mode_keys_budgets_by_the_edge_header_and_stays_isolated(hosted_client, hosted_app):
+    response = hosted_client.post(
+        "/api/v1/public/analyze", json={"text": TEXT}, headers=HOSTED_HEADERS
+    )
+    assert response.status_code == 200 and response.json()["data"]["prediction"] == "fraud"
+    assert hosted_app.state.public_quota.reserve.call_args.args[0] == "203.0.113.9"
+    assert response.headers["strict-transport-security"] == "max-age=31536000"
+    assert "set-cookie" not in response.headers and TEXT not in response.text
+    assert hosted_app.state.auth is None and hosted_app.state.db_engine is None
+    for path in ("incidents", "system/models", "auth/session", "events/sms"):
+        assert hosted_client.get(f"/api/v1/{path}").status_code == 404
+
+
+@pytest.mark.parametrize(
+    "value", [None, "", "203.0.113.9, 10.0.0.1", "not-an-ip", "203.0.113.9 x", "203.0.113.9:443"]
+)
+def test_hosted_mode_fails_closed_without_a_valid_edge_address(hosted_client, hosted_app, value):
+    headers = {name: v for name, v in HOSTED_HEADERS.items() if name != "X-Real-IP"}
+    if value is not None:
+        headers["X-Real-IP"] = value
+    response = hosted_client.post("/api/v1/public/analyze", json={"text": TEXT}, headers=headers)
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "DEPENDENCY_UNAVAILABLE"
+    hosted_app.state.public_quota.reserve.assert_not_called()
+    hosted_app.state.sms_worker.classify.assert_not_called()
+
+
+def test_hosted_mode_ignores_other_forwarding_headers(hosted_client, hosted_app):
+    hosted_client.post(
+        "/api/v1/public/analyze",
+        json={"text": TEXT},
+        headers=HOSTED_HEADERS | {"X-Forwarded-For": "8.8.8.8", "Forwarded": "for=8.8.4.4"},
+    )
+    assert hosted_app.state.public_quota.reserve.call_args.args[0] == "203.0.113.9"
+
+
+def test_pause_switch_refuses_at_once_before_body_or_model(client, app):
+    redis = Mock()
+    redis.register_script.return_value.return_value = -1
+    app.state.public_quota = PublicQuota(redis, b"test key", "test", 5, 60)
+    assert app.state.public_quota.pause_key == "kavach:test:public:paused"
+    response = client.post("/api/v1/public/analyze", json={"text": TEXT}, headers=HEADERS)
+    assert response.status_code == 503 and response.json()["error"]["code"] == "ANALYZER_PAUSED"
+    assert response.headers["retry-after"] == "60"
+    app.state.sms_worker.classify.assert_not_called()

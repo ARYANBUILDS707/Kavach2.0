@@ -82,11 +82,20 @@ class Settings(BaseSettings):
     sms_model_authorization: Literal["experimental-local-unvalidated"] | None = None
 
     # Anonymous analyzer: disabled by default. C-13 permits local fictional tests only.
-    # Hosted mode and its reserved approval token remain blocked until C-15 is approved.
+    # `hosted` is a separate gate (decision C-15, docs/C15_HOSTED_INFERENCE_DECISION.md): it is
+    # refused unless the owner sets PUBLIC_ANALYZER_HOSTED_APPROVAL after recording the approval,
+    # and then only on the isolated public-only service in `pilot` behind an https origin and a
+    # trusted edge. No committed file, image default, example or test fixture sets the approval.
     public_analyzer_only: bool = False
     public_frontend_dir: Path | None = None
     public_analyzer_mode: Literal["disabled", "local-experimental", "hosted"] = "disabled"
     public_analyzer_hosted_approval: Literal["c15-owner-approved"] | None = None
+    # The single-valued header the trusted edge sets to the client address (Railway: X-Real-IP).
+    # Unset means the socket peer is the client; hosted mode requires it because every hosted
+    # request arrives through the edge proxy, and a shared peer address would share one budget.
+    public_analyzer_client_ip_header: str | None = Field(
+        default=None, pattern=r"^[A-Za-z0-9-]{1,64}$"
+    )
     public_analyzer_max_chars: int = Field(default=500, ge=1, le=4096)
     public_analyzer_ip_limit_per_minute: int = Field(default=5, ge=1, le=600)
     public_analyzer_global_limit_per_minute: int = Field(default=60, ge=1, le=6000)
@@ -164,9 +173,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def require_complete_auth_configuration(self) -> Self:
-        # C-15 remains unapproved: even an operator-supplied token cannot enable hosting.
         if self.public_analyzer_mode == "hosted":
-            raise ValueError("Hosted inference is blocked pending C-15 and release-gate approval")
+            self.require_hosted_inference_gate()
         if self.sms_worker_lock_path is not None and not self.sms_worker_lock_path.is_absolute():
             raise ValueError("SMS_WORKER_LOCK_PATH must be absolute")
         if self.public_frontend_dir is not None:
@@ -249,17 +257,26 @@ class Settings(BaseSettings):
                 raise ValueError("SMS worker paths must be absolute")
             if not self.ingestion_configured and not self.public_analyzer_only:
                 raise ValueError("The SMS worker requires the event ingestion configuration")
-            if self.sms_model_authorization is None:
-                raise ValueError(
-                    "SMS_WORKER_ENABLED requires SMS_MODEL_AUTHORIZATION="
-                    "experimental-local-unvalidated (no M4-Q GO verdict exists)"
-                )
-            origin_host = urlsplit(self.app_origin or "").hostname or ""
-            if self.app_env != "development" or not is_loopback(origin_host):
-                raise ValueError(
-                    "Experimental SMS analysis runs only with APP_ENV=development "
-                    "and a loopback APP_ORIGIN"
-                )
+            if self.public_analyzer_mode == "hosted":
+                # C-15 authorizes the worker on the hosted public service; the C-13 value is a
+                # different, local-only authorization and must not be mixed in.
+                if self.sms_model_authorization is not None:
+                    raise ValueError(
+                        "Hosted inference is authorized by PUBLIC_ANALYZER_HOSTED_APPROVAL; "
+                        "do not set the local-only SMS_MODEL_AUTHORIZATION"
+                    )
+            else:
+                if self.sms_model_authorization is None:
+                    raise ValueError(
+                        "SMS_WORKER_ENABLED requires SMS_MODEL_AUTHORIZATION="
+                        "experimental-local-unvalidated (no M4-Q GO verdict exists)"
+                    )
+                origin_host = urlsplit(self.app_origin or "").hostname or ""
+                if self.app_env != "development" or not is_loopback(origin_host):
+                    raise ValueError(
+                        "Experimental SMS analysis runs only with APP_ENV=development "
+                        "and a loopback APP_ORIGIN"
+                    )
             # The inference budget plus the commit reserve must fit inside the request deadline.
             if self.sms_inference_timeout_ms / 1000 + SMS_COMMIT_RESERVE_SECONDS >= (
                 self.inference_timeout_seconds
@@ -280,6 +297,28 @@ class Settings(BaseSettings):
                 "PUBLIC_ANALYZER_HOSTED_APPROVAL applies only to PUBLIC_ANALYZER_MODE=hosted"
             )
         return self
+
+    def require_hosted_inference_gate(self) -> None:
+        """Every condition for hosted anonymous inference (C-15). Each is checked separately so
+        a refusal names the missing condition and nothing else."""
+        if self.public_analyzer_hosted_approval != "c15-owner-approved":
+            raise ValueError(
+                "Hosted inference requires PUBLIC_ANALYZER_HOSTED_APPROVAL=c15-owner-approved, "
+                "which only the owner sets after recording decision C-15"
+            )
+        if not self.public_analyzer_only:
+            raise ValueError("Hosted inference runs only on the public-only service")
+        if self.app_env != "pilot":
+            raise ValueError("Hosted inference requires APP_ENV=pilot")
+        if not (self.app_origin or "").startswith("https://"):
+            raise ValueError("Hosted inference requires an https APP_ORIGIN")
+        if not self.sms_worker_enabled:
+            raise ValueError("Hosted inference requires SMS_WORKER_ENABLED=true")
+        if self.public_analyzer_client_ip_header is None:
+            raise ValueError(
+                "Hosted inference requires PUBLIC_ANALYZER_CLIENT_IP_HEADER (the trusted edge's "
+                "client-address header), or every visitor would share one rate-limit budget"
+            )
 
     @property
     def auth_configured(self) -> bool:
