@@ -26,6 +26,23 @@ router = APIRouter(
 MAX_BODY_BYTES = 32 * 1024
 
 
+def client_address(request: Request) -> str:
+    """The address the budgets are keyed by. Without PUBLIC_ANALYZER_CLIENT_IP_HEADER it is the
+    socket peer and every forwarding header is ignored. With it, it is exactly that single-valued
+    header as the trusted edge sets it (hosted mode requires this, because every request then
+    arrives from the edge's address). A missing or malformed value fails closed rather than
+    letting all visitors share one budget."""
+    header = request.app.state.settings.public_analyzer_client_ip_header
+    if header is None:
+        value = request.client.host if request.client else ""
+    else:
+        value = request.headers.get(header, "")
+    try:
+        return str(ipaddress.ip_address(value.strip()))
+    except ValueError:
+        raise ApiError(503, "DEPENDENCY_UNAVAILABLE", "Client address unavailable") from None
+
+
 @router.get("/analyzer", response_model=PublicStatusResponse)
 def status(request: Request) -> PublicStatusResponse:
     settings = request.app.state.settings
@@ -59,12 +76,7 @@ async def analyze_sms(request: Request) -> PublicPredictionResponse:
         raise ApiError(403, "FORBIDDEN", "Same-origin analyzer requests only")
     if request.headers.get("content-type", "").split(";")[0].strip().lower() != "application/json":
         raise ApiError(415, "UNSUPPORTED_MEDIA_TYPE", "JSON is required")
-    # Never trust caller-supplied forwarding headers. The deployed service must use a verified
-    # trusted proxy configuration at the ASGI server/edge, not arbitrary X-Forwarded-For input.
-    try:
-        client_ip = str(ipaddress.ip_address(request.client.host if request.client else ""))
-    except ValueError:
-        raise ApiError(503, "DEPENDENCY_UNAVAILABLE", "Client address unavailable") from None
+    client_ip = client_address(request)
     quota = request.app.state.public_quota
     if quota is None:
         raise ApiError(503, "DEPENDENCY_UNAVAILABLE", "Analysis temporarily unavailable")

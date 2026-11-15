@@ -20,7 +20,7 @@ export function SiteFooter({ compact = false }: { compact?: boolean }) {
         <div className="site-footer-brand">
           <Wordmark />
           <p>
-            An SMS fraud-analysis research project with recorded examples and a gated local
+            An SMS fraud-analysis research project with recorded examples and a gated experimental
             analyzer for fictional messages.
           </p>
         </div>

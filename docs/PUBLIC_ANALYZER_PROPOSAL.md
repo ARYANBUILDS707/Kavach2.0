@@ -3,7 +3,9 @@
 **Status: HOSTED RELEASE PROPOSED, NOT APPROVED. Local implementation authorized 13 Nov 2026; hosted mode remains blocked.** This document is the separate design and authorization proposal that [PUBLIC_SITE_DESIGN.md](PUBLIC_SITE_DESIGN.md) and the owner's 13 Nov 2026 instruction call for. It is not legal advice.
 
 Implementation and local-test authorization does not satisfy any launch gate below. See
-[PUBLIC_ANALYZER_RUNBOOK.md](PUBLIC_ANALYZER_RUNBOOK.md) for the implemented local contract.
+[PUBLIC_ANALYZER_RUNBOOK.md](PUBLIC_ANALYZER_RUNBOOK.md) for the implemented local contract and
+[C15_HOSTED_INFERENCE_DECISION.md](C15_HOSTED_INFERENCE_DECISION.md) for the owner decision
+record, the measured hosting requirements and costs, and the launch checklist (16 Nov 2026).
 
 ## Why this needs its own decision
 

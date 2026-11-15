@@ -94,7 +94,7 @@ const FAQ = [
   },
   {
     q: "Can I try my own message?",
-    a: "Not on this site: it has no input box. Live analysis is a local research feature for fictional messages, and a public analyzer would need its own authorization, privacy review and abuse limits first.",
+    a: "On the Analyze SMS page, only while the owner has enabled live analysis: it is experimental, unvalidated and for fictional messages only, and switching it on requires its own authorization, privacy review and abuse limits.",
   },
   {
     q: "Does KAVACH keep message text?",

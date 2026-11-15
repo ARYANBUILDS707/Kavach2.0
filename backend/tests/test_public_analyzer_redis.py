@@ -52,3 +52,24 @@ def test_shared_atomic_ip_global_limits_and_private_expiring_keys():
         if keys:
             redis.delete(*keys)
         redis.close()
+
+
+def test_pause_switch_stops_analysis_at_once_and_resumes_on_delete():
+    redis = Redis.from_url(os.environ["TEST_REDIS_URL"])
+    namespace = f"public-test-{uuid4().hex}"
+    quota = PublicQuota(redis, b"test only key", namespace, 3, 5)
+    try:
+        quota.reserve("127.0.0.1", str(uuid4()))
+        redis.set(quota.pause_key, 1)
+        with pytest.raises(ApiError) as error:
+            quota.reserve("127.0.0.1", str(uuid4()))
+        assert error.value.status == 503 and error.value.code == "ANALYZER_PAUSED"
+        # A paused attempt consumes no budget: the single earlier reservation is all there is.
+        assert redis.zcard(f"kavach:{namespace}:ratelimit:public:global") == 1
+        redis.delete(quota.pause_key)
+        quota.reserve("127.0.0.1", str(uuid4()))
+    finally:
+        keys = list(redis.scan_iter(f"kavach:{namespace}:*"))
+        if keys:
+            redis.delete(*keys)
+        redis.close()
