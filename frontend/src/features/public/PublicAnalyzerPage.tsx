@@ -49,9 +49,9 @@ export function PublicAnalyzerPage() {
   return <>
     <SiteHeader current="analyze" />
     <main id="main" className="public-analyzer">
-      <p className="eyebrow">Experimental · local fictional messages only</p>
+      <p className="eyebrow">Experimental · fictional messages only</p>
       <h1>Analyze an SMS</h1>
-      <p>No login or signup. When enabled locally, this runs the actual SMS model.</p>
+      <p>No login or signup. When the owner has enabled it, this runs the actual SMS model on this server.</p>
       <div className="card">
         <h2>Before you try</h2>
         <p>The model is not validated on KAVACH data. A prediction can be wrong in either direction;
