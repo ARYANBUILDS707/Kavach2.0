@@ -7,6 +7,8 @@ import { defineConfig } from "vitest/config";
 const api = { "/api": { target: process.env.KAVACH_API_TARGET ?? "http://127.0.0.1:8000", changeOrigin: false } };
 
 export default defineConfig({
+  // KAVACH_BASE: the path a static host serves the site under (GitHub Pages: /Kavach2.0/).
+  base: process.env.KAVACH_BASE ?? "/",
   plugins: [react()],
   server: { host: "127.0.0.1", port: 5173, strictPort: true, proxy: api },
   preview: { host: "127.0.0.1", port: 4173, strictPort: true, proxy: api },

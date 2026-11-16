@@ -20,16 +20,16 @@ export function SiteHeader({ current }: { current?: "examples" | "analyze" }) {
         <nav className="site-nav-links" aria-label="Site">
           <ul>
             <li>
-              <a href="/#about">About</a>
+              <a href={`${import.meta.env.BASE_URL}#about`}>About</a>
             </li>
             <li>
-              <a href="/#platform">Platform</a>
+              <a href={`${import.meta.env.BASE_URL}#platform`}>Platform</a>
             </li>
             <li>
-              <a href="/#capabilities">Capabilities</a>
+              <a href={`${import.meta.env.BASE_URL}#capabilities`}>Capabilities</a>
             </li>
             <li>
-              <a href="/#status">Status</a>
+              <a href={`${import.meta.env.BASE_URL}#status`}>Status</a>
             </li>
           </ul>
         </nav>

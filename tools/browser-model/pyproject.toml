@@ -1,0 +1,35 @@
+# Build-time tooling for the browser analyzer (decision C-16 proposal): quantizes the upstream
+# ONNX export of the pinned model to int8 and checks it against the PyTorch reference. Nothing
+# here is installed by the API or the worker. Pins follow the dependency-age rule.
+[project]
+name = "kavach-browser-model"
+version = "0.1.0"
+description = "Quantize and verify the pinned SMS classifier for in-browser inference"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "onnx==1.23.2",
+    "onnxruntime==1.31.1",
+    "numpy==2.5.4",
+    "tokenizers==0.23.3",
+]
+
+[dependency-groups]
+dev = ["pytest==9.1.1", "ruff==0.17.2"]
+
+[tool.uv]
+exclude-newer = "2026-11-02T00:00:00Z"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

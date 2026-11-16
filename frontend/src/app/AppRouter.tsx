@@ -10,6 +10,7 @@ import { IncidentDetailPage } from "../features/incidents/IncidentDetailPage";
 import { IncidentListPage } from "../features/incidents/IncidentListPage";
 import { LandingPage } from "../features/landing/LandingPage";
 import { OverviewPage } from "../features/overview/OverviewPage";
+import { BrowserAnalyzerPage } from "../features/public/BrowserAnalyzerPage";
 import { PublicAnalyzerPage } from "../features/public/PublicAnalyzerPage";
 import { ExamplesPage } from "../features/public/ExamplesPage";
 import { SystemPage } from "../features/system/SystemPage";
@@ -17,6 +18,9 @@ import { AppShell } from "./AppShell";
 import { RequireRole, RequireSession } from "./guards";
 import { NotFoundPage } from "./NotFoundPage";
 import { ADMIN_LOGIN, PUBLIC_HOME } from "./routes";
+
+// The static build (no API) runs the model in the browser; the server build calls the analyzer API.
+const BROWSER_ANALYZER = import.meta.env.VITE_KAVACH_ANALYZER === "browser";
 import { SessionProvider } from "./SessionProvider";
 
 /** The session is only ever looked up here, so a public visit never calls /auth/session. */
@@ -34,7 +38,7 @@ export function AppRouter({ now }: { now?: () => number } = {}) {
   return (
     <Routes>
       <Route index element={<LandingPage />} />
-      <Route path="analyze" element={<PublicAnalyzerPage />} />
+      <Route path="analyze" element={BROWSER_ANALYZER ? <BrowserAnalyzerPage /> : <PublicAnalyzerPage />} />
       <Route path="examples" element={<ExamplesPage />} />
       {/* Old addresses keep working without leading anywhere public that requires a login. */}
       <Route path="welcome" element={<Navigate to={PUBLIC_HOME} replace />} />

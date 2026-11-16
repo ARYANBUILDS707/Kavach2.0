@@ -13,7 +13,11 @@ from kavach.models.sms_worker import SmsWorkerSupervisor
 
 # Atomic sliding windows, using Redis time across replicas. Only random request IDs, timestamps
 # and HMAC IP identifiers are retained, for 60 seconds. Denials do not extend key lifetimes.
+# KEYS[3] is the pause switch: while it exists nothing is reserved and every analysis is refused
+# at once, without a redeploy (the operator kill switch; see docs/PUBLIC_ANALYZER_RUNBOOK.md).
+PAUSED = -1
 RESERVE = """
+if redis.call('EXISTS', KEYS[3]) == 1 then return -1 end
 local t = redis.call('TIME')
 local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)
 local wait = 0
@@ -33,6 +37,11 @@ return 0
 """
 
 
+def pause_key(namespace: str) -> str:
+    """`SET <key> 1` in Redis pauses public analysis immediately; `DEL <key>` resumes it."""
+    return f"kavach:{namespace}:public:paused"
+
+
 class PublicQuota:
     def __init__(
         self, redis: Redis, key: bytes, namespace: str, ip_limit: int, global_limit: int
@@ -41,13 +50,14 @@ class PublicQuota:
         self._key = key
         self._prefix = f"kavach:{namespace}:ratelimit:public"
         self._limits = [ip_limit, global_limit]
+        self.pause_key = pause_key(namespace)
 
     def reserve(self, client_ip: str, request_id: str) -> None:
         digest = hmac.new(self._key, client_ip.encode(), hashlib.sha256).hexdigest()
         try:
             wait = int(
                 self._reserve(
-                    keys=[f"{self._prefix}:ip:{digest}", f"{self._prefix}:global"],
+                    keys=[f"{self._prefix}:ip:{digest}", f"{self._prefix}:global", self.pause_key],
                     args=[*self._limits, request_id],
                 )
             )
@@ -55,6 +65,10 @@ class PublicQuota:
             raise ApiError(
                 503, "DEPENDENCY_UNAVAILABLE", "Analysis temporarily unavailable"
             ) from None
+        if wait == PAUSED:
+            raise ApiError(
+                503, "ANALYZER_PAUSED", "Public analysis is paused", {"Retry-After": "60"}
+            )
         if wait:
             raise ApiError(
                 429,

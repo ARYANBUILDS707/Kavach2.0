@@ -309,18 +309,29 @@ anonymous routes; existing incident, ingestion, system and authentication permis
   No raw text, scores, tier, subscriber, event ID or incident ID is returned.
 - Standard safe errors: 403 `FORBIDDEN`; 408 `REQUEST_TIMEOUT`; 413 `PAYLOAD_TOO_LARGE`;
   415 `UNSUPPORTED_MEDIA_TYPE`; 422 `VALIDATION_ERROR`; 429 `RATE_LIMITED` or
-  `CAPACITY_EXCEEDED`; 503 `ANALYZER_DISABLED`, `DEPENDENCY_UNAVAILABLE` or
-  `PROCESSING_TIMEOUT`. Rate/capacity rejections carry `Retry-After`.
+  `CAPACITY_EXCEEDED`; 503 `ANALYZER_DISABLED`, `ANALYZER_PAUSED` (operator pause switch,
+  `Retry-After: 60`), `DEPENDENCY_UNAVAILABLE` or `PROCESSING_TIMEOUT`. Rate/capacity rejections
+  carry `Retry-After`.
 - Every response is `Cache-Control: no-store`; no session cookie or CORS grant.
 - Redis sliding windows (server time) reserve both per-IP and global budgets atomically before
   reading a body; defaults 5/IP/minute and 60/global/minute. Failed attempts consume reservations.
   Redis failure fails closed. Request-body and inference admission is bounded to two; inference
   reuses the existing kill/restart timeout. No background inference job is left running on timeout.
-- Peer IP only, normalized with `ipaddress`; untrusted forwarding headers are ignored. The supplied
-  Uvicorn command disables proxy header trust. Behind a proxy this conservatively shares the IP
-  budget across visitors until trusted-edge behavior is separately verified before launch.
+- Client address: the socket peer, normalized with `ipaddress`, and every forwarding header
+  ignored, unless `PUBLIC_ANALYZER_CLIENT_IP_HEADER` names the trusted edge's single-valued
+  client-address header (Railway: `X-Real-IP`); then exactly that header is used and a missing or
+  malformed value answers 503 `DEPENDENCY_UNAVAILABLE` (fail closed) rather than sharing one
+  budget. The supplied Uvicorn command never rewrites the peer from forwarding headers.
+- Pause switch: while the Redis key `kavach:<APP_ENV>:public:paused` exists, the reservation step
+  answers 503 `ANALYZER_PAUSED` before any body is read and consumes no budget.
+- Hosted mode (`PUBLIC_ANALYZER_MODE=hosted`, decision C-15) is refused at startup unless
+  `PUBLIC_ANALYZER_HOSTED_APPROVAL=c15-owner-approved`, `PUBLIC_ANALYZER_ONLY=true`,
+  `APP_ENV=pilot`, an `https` `APP_ORIGIN`, `SMS_WORKER_ENABLED=true`,
+  `PUBLIC_ANALYZER_CLIENT_IP_HEADER`, `REDIS_URL` and `RATE_LIMIT_HMAC_KEY` are all set and the
+  local-only `SMS_MODEL_AUTHORIZATION` is not. The response contract is identical in every mode.
 
 New settings: `PUBLIC_ANALYZER_ONLY` (false), `PUBLIC_ANALYZER_MODE` (`disabled`),
+`PUBLIC_ANALYZER_HOSTED_APPROVAL` (unset), `PUBLIC_ANALYZER_CLIENT_IP_HEADER` (unset),
 `PUBLIC_ANALYZER_MAX_CHARS` (500), `PUBLIC_ANALYZER_IP_LIMIT_PER_MINUTE` (5),
 `PUBLIC_ANALYZER_GLOBAL_LIMIT_PER_MINUTE` (60), `PUBLIC_FRONTEND_DIR` (unset),
 `SMS_WORKER_LOCK_PATH` (unset; defaults to the existing model-directory lock).
