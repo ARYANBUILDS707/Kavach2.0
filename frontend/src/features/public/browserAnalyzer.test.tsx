@@ -6,22 +6,35 @@ import { BrowserAnalyzerPage } from "./BrowserAnalyzerPage";
 
 afterEach(() => { vi.unstubAllGlobals(); });
 
+function setup() {
+  const fetcher = vi.fn<typeof fetch>();
+  vi.stubGlobal("fetch", fetcher);
+  render(<MemoryRouter><BrowserAnalyzerPage /></MemoryRouter>);
+  return fetcher;
+}
+
 describe("browser analyzer page", () => {
-  it("makes no request and cannot analyze until the visitor loads the model", () => {
-    const fetcher = vi.fn<typeof fetch>();
-    vi.stubGlobal("fetch", fetcher);
-    render(<MemoryRouter><BrowserAnalyzerPage /></MemoryRouter>);
-    expect(screen.getByText(/not validated on KAVACH data/)).toBeInTheDocument();
-    expect(screen.getByText(/stays on this device/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Load model \(\d+ MB\)$/ })).toBeEnabled();
-    expect(screen.getByLabelText("SMS to analyze")).toBeDisabled();
+  it("leads with the checker and keeps the material risks visible", () => {
+    const fetcher = setup();
+    expect(screen.getByRole("heading", { level: 1, name: "Is this SMS a scam?" })).toBeInTheDocument();
+    expect(screen.getByLabelText("SMS to analyze")).toBeEnabled();
+    expect(screen.getByText(/First use downloads the AI model once \(\d+ MB\)/)).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: /experimental, unvalidated prediction/ })).not.toBeChecked();
-    expect(screen.getByText(/remove or do\s+not paste one-time passwords/)).toBeInTheDocument();
-    expect(screen.getByText(/never proof that a message is safe/)).toBeInTheDocument();
+    expect(screen.getByText(/How it works, privacy & limitations/)).toBeInTheDocument();
     expect(screen.queryByText(/fictional messages only/i)).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("SMS to analyze"), { target: { value: "FICTIONAL" } });
-    expect(screen.getByRole("button", { name: "Analyze" })).toBeDisabled();
     expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("samples only fill the input; nothing is predicted or downloaded without the model", () => {
+    const fetcher = setup();
+    fireEvent.click(screen.getByRole("button", { name: "Try Fraud Example" }));
+    expect(screen.getByLabelText("SMS to analyze")).toHaveValue(
+      "Your Northpay account is frozen. Confirm your PIN at the link now to avoid closure.");
+    // Consent is required before the analysis (and the download it starts) can begin.
+    expect(screen.getByRole("button", { name: "Analyze SMS" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("checkbox", { name: /experimental, unvalidated prediction/ }));
+    expect(screen.getByRole("button", { name: "Analyze SMS" })).toBeEnabled();
     expect(screen.queryByRole("heading", { name: /Prediction:/ })).not.toBeInTheDocument();
+    expect(fetcher).not.toHaveBeenCalled();
   });
 });
