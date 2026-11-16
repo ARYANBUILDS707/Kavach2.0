@@ -2,12 +2,10 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
 // Real model, no mocks: the pinned ONNX files come from Hugging Face and run in this browser.
-// Messages are invented; `intended` is the writer's intent and is recorded, not asserted.
-const MESSAGES = [
-  { intended: "legitimate", text: "FICTIONAL TEST: Running ten minutes late for dinner, order without me." },
-  { intended: "spam", text: "FICTIONAL TEST: Mega Sale at ShopFictional! Flat 50% off this weekend, reply STOP to opt out." },
-  { intended: "fraud", text: "FICTIONAL TEST: Your Northpay account is frozen. Confirm your PIN at the link now to avoid closure." },
-];
+// The sample shortcuts fill invented messages; the predictions are recorded, not asserted.
+const SAMPLES = ["Fraud", "Spam", "Legitimate"] as const;
+const REVISION = "fa686fc0d6a3634092ada93a7c6b89ab0746b8f8";
+const CONSENT = /experimental, unvalidated prediction/;
 
 test("real pinned model runs on the device and the message never leaves it", async ({ page, baseURL }, info) => {
   const siteHost = new URL(baseURL ?? "http://127.0.0.1").hostname;
@@ -16,30 +14,38 @@ test("real pinned model runs on the device and the message never leaves it", asy
   // Direct navigation to the route must be a real page (status 200), not a 404 fallback.
   const landing = await page.goto("analyze");
   expect(landing?.status()).toBe(200);
-  await expect(page.getByRole("heading", { level: 1, name: "Analyze an SMS" })).toBeVisible();
-  await expect(page.getByText(/not validated on KAVACH data/)).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Is this SMS a scam?" })).toBeVisible();
+  await expect(page.getByText(/First use downloads the AI model once/)).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 
-  const started = Date.now();
-  await page.getByRole("button", { name: /^Load model/ }).click();
-  await expect(page.getByText(/^Model ready on this device/)).toBeVisible({ timeout: 540_000 });
-  const loadSeconds = (Date.now() - started) / 1000;
-
   const input = page.getByLabel("SMS to analyze");
-  const analyze = page.getByRole("button", { name: "Analyze", exact: true });
-  await input.fill(MESSAGES[0]?.text ?? "");
-  await expect(analyze).toBeDisabled(); // consent is required first
-  await page.getByRole("checkbox", { name: /experimental, unvalidated prediction/ }).check();
-  const observed: { intended: string; prediction: string; model_ms: string }[] = [];
-  for (const message of MESSAGES) {
-    await input.fill(message.text);
+  const analyze = page.getByRole("button", { name: "Analyze SMS" });
+  await page.getByRole("button", { name: "Try Fraud Example" }).click();
+  await expect(analyze).toBeDisabled(); // consent first
+  await page.getByRole("checkbox", { name: CONSENT }).check();
+
+  const texts: string[] = [];
+  const observed: { sample: string; prediction: string; model_ms: string }[] = [];
+  let loadSeconds = 0;
+  for (const sample of SAMPLES) {
+    await page.getByRole("button", { name: `Try ${sample} Example` }).click();
+    texts.push(await input.inputValue());
+    const started = Date.now();
     await analyze.click();
     const heading = page.getByRole("heading", { name: /^Prediction: (Fraud|Spam|Legitimate)$/ });
-    await expect(heading).toBeVisible({ timeout: 60_000 });
+    await expect(heading).toBeVisible({ timeout: 540_000 });
+    if (sample === "Fraud") loadSeconds = (Date.now() - started) / 1000;
+    await expect(page.getByText("AI prediction · experimental · unvalidated")).toBeVisible();
+    await expect(page.getByText(/never guarantees a message is safe/)).toBeVisible();
     const time = await page.getByText(/^Model time: \d+ ms$/).textContent();
-    observed.push({ intended: message.intended, prediction: (await heading.textContent()) ?? "",
-      model_ms: (time ?? "").replace(/\D/g, "") });
+    observed.push({ sample, prediction: (await heading.textContent()) ?? "", model_ms: (time ?? "").replace(/\D/g, "") });
+    if (sample === "Fraud") {
+      expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+      await page.screenshot({ path: `test-results/browser-analyzer-result-${info.project.name}.png`, fullPage: true });
+    }
+    await page.getByRole("button", { name: "Analyze another SMS" }).click();
     await expect(input).toHaveValue("");
+    await expect(input).toBeFocused();
   }
   info.annotations.push({ type: "observed", description: JSON.stringify({ loadSeconds, observed }) });
   console.log(`[${info.project.name}] load ${loadSeconds.toFixed(1)} s`, JSON.stringify(observed));
@@ -51,11 +57,12 @@ test("real pinned model runs on the device and the message never leaves it", asy
   for (const request of requests) {
     if (new URL(request.url).hostname === "huggingface.co") {
       // /resolve/<revision>/ or the hub's redirect to /api/resolve-cache/…/<revision>/: always the pinned commit.
-      expect(new URL(request.url).pathname).toContain("/fa686fc0d6a3634092ada93a7c6b89ab0746b8f8/");
+      expect(new URL(request.url).pathname).toContain(`/${REVISION}/`);
     }
-    for (const message of MESSAGES) {
-      expect(request.url).not.toContain(encodeURIComponent(message.text.slice(15, 40)));
-      expect(request.body ?? "").not.toContain(message.text.slice(15, 40));
+    for (const text of texts) {
+      const fragment = text.slice(5, 30);
+      expect(decodeURIComponent(request.url)).not.toContain(fragment);
+      expect(request.body ?? "").not.toContain(fragment);
     }
   }
   // No KAVACH analysis API exists in this build: nothing same-origin under /api/.
@@ -65,6 +72,17 @@ test("real pinned model runs on the device and the message never leaves it", asy
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   // A refresh keeps the route working.
   expect((await page.reload())?.status()).toBe(200);
-  await expect(page.getByRole("heading", { level: 1, name: "Analyze an SMS" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Is this SMS a scam?" })).toBeVisible();
   await page.screenshot({ path: `test-results/browser-analyzer-${info.project.name}.png`, fullPage: true });
+});
+
+test("a failed model download shows an honest error and no prediction", async ({ page }) => {
+  await page.route(/huggingface\.co|\.hf\.co/, (route) => route.abort());
+  await page.goto("analyze");
+  await page.getByRole("button", { name: "Try Spam Example" }).click();
+  await page.getByRole("checkbox", { name: CONSENT }).check();
+  await page.getByRole("button", { name: "Analyze SMS" }).click();
+  await expect(page.getByRole("alert")).toContainText("No prediction was produced.");
+  await expect(page.getByRole("button", { name: "Retry download and analyze" })).toBeEnabled();
+  await expect(page.getByRole("heading", { name: /^Prediction:/ })).toHaveCount(0);
 });

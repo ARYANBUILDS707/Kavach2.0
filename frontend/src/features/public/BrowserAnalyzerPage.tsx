@@ -5,13 +5,32 @@ import { SiteFooter } from "../../components/SiteFooter";
 import { SiteHeader } from "../../components/SiteHeader";
 import { classify, DOWNLOAD_BYTES, loadModel, MODEL_VERSION, type BrowserPrediction } from "./browserModel";
 
-const labels = { fraud: "Fraud", spam: "Spam", legitimate: "Legitimate" };
 const MAX_CHARS = 500;
 const megabytes = (bytes: number) => `${String(Math.round(bytes / 1e6))} MB`;
+const MODEL_SIZE = megabytes(DOWNLOAD_BYTES);
+
+// Shortcuts only fill the text box with invented messages; the prediction always comes from the model.
+const SAMPLES = [
+  { id: "fraud", label: "Try Fraud Example",
+    text: "Your Northpay account is frozen. Confirm your PIN at the link now to avoid closure." },
+  { id: "spam", label: "Try Spam Example",
+    text: "Mega Sale at ShopFictional! Flat 50% off this weekend, reply STOP to opt out." },
+  { id: "legitimate", label: "Try Legitimate Example",
+    text: "Running ten minutes late for dinner, order without me." },
+] as const;
+
+// What each class means, as the model's authors define its labels. Not an explanation of a result.
+const OUTCOMES = {
+  fraud: { title: "Fraud", meaning: "The model predicts a scam or phishing attempt, for example a request for money, a PIN, an OTP or a click on a link." },
+  spam: { title: "Spam", meaning: "The model predicts unwanted marketing or bulk messaging rather than a scam." },
+  legitimate: { title: "Legitimate", meaning: "The model predicts an ordinary message. This never guarantees the message is safe." },
+} as const;
+
+type Loaded = Awaited<ReturnType<typeof loadModel>>;
 type ModelState =
   | { kind: "idle" }
-  | { kind: "loading"; loaded: number }
-  | { kind: "ready"; loaded: Awaited<ReturnType<typeof loadModel>> }
+  | { kind: "downloading"; loaded: number }
+  | { kind: "ready"; loaded: Loaded }
   | { kind: "failed"; message: string };
 
 /** Static-build analyzer: the pinned model runs on the visitor's device and no API exists. */
@@ -19,105 +38,146 @@ export function BrowserAnalyzerPage() {
   const [model, setModel] = useState<ModelState>({ kind: "idle" });
   const [text, setText] = useState("");
   const [result, setResult] = useState<BrowserPrediction | null>(null);
-  const [pending, setPending] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Explicit, per-page-visit acknowledgement; never stored.
   const [consent, setConsent] = useState(false);
-  const progress = useRef(0);
+  const percent = useRef(-1);
+  const input = useRef<HTMLTextAreaElement>(null);
   const length = Array.from(text).length;
-  const ready = model.kind === "ready";
+  const busy = analyzing || model.kind === "downloading";
+  const canSubmit = consent && !busy && text.trim() !== "" && length <= MAX_CHARS;
 
-  function load() {
-    setModel({ kind: "loading", loaded: 0 });
-    loadModel((loaded) => {
-      // Re-render at most once per whole percent.
-      const percent = Math.floor((100 * loaded) / DOWNLOAD_BYTES);
-      if (percent !== progress.current) { progress.current = percent; setModel({ kind: "loading", loaded }); }
-    }).then((loaded) => { setModel({ kind: "ready", loaded }); }, (failure: unknown) => {
-      progress.current = 0;
-      setModel({ kind: "failed", message: failure instanceof Error ? failure.message
-        : "The model could not be loaded in this browser." });
-    });
+  async function ensureModel(): Promise<Loaded> {
+    if (model.kind === "ready") return model.loaded;
+    setModel({ kind: "downloading", loaded: 0 });
+    try {
+      const loaded = await loadModel((bytes) => {
+        const next = Math.floor((100 * bytes) / DOWNLOAD_BYTES);
+        if (next !== percent.current) { percent.current = next; setModel({ kind: "downloading", loaded: bytes }); }
+      });
+      setModel({ kind: "ready", loaded });
+      return loaded;
+    } catch (failure) {
+      percent.current = -1;
+      const message = failure instanceof Error ? failure.message : "The AI model could not be loaded in this browser.";
+      setModel({ kind: "failed", message });
+      throw failure;
+    }
   }
   async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (model.kind !== "ready" || !consent || pending || !text.trim() || length > MAX_CHARS) return;
-    setPending(true); setError(null); setResult(null);
+    if (!canSubmit) return;
+    setError(null); setResult(null);
+    let loaded: Loaded;
+    try { loaded = await ensureModel(); } catch { return; }
+    setAnalyzing(true);
     try {
-      setResult(await classify(model.loaded, text));
-      setText("");
+      setResult(await classify(loaded, text));
     } catch {
       setError("The model failed on this message. No prediction was produced.");
     } finally {
-      setPending(false);
+      setAnalyzing(false);
     }
   }
+  function another() {
+    setText(""); setResult(null); setError(null);
+    input.current?.focus();
+  }
+
+  const outcome = result ? OUTCOMES[result.prediction] : null;
   return <>
     <SiteHeader current="analyze" />
-    <main id="main" className="public-analyzer">
-      <p className="eyebrow">Experimental · unvalidated · runs on your device</p>
-      <h1>Analyze an SMS</h1>
-      <p>No login or signup. Paste a message you received; the actual pretrained SMS model runs
-        inside your browser.</p>
-      <div className="card">
-        <h2>Before you try</h2>
-        <p>The model is not validated on KAVACH data and its real-world accuracy is unknown. It can
-          be wrong in either direction: a scam can be predicted “Legitimate” and a genuine message
-          “Fraud”. A “Legitimate” result is never proof that a message is safe. No calibrated fraud
-          probability is available, and nothing is blocked or reported for you. If a message worries
-          you, check with the sender through a channel you already trust.</p>
-        <p>Your message stays on this device: it is analyzed in this tab and is not sent to KAVACH or
-          anyone else, stored or logged. Links in a message are never opened. Even so, remove or do
-          not paste one-time passwords (OTPs), passwords, PINs, card numbers or other secrets.</p>
-        <p>First use downloads the model ({megabytes(DOWNLOAD_BYTES)}) from Hugging Face, which sees
-          your IP address. Every file is checked against its pinned SHA-256 before use. Phones may
-          not have enough memory.</p>
-      </div>
-      {model.kind === "idle" || model.kind === "failed" ? <div className="card">
-        {model.kind === "failed" ? <p role="alert">{model.message}</p> : null}
-        <Button onClick={load}>{model.kind === "failed" ? "Retry model download" : `Load model (${megabytes(DOWNLOAD_BYTES)})`}</Button>
-      </div> : null}
-      {model.kind === "loading" ? <div className="card" role="status">
-        <label htmlFor="model-progress">Downloading and verifying the model…</label>
-        <progress id="model-progress" max={DOWNLOAD_BYTES} value={model.loaded} />
-        <p>{megabytes(model.loaded)} of {megabytes(DOWNLOAD_BYTES)}</p>
-      </div> : null}
-      {ready ? <p role="status">Model ready on this device: {MODEL_VERSION}.</p> : null}
-      <form onSubmit={(event) => { void submit(event); }} className="card analyze-form analyzer-form">
+    <main id="main" className="public-analyzer checker">
+      <header className="checker-intro">
+        <p className="eyebrow">Experimental AI · runs on your device</p>
+        <h1>Is this SMS a scam?</h1>
+        <p>Paste a message and an AI model predicts whether it is fraud, spam or legitimate. The check
+          runs in your browser: your message is not sent anywhere.</p>
+      </header>
+
+      <form onSubmit={(event) => { void submit(event); }} className="card analyze-form checker-card" aria-describedby="checker-note">
         <div className="field">
-          <label htmlFor="public-sms">SMS to analyze</label>
-          <p id="sms-limit" className="field-hint">{MAX_CHARS} characters maximum.
-            Long messages may also be truncated by the model. Remove OTPs, passwords and PINs first.</p>
-          <textarea id="public-sms" rows={7} value={text} autoComplete="off" spellCheck={false}
-            aria-describedby="sms-limit" disabled={!ready || pending}
+          <label htmlFor="public-sms" className="checker-label">SMS to analyze</label>
+          <textarea id="public-sms" ref={input} rows={6} value={text} autoComplete="off" spellCheck={false}
+            placeholder="Paste the SMS here. Remove OTPs, passwords and PINs first."
+            aria-describedby="sms-limit" disabled={busy}
             onChange={(event) => { setText(event.target.value); setResult(null); setError(null); }} />
-          <span>{length} / {MAX_CHARS}</span>
+          <div className="checker-meta">
+            <span id="sms-limit">{length} / {MAX_CHARS} characters</span>
+          </div>
+        </div>
+        <div className="checker-samples" role="group" aria-label="Example messages">
+          {SAMPLES.map((sample) => (
+            <Button key={sample.id} variant="secondary" className="button-sm" disabled={busy}
+              onClick={() => { setText(sample.text); setResult(null); setError(null); }}>{sample.label}</Button>
+          ))}
         </div>
         <label className="consent">
-          <input type="checkbox" checked={consent} disabled={!ready || pending}
+          <input type="checkbox" checked={consent} disabled={busy}
             onChange={(event) => { setConsent(event.target.checked); }} />
-          {" "}I understand the result is an experimental, unvalidated prediction that can be wrong,
-          that “Legitimate” does not mean safe, and that I have removed any OTPs, passwords or PINs.
+          <span>I understand the result is an experimental, unvalidated prediction that can be wrong,
+            that “Legitimate” does not mean safe, and that I have removed any OTPs, passwords or PINs.</span>
         </label>
-        <div className="cta-row">
-          <Button type="submit" pending={pending} pendingLabel="Analyzing…"
-            disabled={!ready || !consent || !text.trim() || length > MAX_CHARS}>Analyze</Button>
-          <Button variant="secondary" disabled={pending} onClick={() => {
-            setText(""); setResult(null); setError(null);
-          }}>Clear</Button>
+
+        {model.kind === "downloading" ? <div className="checker-progress" role="status">
+          <div className="checker-progress-head">
+            <span>{model.loaded >= DOWNLOAD_BYTES ? "Starting the AI model…" : "Downloading the AI model…"}</span>
+            <span>{megabytes(model.loaded)} of {MODEL_SIZE}</span>
+          </div>
+          <progress aria-label="AI model download" max={DOWNLOAD_BYTES} value={model.loaded} />
+          <p>One-time download, checked against its pinned SHA-256. Keep this tab open.</p>
+        </div> : null}
+        {analyzing ? <p role="status" className="checker-status">Analyzing on your device…</p> : null}
+
+        <div className="checker-actions">
+          <Button type="submit" className="checker-submit" disabled={!canSubmit}
+            pending={busy} pendingLabel={model.kind === "downloading" ? "Loading AI model…" : "Analyzing…"}>
+            {model.kind === "failed" ? "Retry download and analyze" : "Analyze SMS"}
+          </Button>
+          <p id="checker-note" className="checker-note">
+            {model.kind === "ready" ? "AI model loaded on this device." :
+              `First use downloads the AI model once (${MODEL_SIZE}). Analysis starts when it has loaded.`}
+          </p>
         </div>
+        {model.kind === "failed" ? <p role="alert" className="checker-error">{model.message} No prediction was produced.</p> : null}
+        {error ? <p role="alert" className="checker-error">{error}</p> : null}
       </form>
-      {error ? <p role="alert">{error}</p> : null}
+
       <div aria-live="polite" aria-atomic="true">
-        {result ? <section className="card" aria-labelledby="prediction-title">
-          <p className="eyebrow">Actual model output on this device · experimental</p>
-          <h2 id="prediction-title">Prediction: {labels[result.prediction]}</h2>
-          <p>This is an experimental, unvalidated prediction and can be wrong. It is not a safety
-            verdict{result.prediction === "legitimate" ? ": “Legitimate” does not mean this message is safe" : ""}.</p>
-          {result.truncated ? <p>The model truncated this message; it did not analyze all of it.</p> : null}
-          <p>Model time: {result.model_ms} ms</p>
+        {result && outcome ? <section className={`card verdict verdict-${result.prediction}`} aria-labelledby="prediction-title">
+          <p className="verdict-tag">AI prediction · experimental · unvalidated</p>
+          <h2 id="prediction-title"><span className="verdict-dot" aria-hidden="true" />Prediction: {outcome.title}</h2>
+          <p className="verdict-meaning">{outcome.meaning}</p>
+          {result.truncated ? <p>The message was too long; the model only read the first part.</p> : null}
+          <p className="verdict-warning">This prediction can be wrong in either direction and is not a safety verdict.
+            “Legitimate” never guarantees a message is safe. If a message worries you, contact the sender
+            through a channel you already trust.</p>
+          <div className="verdict-foot">
+            <Button variant="secondary" onClick={another}>Analyze another SMS</Button>
+            <span>Model time: {result.model_ms} ms</span>
+          </div>
         </section> : null}
       </div>
+
+      <details className="card checker-details">
+        <summary>How it works, privacy &amp; limitations</summary>
+        <h2>How it works</h2>
+        <p>The pretrained model {MODEL_VERSION} (Horizon-Labs phishing-scam-detector-base, Apache-2.0)
+          is downloaded once from its authors' pinned Hugging Face revision ({MODEL_SIZE}). Every file is
+          checked against its published SHA-256 before use, then the model runs in this tab with WebAssembly.
+          The page shows the predicted class only; the model's scores are not calibrated probabilities.</p>
+        <h2>Privacy</h2>
+        <p>Your message is analyzed in this tab and is not sent to KAVACH or anyone else, stored or logged.
+          Links in a message are never opened. GitHub Pages (this site) and Hugging Face (the model files)
+          see your IP address, never your message. Your browser may cache the model files for next time.
+          Even so, remove one-time passwords, passwords, PINs, card numbers and other secrets before pasting.</p>
+        <h2>Limitations</h2>
+        <p>The model is not validated on KAVACH data and its real-world accuracy is unknown. A scam can be
+          predicted “Legitimate” and a genuine message “Fraud”. Nothing is blocked or reported for you.
+          Long messages are truncated. Phones may not have enough memory for the model; the page then shows
+          an error instead of a prediction.</p>
+      </details>
     </main>
     <SiteFooter />
   </>;

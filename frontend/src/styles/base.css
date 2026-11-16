@@ -2623,3 +2623,45 @@ circle.ill-ink-stroke:not(.ill-cream) {
 }
 .analyzer-form .consent { display: flex; gap: 12px; align-items: flex-start; line-height: 1.5; }
 .analyzer-form .consent input { margin-top: 4px; width: 20px; height: 20px; flex: none; }
+
+/* In-browser SMS checker (static build). Existing tokens only; Legitimate stays neutral so it
+   never reads as "safe". */
+.checker { max-width: 760px; }
+.checker > * + * { margin-top: var(--space-6); }
+.checker-intro h1 { font-family: var(--font-display); font-size: clamp(2.2rem, 6vw, 3.4rem); line-height: 1.02; margin: var(--space-2) 0 var(--space-3); }
+.checker-intro p:last-child { color: var(--color-text-secondary); font-size: 1.08rem; max-width: 56ch; margin: 0; }
+.checker-card { display: grid; gap: var(--space-5); }
+.checker-label { font-weight: 700; }
+.checker-card textarea { width: 100%; min-height: 168px; resize: vertical; font-size: 1.05rem; line-height: 1.5; }
+.checker-meta { display: flex; justify-content: flex-end; color: var(--color-text-secondary); font-size: 0.9rem; margin-top: var(--space-2); }
+.checker-samples { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.checker-card .consent { display: flex; gap: var(--space-3); align-items: flex-start; line-height: 1.5; font-size: 0.95rem; }
+.checker-card .consent input { margin-top: 3px; width: 20px; height: 20px; flex: none; accent-color: var(--ink); }
+.checker-actions { display: grid; gap: var(--space-2); }
+.checker-submit { width: 100%; min-height: 56px; font-size: 1.1rem; }
+.checker-note, .checker-status { color: var(--color-text-secondary); font-size: 0.9rem; margin: 0; text-align: center; }
+.checker-error { margin: 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius-sm); background: var(--color-critical-bg); color: var(--color-critical-text); }
+.checker-progress { display: grid; gap: var(--space-2); padding: var(--space-4); border-radius: var(--radius); background: var(--color-surface-2); }
+.checker-progress-head { display: flex; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; font-weight: 700; }
+.checker-progress progress { width: 100%; height: 12px; accent-color: var(--ink); }
+.checker-progress p { margin: 0; color: var(--color-text-secondary); font-size: 0.9rem; }
+.verdict { border-width: var(--border-strong); }
+.verdict-tag { font-family: var(--font-mono); font-size: var(--text-eyebrow); font-weight: 700; letter-spacing: var(--tracking-eyebrow); text-transform: uppercase; margin: 0 0 var(--space-3); }
+.verdict h2 { display: flex; align-items: center; gap: var(--space-3); font-family: var(--font-display); font-size: clamp(1.8rem, 5vw, 2.4rem); margin: 0 0 var(--space-3); }
+.verdict-dot { width: 18px; height: 18px; border-radius: 50%; border: var(--border) solid currentColor; flex: none; }
+.verdict-meaning { font-size: 1.05rem; margin: 0 0 var(--space-3); }
+.verdict-warning { font-size: 0.95rem; margin: 0 0 var(--space-4); }
+.verdict-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); font-size: 0.9rem; }
+.verdict-fraud { background: var(--color-critical-bg); color: var(--color-critical-text); }
+.verdict-fraud .verdict-dot { background: currentColor; }
+.verdict-spam { background: var(--color-medium-bg); color: var(--color-medium-text); }
+.verdict-spam .verdict-dot { background: currentColor; }
+.verdict-legitimate { background: var(--color-surface-2); color: var(--color-text-primary); }
+.checker-details summary { cursor: pointer; font-weight: 700; font-size: 1.05rem; }
+.checker-details summary:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 4px; border-radius: 4px; }
+.checker-details h2 { font-size: 1.05rem; margin: var(--space-5) 0 var(--space-2); }
+.checker-details p { margin: 0; color: var(--color-text-secondary); line-height: 1.6; }
+@media (max-width: 480px) {
+  .checker-samples .button { flex: 1 1 100%; }
+  .card.checker-card, .card.verdict { padding: var(--space-5); }
+}
