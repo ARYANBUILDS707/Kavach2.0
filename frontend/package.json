@@ -19,9 +19,11 @@
     "api:types": "npm run contract:verify && openapi-typescript contract/openapi.json --output src/lib/api/schema.d.ts",
     "api:check": "npm run contract:verify && openapi-typescript contract/openapi.json --output src/lib/api/schema.d.ts --check",
     "scan:bundle": "node scripts/scan-bundle.mjs",
-    "verify": "npm run api:check && npm run lint && npm run typecheck && npm test && vite build && npm run scan:bundle"
+    "verify": "npm run api:check && npm run lint && npm run typecheck && npm test && vite build && npm run scan:bundle",
+    "build:static": "npm run typecheck && VITE_KAVACH_ANALYZER=browser KAVACH_BASE=${KAVACH_BASE:-/Kavach2.0/} vite build && node scripts/static-extras.mjs"
   },
   "dependencies": {
+    "@huggingface/transformers": "4.3.2",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-router": "8.5.0"

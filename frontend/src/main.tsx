@@ -17,7 +17,7 @@ const client = createClient({ fetch: window.fetch.bind(window) });
 createRoot(root).render(
   <StrictMode>
     <ApiProvider client={client}>
-      <BrowserRouter>
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
         <AppRouter />
       </BrowserRouter>
     </ApiProvider>
