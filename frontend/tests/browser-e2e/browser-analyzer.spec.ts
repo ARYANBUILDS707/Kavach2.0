@@ -22,11 +22,15 @@ test("real pinned model runs on the device and the message never leaves it", asy
   await expect(page.getByText(/^Model ready on this device/)).toBeVisible({ timeout: 540_000 });
   const loadSeconds = (Date.now() - started) / 1000;
 
-  const input = page.getByLabel("Fictional SMS");
+  const input = page.getByLabel("SMS to analyze");
+  const analyze = page.getByRole("button", { name: "Analyze", exact: true });
+  await input.fill(MESSAGES[0]?.text ?? "");
+  await expect(analyze).toBeDisabled(); // consent is required first
+  await page.getByRole("checkbox", { name: /experimental, unvalidated prediction/ }).check();
   const observed: { intended: string; prediction: string; model_ms: string }[] = [];
   for (const message of MESSAGES) {
     await input.fill(message.text);
-    await page.getByRole("button", { name: "Analyze", exact: true }).click();
+    await analyze.click();
     const heading = page.getByRole("heading", { name: /^Prediction: (Fraud|Spam|Legitimate)$/ });
     await expect(heading).toBeVisible({ timeout: 60_000 });
     const time = await page.getByText(/^Model time: \d+ ms$/).textContent();

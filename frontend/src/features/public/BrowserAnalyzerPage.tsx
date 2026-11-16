@@ -21,6 +21,8 @@ export function BrowserAnalyzerPage() {
   const [result, setResult] = useState<BrowserPrediction | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Explicit, per-page-visit acknowledgement; never stored.
+  const [consent, setConsent] = useState(false);
   const progress = useRef(0);
   const length = Array.from(text).length;
   const ready = model.kind === "ready";
@@ -39,7 +41,7 @@ export function BrowserAnalyzerPage() {
   }
   async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (model.kind !== "ready" || pending || !text.trim() || length > MAX_CHARS) return;
+    if (model.kind !== "ready" || !consent || pending || !text.trim() || length > MAX_CHARS) return;
     setPending(true); setError(null); setResult(null);
     try {
       setResult(await classify(model.loaded, text));
@@ -53,17 +55,20 @@ export function BrowserAnalyzerPage() {
   return <>
     <SiteHeader current="analyze" />
     <main id="main" className="public-analyzer">
-      <p className="eyebrow">Experimental · unvalidated · fictional messages only</p>
+      <p className="eyebrow">Experimental · unvalidated · runs on your device</p>
       <h1>Analyze an SMS</h1>
-      <p>No login or signup. The actual pretrained SMS model runs inside your browser.</p>
+      <p>No login or signup. Paste a message you received; the actual pretrained SMS model runs
+        inside your browser.</p>
       <div className="card">
         <h2>Before you try</h2>
-        <p>The model is not validated on KAVACH data. A prediction can be wrong in either direction;
-          “Legitimate” does not mean safe. No calibrated fraud probability is available, and nothing
-          is blocked or reported for you.</p>
+        <p>The model is not validated on KAVACH data and its real-world accuracy is unknown. It can
+          be wrong in either direction: a scam can be predicted “Legitimate” and a genuine message
+          “Fraud”. A “Legitimate” result is never proof that a message is safe. No calibrated fraud
+          probability is available, and nothing is blocked or reported for you. If a message worries
+          you, check with the sender through a channel you already trust.</p>
         <p>Your message stays on this device: it is analyzed in this tab and is not sent to KAVACH or
-          anyone else, stored or logged. Links in a message are never opened. Use fictional text anyway;
-          do not paste passwords or OTPs.</p>
+          anyone else, stored or logged. Links in a message are never opened. Even so, remove or do
+          not paste one-time passwords (OTPs), passwords, PINs, card numbers or other secrets.</p>
         <p>First use downloads the model ({megabytes(DOWNLOAD_BYTES)}) from Hugging Face, which sees
           your IP address. Every file is checked against its pinned SHA-256 before use. Phones may
           not have enough memory.</p>
@@ -80,17 +85,23 @@ export function BrowserAnalyzerPage() {
       {ready ? <p role="status">Model ready on this device: {MODEL_VERSION}.</p> : null}
       <form onSubmit={(event) => { void submit(event); }} className="card analyze-form analyzer-form">
         <div className="field">
-          <label htmlFor="public-sms">Fictional SMS</label>
+          <label htmlFor="public-sms">SMS to analyze</label>
           <p id="sms-limit" className="field-hint">{MAX_CHARS} characters maximum.
-            Long messages may also be truncated by the model.</p>
+            Long messages may also be truncated by the model. Remove OTPs, passwords and PINs first.</p>
           <textarea id="public-sms" rows={7} value={text} autoComplete="off" spellCheck={false}
             aria-describedby="sms-limit" disabled={!ready || pending}
             onChange={(event) => { setText(event.target.value); setResult(null); setError(null); }} />
           <span>{length} / {MAX_CHARS}</span>
         </div>
+        <label className="consent">
+          <input type="checkbox" checked={consent} disabled={!ready || pending}
+            onChange={(event) => { setConsent(event.target.checked); }} />
+          {" "}I understand the result is an experimental, unvalidated prediction that can be wrong,
+          that “Legitimate” does not mean safe, and that I have removed any OTPs, passwords or PINs.
+        </label>
         <div className="cta-row">
           <Button type="submit" pending={pending} pendingLabel="Analyzing…"
-            disabled={!ready || !text.trim() || length > MAX_CHARS}>Analyze</Button>
+            disabled={!ready || !consent || !text.trim() || length > MAX_CHARS}>Analyze</Button>
           <Button variant="secondary" disabled={pending} onClick={() => {
             setText(""); setResult(null); setError(null);
           }}>Clear</Button>
@@ -101,7 +112,8 @@ export function BrowserAnalyzerPage() {
         {result ? <section className="card" aria-labelledby="prediction-title">
           <p className="eyebrow">Actual model output on this device · experimental</p>
           <h2 id="prediction-title">Prediction: {labels[result.prediction]}</h2>
-          <p>This is an unvalidated prediction, not a safety verdict.</p>
+          <p>This is an experimental, unvalidated prediction and can be wrong. It is not a safety
+            verdict{result.prediction === "legitimate" ? ": “Legitimate” does not mean this message is safe" : ""}.</p>
           {result.truncated ? <p>The model truncated this message; it did not analyze all of it.</p> : null}
           <p>Model time: {result.model_ms} ms</p>
         </section> : null}
