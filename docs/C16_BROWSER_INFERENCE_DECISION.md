@@ -1,9 +1,8 @@
 # Decision C-16: In-browser analysis of visitors' real SMS on a free static site — owner decision record
 
-**Status: AWAITING THE OWNER'S DECISION on the revised scope. Nothing here approves a public
-release.** Prepared 16 November 2026; revised the same day at the owner's request from a
-fictional-only demonstration to **visitors' own real messages, analysed only in their browser**.
-The owner declined the fictional-only scope; no approval of any scope has been recorded.
+**Status: APPROVED by the owner on 16 November 2026 for visitors' own real messages, analysed only
+in their browser.** Prepared 16 November 2026 and revised the same day at the owner's request from a
+fictional-only demonstration (which the owner declined) to the real-message scope below.
 
 ## What it is
 
@@ -78,16 +77,19 @@ the model files in its cache for later visits; message text is never cached.
 ## Owner decision (owner only)
 
 - [ ] Not approved.
-- [ ] Approved: release the static in-browser analyzer for visitors' real SMS, analysed only on
+- [x] Approved: release the static in-browser analyzer for visitors' real SMS, analysed only on
       their own device, knowing M4-Q is NOT READY and real-world error rates are unknown. This is
       an experimental, unvalidated classifier, not a validated fraud-detection service, and does
       not change C-12, C-13 or C-15.
-- Date and name: ______________________
+- Date and name: 16 November 2026, repository owner (ARYANBUILDS707), in their words: "C-16
+  approved (real messages). I approve the browser-only experimental release for real visitor SMS,
+  acknowledging that M4-Q is NOT READY, accuracy is unknown, false predictions can occur, mobile
+  compatibility is limited, and no independent legal review has been completed."
 
 ## Release (after approval)
 
-Through the protected flow: PR into `dev`, release PR into `main`, then the GitHub Pages deployment
-workflow publishes `https://aryanbuilds707.github.io/Kavach2.0/`. To withdraw: disable the workflow
+Through the protected flow: PR into `dev`, release PR into `main`, then `.github/workflows/pages.yml`
+(official GitHub Pages actions, `main` only) publishes `https://aryanbuilds707.github.io/Kavach2.0/`. To withdraw: disable the workflow
 or the Pages site in repository settings. The Railway site is untouched either way.
 
 Incident, 16 Nov 2026: while preparing this, the implementer pushed a `gh-pages` branch expecting
