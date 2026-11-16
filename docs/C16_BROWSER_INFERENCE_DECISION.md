@@ -69,7 +69,14 @@ reports a failed download — it never falls back to anything else).
 
 ## Release (owner action, after approving)
 
-Settings → Pages → Build and deployment → Source: **Deploy from a branch** → Branch: **`gh-pages`**,
-folder **`/ (root)`** → Save. The site appears at `https://aryanbuilds707.github.io/Kavach2.0/`
-within a few minutes. To withdraw it: Settings → Pages → **Unpublish site** (or set Source to None).
-The Railway site is untouched either way.
+Build with `npm run build:static` in `frontend/`, add an empty `.nojekyll`, and push the contents
+of `frontend/dist` as the root of branch **`gh-pages`**. For this repository GitHub enables Pages
+automatically on the first push of that branch (observed 16 Nov 2026), so **pushing the branch is
+the release act**: do it only after ticking the approval above. The site appears at
+`https://aryanbuilds707.github.io/Kavach2.0/` within minutes. To withdraw it, delete the
+`gh-pages` branch (Pages then has no source; GitHub's CDN may serve a cached copy for up to
+10 minutes). The Railway site is untouched either way.
+
+Incident, 16 Nov 2026: while preparing this, the implementer pushed `gh-pages` expecting Pages to
+stay off; GitHub enabled it and the static site was publicly reachable for about 15 minutes before
+the branch was deleted and the URL returned 404. No approval was recorded; none is implied.
