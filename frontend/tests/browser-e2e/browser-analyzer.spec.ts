@@ -9,10 +9,13 @@ const MESSAGES = [
   { intended: "fraud", text: "FICTIONAL TEST: Your Northpay account is frozen. Confirm your PIN at the link now to avoid closure." },
 ];
 
-test("real pinned model runs on the device and the message never leaves it", async ({ page }, info) => {
+test("real pinned model runs on the device and the message never leaves it", async ({ page, baseURL }, info) => {
+  const siteHost = new URL(baseURL ?? "http://127.0.0.1").hostname;
   const requests: { url: string; body: string | null }[] = [];
   page.on("request", (request) => { requests.push({ url: request.url(), body: request.postData() }); });
-  await page.goto("analyze");
+  // Direct navigation to the route must be a real page (status 200), not a 404 fallback.
+  const landing = await page.goto("analyze");
+  expect(landing?.status()).toBe(200);
   await expect(page.getByRole("heading", { level: 1, name: "Analyze an SMS" })).toBeVisible();
   await expect(page.getByText(/not validated on KAVACH data/)).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
@@ -44,7 +47,7 @@ test("real pinned model runs on the device and the message never leaves it", asy
   // Nothing but the site itself and the pinned model revision was contacted, and no request
   // carried message text.
   const origins = new Set(requests.map((request) => new URL(request.url).hostname));
-  for (const host of origins) expect(host === "127.0.0.1" || host === "huggingface.co" || host.endsWith(".hf.co")).toBe(true);
+  for (const host of origins) expect(host === siteHost || host === "huggingface.co" || host.endsWith(".hf.co")).toBe(true);
   for (const request of requests) {
     if (new URL(request.url).hostname === "huggingface.co") {
       // /resolve/<revision>/ or the hub's redirect to /api/resolve-cache/…/<revision>/: always the pinned commit.
@@ -56,9 +59,12 @@ test("real pinned model runs on the device and the message never leaves it", asy
     }
   }
   // No KAVACH analysis API exists in this build: nothing same-origin under /api/.
-  expect(requests.some((request) => new URL(request.url).hostname === "127.0.0.1" && request.url.includes("/api/"))).toBe(false);
+  expect(requests.some((request) => new URL(request.url).hostname === siteHost && request.url.includes("/api/"))).toBe(false);
   expect(await page.context().cookies()).toEqual([]);
   expect(await page.evaluate(() => localStorage.length + sessionStorage.length)).toBe(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  // A refresh keeps the route working.
+  expect((await page.reload())?.status()).toBe(200);
+  await expect(page.getByRole("heading", { level: 1, name: "Analyze an SMS" })).toBeVisible();
   await page.screenshot({ path: `test-results/browser-analyzer-${info.project.name}.png`, fullPage: true });
 });
